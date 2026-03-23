@@ -177,12 +177,24 @@ class CatBoostDirectionModel:
         return self._decode_labels(classes)
 
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
-        """Predict class probabilities [DOWN, FLAT, UP]."""
+        """Predict class probabilities [DOWN, FLAT, UP] — always returns (n, 3).
+
+        CatBoost only outputs columns for classes seen during training. When the
+        training window has no flat-labeled bars (common since flat is rare), it
+        returns (n, 2). We expand to (n, 3) by inserting zeros for missing classes.
+        """
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        result: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
-        return result
+        raw: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
+        trained_classes = list(self._model.classes_)
+        if len(trained_classes) == 3:
+            return raw
+        # Fewer than 3 classes seen — pad output to full 3-column shape
+        full = np.zeros((raw.shape[0], 3), dtype=np.float64)
+        for col_idx, class_id in enumerate(trained_classes):
+            full[:, int(class_id)] = raw[:, col_idx]
+        return full
 
     def _update_feature_importance(self) -> None:
         if self._model is None:
