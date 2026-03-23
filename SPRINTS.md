@@ -668,7 +668,9 @@ Sprint 2 (derivatives data for cascade), Sprint 5 (cross-market data for NQ)
 
 ---
 
-## Sprint 13: API + Live Prediction + Monitoring (3-4 days) [ ]
+## Sprint 13: API + Live Prediction + Monitoring (3-4 days) [x]
+
+**Status**: Complete (2026-03-23) — 239 tests passing
 
 ### Objectives
 Build the production API, live prediction loop, and monitoring infrastructure.
@@ -958,6 +960,132 @@ Sprint 15 (Validation — need baseline metrics to measure improvement against)
 
 ---
 
+## Sprint 17: Venue Abstraction + Polymarket Execution (3-4 days) [ ]
+
+### Objectives
+Build a venue-agnostic execution layer so the ML pipeline (features → models → gating → risk) can trade on **both** Binance perpetual futures and Polymarket's 5-minute BTC prediction markets. The core ML stack stays untouched — only the execution, position sizing, and backtest layers gain a new adapter.
+
+### Why Polymarket
+- 5-minute "Bitcoin Up or Down" markets resolve via Chainlink Data Streams — a natural fit for our directional model
+- **Maker fee = 0%**, hold-to-resolution exit = 0% — break-even accuracy is ~50.5% (vs ~52% on Binance perps)
+- Binary payout: known max loss = premium paid, no liquidation risk, no margin
+- Quarter-Kelly on binary outcomes: `f* = 0.25 * (q - p) / (1 - p)` where q = model probability, p = market price
+- ROI potential is high but absolute scale is limited (~$200-$2K per trade due to thin orderbooks)
+
+### Design Principles
+- **Venue as a swappable adapter** — ML pipeline produces `GatingResult` (direction + confidence), risk manager produces `TradeDecision`, venue adapter executes
+- **No changes to existing Binance-oriented code** — new modules only, existing interfaces preserved
+- **Binary-aware position sizing** — separate `BinaryPositionSizer` for Polymarket's payout structure
+- **Hold-to-resolution as primary strategy** — avoids spread cost on exit; model predicts 5-min direction which maps directly to market resolution
+
+### Deliverables
+
+#### T1: VenueAdapter ABC + venue registry
+- [ ] `src/ep2_crypto/execution/venue.py`:
+  - `VenueAdapter` abstract base class: `place_order()`, `cancel_order()`, `get_position()`, `get_orderbook()`, `get_balance()`
+  - `VenueType` enum: `BINANCE_PERPS`, `POLYMARKET_BINARY`
+  - `OrderResult` dataclass: fill_price, fill_qty, fees, status
+  - `VenueConfig` Pydantic model: venue-specific configuration
+- [ ] `src/ep2_crypto/execution/registry.py`:
+  - `VenueRegistry`: register/get adapters by type
+- [ ] Tests for ABC contract enforcement
+
+#### T2: PolymarketAdapter implementation
+- [ ] `src/ep2_crypto/execution/polymarket.py`:
+  - Market discovery: deterministic slug `btc-updown-5m-{floor(now/300)*300}` via Gamma API
+  - Order placement via `py-clob-client`: limit (maker, post-only) and market (FOK) orders
+  - WebSocket orderbook subscription with 5s heartbeat (10s required, 5s safety margin)
+  - Position tracking: current shares held, unrealized value
+  - Hold-to-resolution: detect window end, await resolution, claim payout
+  - Token approval management (3 contracts)
+  - Connection health monitoring + auto-reconnect
+- [ ] `src/ep2_crypto/execution/polymarket_config.py`:
+  - `PolymarketConfig` Pydantic model: private_key (from env), funder_address, chain_id, fee_rate, min_order_size
+  - **Private key via env var only** — never in code or config files
+- [ ] Tests with mocked py-clob-client
+
+#### T3: BinaryPositionSizer
+- [ ] `src/ep2_crypto/risk/binary_position_sizer.py`:
+  - Kelly for binary outcomes: `f* = (q - p) / (1 - p)` where q = model confidence, p = market price
+  - Fee-adjusted Kelly: accounts for Polymarket's profit-only fee structure
+  - Quarter-Kelly default (configurable fraction)
+  - Max bet cap: configurable % of bankroll (default 5%)
+  - Min bet size: $5 (Polymarket minimum)
+  - Drawdown gate integration: multiply by drawdown_multiplier from existing gate
+  - Output: `BinarySizingResult(shares, cost_usd, max_loss_usd, expected_value, kelly_fraction)`
+- [ ] Tests with golden dataset: known (q, p, bankroll, fee) → expected (shares, cost)
+- [ ] Property-based test: bet size NEVER exceeds max cap (500+ random inputs)
+
+#### T4: PolymarketRiskAdapter
+- [ ] `src/ep2_crypto/risk/polymarket_risk.py`:
+  - Wraps existing `RiskManager` for binary context
+  - Maps `GatingResult` → `SignalInput` with binary-appropriate fields
+  - Translates `TradeDecision` → Polymarket order parameters
+  - Kill switches reused as-is (daily loss, weekly loss, max DD, consecutive losses)
+  - Drawdown gate reused as-is (convex reduction applied to bet size)
+  - **No margin tracking** — max loss is known upfront (= cost of shares)
+  - **No stop-loss** — binary resolution handles exit
+  - **No holding period limit** — market resolves in 5 min max
+  - PnL tracking: record each resolution outcome for kill switch thresholds
+- [ ] Tests: normal trade, kill switch trigger, drawdown gate reduction, consecutive losses
+
+#### T5: PolymarketBacktester
+- [ ] `src/ep2_crypto/backtest/polymarket_backtest.py`:
+  - Simulates binary payoff: buy at market price p, receive $1 if correct direction, $0 if wrong
+  - Fee model: Polymarket's `fee = C * p * feeRate * (p*(1-p))^exponent` for takers; 0 for makers
+  - Spread simulation: configurable bid-ask spread (default 3-5 cents)
+  - Per-window P&L: `pnl = (1 - p - fee) if correct, else (-p)` per share
+  - Uses existing model predictions as signal source
+  - Outputs: accuracy, Sharpe, profit factor, max DD, avg trade PnL, total P&L
+  - Comparison report: Polymarket P&L vs Binance perps P&L on same signals
+- [ ] Tests with synthetic signals at known accuracy levels
+
+#### T6: Integration + live loop hookup
+- [ ] Update `scripts/live.py` to support venue selection via config
+- [ ] `src/ep2_crypto/execution/__init__.py` — clean exports
+- [ ] Integration test: full pipeline mock (gating → risk → polymarket adapter → resolution)
+- [ ] Add `py-clob-client` to `pyproject.toml` dependencies
+
+### Key Technical Details
+- **py-clob-client SDK**: `pip install py-clob-client` (Python 3.9+)
+- **Market slug**: `btc-updown-5m-{floor(unix_ts/300)*300}` — deterministic, no search needed
+- **Token IDs**: `clobTokenIds[0]` = YES/Up, `clobTokenIds[1]` = NO/Down
+- **Heartbeat**: send `"PING"` every 5s on WebSocket, expect `"PONG"`
+- **Resolution**: Chainlink Data Streams BTC/USD — this is truth, not exchange price
+- **Order types**: GTC (maker), FOK (taker), with `post_only=True` for guaranteed maker
+- **Auth**: derive API creds from Polygon wallet private key, no manual registration
+- **Min order**: ~5 shares ($2.50 at 50c)
+- **Known SDK issues**: neg_risk flag bugs, tick size caching, signature edge cases — code defensively
+
+### Risk Parameters (Polymarket-specific)
+| Parameter | Value |
+|-----------|-------|
+| Max bet per window | 5% of bankroll |
+| Quarter-Kelly fraction | 0.25 |
+| Min bet size | $5 |
+| Daily loss limit | 2% of bankroll |
+| Weekly loss limit | 5% of bankroll |
+| Max drawdown halt | 15% of bankroll |
+| Consecutive loss halt | 10 |
+| Strategy | Maker entry + hold-to-resolution (0% fees) |
+| Fallback | FOK taker if maker not filled within 60s of window open |
+
+### Acceptance Criteria
+- VenueAdapter ABC enforced — both Polymarket and (future) Binance adapters implement same interface
+- Polymarket adapter discovers current 5-min market within 1 second
+- Orders placed and tracked through resolution
+- Binary position sizer never exceeds max bet cap (property-based test, 500+ inputs)
+- Kill switches halt trading at exact thresholds (reusing existing tests)
+- Backtest on historical BTC 5-min directions shows Sharpe > 1.0 with maker strategy at 54% accuracy
+- Full pipeline integration test passes: signal → risk → order → resolution → PnL update
+- No changes to any existing module (features, models, gating, risk core, backtest core)
+- Private key loaded from environment variable only, never hardcoded
+
+### Dependencies
+Sprint 8 (confidence gating), Sprint 9 (risk engine)
+
+---
+
 ## Sprint Dependencies Graph
 
 ```
@@ -976,8 +1104,8 @@ Sprint 1 (Foundation)
                                     Sprint 8 (Confidence Gating)
                                                |
                               +----------------+----------------+
-                              |                                 |
-                    Sprint 9 (Risk Mgmt)            Sprint 12 (Macro + Cascade)
+                              |                |                 |
+                    Sprint 9 (Risk Mgmt)  Sprint 12 (Macro)  Sprint 17 (Polymarket)
                               |
                     Sprint 10 (Backtesting)
                               |
@@ -989,5 +1117,5 @@ Sprint 1 (Foundation)
                               |
                     Sprint 15 (Validation)
                               |
-                    Sprint 16 (Alpha Enhancement — Mega-Research)
+                    Sprint 16 (Alpha Enhancement)
 ```

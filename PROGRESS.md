@@ -3,13 +3,214 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 10 — Backtesting Framework
-**Started**: Not yet
-**Target**: Walk-forward engine, execution simulator, statistical validation, benchmarks
+## Current Sprints (Parallel)
+- **Sprint 10** — Backtesting Framework (in progress, separate session)
+- **Sprint 13** — API + Live + Monitoring (in progress, separate session)
+- **Sprint 17** — Venue Abstraction + Polymarket Execution (this session)
 
-## Completed Sprint: Sprint 8 — Confidence Gating
+## Completed Sprint: Sprint 9 — Risk Management
 **Completed**: 2026-03-23
-**Result**: 142 tests passing — meta-labeling, conformal prediction, 7-gate pipeline, confidence position sizing
+**Result**: 183 tests, 95.3% coverage — position tracker, kill switches, drawdown gate, volatility guard, position sizer, risk manager
+
+---
+
+## Sprint 17 Tickets — Venue Abstraction + Polymarket Execution
+
+### S17-T1: VenueAdapter ABC + venue registry [ ]
+**Create**: Abstract execution interface that both Binance and Polymarket implement
+**Files**:
+- `src/ep2_crypto/execution/venue.py` — VenueAdapter ABC, VenueType enum, OrderResult, VenueConfig
+- `src/ep2_crypto/execution/registry.py` — VenueRegistry
+- `tests/test_execution/test_venue.py` — ABC contract tests
+**Verify**: `uv run pytest tests/test_execution/test_venue.py -v`
+
+### S17-T2: PolymarketAdapter implementation [ ]
+**Create**: Polymarket CLOB execution adapter via py-clob-client
+**Files**:
+- `src/ep2_crypto/execution/polymarket.py` — Market discovery, order placement, WebSocket, resolution tracking
+- `src/ep2_crypto/execution/polymarket_config.py` — PolymarketConfig Pydantic model
+- `tests/test_execution/test_polymarket.py` — Mocked SDK tests
+**Verify**: `uv run pytest tests/test_execution/test_polymarket.py -v`
+**Notes**: Private key from env var only. Heartbeat every 5s. Deterministic slug for market discovery.
+
+### S17-T3: BinaryPositionSizer [ ]
+**Create**: Kelly criterion for binary prediction market outcomes
+**Files**:
+- `src/ep2_crypto/risk/binary_position_sizer.py` — Binary Kelly, fee-adjusted, quarter-Kelly, caps
+- `tests/test_risk/test_binary_position_sizer.py` — Golden dataset + property-based tests
+**Verify**: `uv run pytest tests/test_risk/test_binary_position_sizer.py -v`
+
+### S17-T4: PolymarketRiskAdapter [ ]
+**Create**: Risk manager wrapper for binary outcome context
+**Files**:
+- `src/ep2_crypto/risk/polymarket_risk.py` — Wraps RiskManager, maps signals to binary context
+- `tests/test_risk/test_polymarket_risk.py` — Trade flow, kill switch, drawdown tests
+**Verify**: `uv run pytest tests/test_risk/test_polymarket_risk.py -v`
+
+### S17-T5: PolymarketBacktester [ ]
+**Create**: Backtest engine for binary payoff simulation
+**Files**:
+- `src/ep2_crypto/backtest/polymarket_backtest.py` — Binary payoff sim, fee model, comparison report
+- `tests/test_backtest/test_polymarket_backtest.py` — Synthetic signal tests
+**Verify**: `uv run pytest tests/test_backtest/test_polymarket_backtest.py -v`
+
+### S17-T6: Integration + live loop hookup [ ]
+**Create**: Wire everything together, add py-clob-client dependency
+**Files**:
+- Update `scripts/live.py` — venue selection via config
+- `src/ep2_crypto/execution/__init__.py` — clean exports
+- `tests/test_execution/test_integration.py` — Full pipeline mock test
+- Update `pyproject.toml` — add py-clob-client
+**Verify**: `uv run pytest tests/test_execution/ -v`
+
+---
+
+## Sprint 10 Tickets
+
+### S10-T1: Execution simulator (slippage, fees, latency, partial fill, funding) [x]
+**Create**: ExecutionSimulator that models realistic trade execution
+**Files**:
+- `src/ep2_crypto/backtest/simulator.py` — SlippageModel (sqrt-impact 1-3 bps), FeeModel (taker 4bps/maker 2bps), LatencyModel (50-200ms → bars missed), PartialFillModel (10% bar volume cap), FundingRateModel (00/08/16 UTC), ExecutionSimulator orchestrator
+- `tests/test_backtest/test_simulator.py` — Tests for each model + combined simulator
+**Verify**: `uv run pytest tests/test_backtest/test_simulator.py -v`
+**Notes**: Integrates with existing cost_engine.py where possible. Separate RNG streams per component. All costs in bps.
+
+### S10-T2: Backtest metrics (Sharpe Lo-corrected, Sortino, Calmar, CVaR, rolling, regime) [x]
+**Create**: Enhanced metrics module beyond existing benchmarks/metrics.py
+**Files**:
+- `src/ep2_crypto/backtest/metrics.py` — Lo-corrected Sharpe (ACF adjustment), CVaR(5%), expectancy/trade, rolling 30-day Sharpe, regime-specific breakdowns, cost sensitivity analysis
+- `tests/test_backtest/test_metrics.py` — Tests with known inputs/outputs
+**Verify**: `uv run pytest tests/test_backtest/test_metrics.py -v`
+**Notes**: Annualization = sqrt(105,120). NEVER sqrt(252). Reuse BacktestMetrics dataclass pattern from benchmarks.
+
+### S10-T3: Event-driven backtest engine with Numba inner loop [x]
+**Create**: Core backtest engine processing bars sequentially
+**Files**:
+- `src/ep2_crypto/backtest/engine.py` — BacktestEngine with Numba-compiled bar processing, next-bar-open execution, full state persistence (positions, margin, equity curve), integration with risk engine + simulator
+- `tests/test_backtest/test_engine.py` — Tests for engine lifecycle, trade execution, state tracking
+**Verify**: `uv run pytest tests/test_backtest/test_engine.py -v`
+**Notes**: Signal at bar t → execute at open of bar t+1. Track equity, positions, margin per bar. Integrate RiskManager.approve_trade() and on_bar().
+
+### S10-T4: Walk-forward validator with purge/embargo + auditor [x]
+**Create**: Purged walk-forward cross-validation with nested inner loop
+**Files**:
+- `src/ep2_crypto/backtest/walk_forward.py` — WalkForwardValidator (14-day train, 1-day test, 18-bar purge, 12-bar embargo, sliding window), nested inner loop for hyperparameter selection, WalkForwardAuditor (leak detection)
+- `tests/test_backtest/test_walk_forward.py` — Tests for fold generation, purge/embargo, auditor
+**Verify**: `uv run pytest tests/test_backtest/test_walk_forward.py -v`
+**Notes**: Sliding NOT expanding. Inner loop: 3 folds, 20% validation from END of training. Auditor checks: no overlap, purge sufficient, temporal ordering, label shift.
+
+### S10-T5: Statistical validation (PSR, DSR, permutation, bootstrap, stability) [x]
+**Create**: Full statistical validation suite
+**Files**:
+- `src/ep2_crypto/backtest/validation.py` — PSR, DSR, permutation test (5K), block bootstrap CI (10K), walk-forward stability (CV of fold Sharpes), verdict: GENUINE_EDGE/INCONCLUSIVE/LIKELY_NOISE
+- `tests/test_backtest/test_validation.py` — Tests with synthetic data (known edge vs noise)
+**Verify**: `uv run pytest tests/test_backtest/test_validation.py -v`
+**Notes**: Reference: research/statistical_validation_tests.py, BACKTESTING_PLAN.md section 3.
+
+### S10-T6: Update benchmarks + funding rate carry benchmark [x]
+**Create**: Add FundingRateCarry benchmark, verify compatibility with new engine
+**Files**:
+- Update `src/ep2_crypto/benchmarks/strategies.py` — Add FundingRateCarry strategy
+- `tests/test_backtest/test_benchmarks_compat.py` — Compatibility tests
+**Verify**: `uv run pytest tests/test_backtest/test_benchmarks_compat.py -v`
+
+### S10-T7: CLI entry point scripts/backtest.py [x]
+**Create**: CLI for running backtests
+**Files**:
+- `scripts/backtest.py` — argparse CLI: date range, cost levels, validation mode, output format
+**Verify**: `uv run python scripts/backtest.py --help`
+
+### S10-T8: Integration tests + sprint acceptance criteria [x]
+**Create**: End-to-end integration tests
+**Files**:
+- `tests/test_backtest/test_integration.py` — Full pipeline test
+**Verify**: `uv run pytest tests/test_backtest/ -v`
+**Notes**: Must include costs (no zero-cost mode). Must integrate risk engine.
+
+---
+
+## Sprint 13 Tickets
+
+### S13-T1: Performance logger (flight recorder) [x]
+**Create**: Log every trade and every bar state snapshot to SQLite
+**Files**:
+- `src/ep2_crypto/monitoring/performance_logger.py` — TradeLogger, BarStateLogger
+- `tests/test_monitoring/test_performance_logger.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_performance_logger.py -v`
+**Notes**: Every trade: prediction, confidence, actual, PnL, slippage, latency, regime, features. Every bar: model state, risk state, feature snapshot. SQLite with time-series indices.
+
+### S13-T2: Alpha decay detection (CUSUM, Sharpe, ADWIN, SPRT) [x]
+**Create**: Multi-timescale alpha decay detection with response protocol
+**Files**:
+- `src/ep2_crypto/monitoring/alpha_decay.py` — CUSUMDetector, RollingSharpeMonitor, ADWINDetector, SPRTMonitor, AlphaDecayMonitor
+- `tests/test_monitoring/test_alpha_decay.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_alpha_decay.py -v`
+**Notes**: CUSUM (2-5 bars fast), rolling Sharpe decline (7-14 days), ADWIN adaptive windowing, SPRT on win rate (50 trades). 4-level protocol: Warning→Caution→Stop→Emergency.
+
+### S13-T3: Feature drift detection (PSI) [x]
+**Create**: Population Stability Index per feature with alerting
+**Files**:
+- `src/ep2_crypto/monitoring/drift.py` — FeatureDriftDetector, PSI computation
+- `tests/test_monitoring/test_drift.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_drift.py -v`
+**Notes**: PSI per feature, alert at PSI > 0.2, daily drift report.
+
+### S13-T4: Slippage tracker [x]
+**Create**: Track expected vs actual slippage, stats by regime/size/time
+**Files**:
+- `src/ep2_crypto/monitoring/slippage_tracker.py` — SlippageTracker
+- `tests/test_monitoring/test_slippage_tracker.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_slippage_tracker.py -v`
+**Notes**: Mean/p50/p95/p99 by order size, time of day, vol regime. Alert when actual > 2x expected for 10+ trades.
+
+### S13-T5: Retrain trigger pipeline [x]
+**Create**: Auto-retrain with validation gate
+**Files**:
+- `src/ep2_crypto/monitoring/retrain_trigger.py` — RetrainTrigger
+- `tests/test_monitoring/test_retrain_trigger.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_retrain_trigger.py -v`
+**Notes**: Trigger on PSI>0.2, Sharpe<50% baseline, ADWIN. Validate: must beat old model + feature overlap>70% + ECE<0.05. Atomic swap or keep old.
+
+### S13-T6: Feature rotation tracker [x]
+**Create**: Per-feature PSI daily tracking, auto-downweight drifted features
+**Files**:
+- `src/ep2_crypto/monitoring/feature_rotation.py` — FeatureRotationTracker
+- `tests/test_monitoring/test_feature_rotation.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_feature_rotation.py -v`
+**Notes**: Flag PSI>0.3 for 7 consecutive days. Auto-downweight (not remove). Monthly importance report.
+
+### S13-T7: Alert system (Telegram/Slack) [x]
+**Create**: Multi-tier alerting with rate limiting
+**Files**:
+- `src/ep2_crypto/monitoring/alerts.py` — AlertManager, TelegramSender, SlackSender
+- `tests/test_monitoring/test_alerts.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_alerts.py -v`
+**Notes**: 4 tiers (INFO/WARNING/CRITICAL/EMERGENCY). Rate limiting: 1 INFO/hr, 5 WARNING/hr, unlimited CRITICAL/EMERGENCY. Telegram + optional Slack.
+
+### S13-T8: FastAPI server (/predict, /health, /metrics, /regime) [x]
+**Create**: Production API with dependency health checks
+**Files**:
+- `src/ep2_crypto/api/server.py` — FastAPI app with 4 endpoints
+- `tests/test_api/test_server.py`
+**Verify**: `uv run pytest tests/test_api/test_server.py -v`
+**Notes**: /predict (direction, magnitude, confidence, regime), /health (checks ALL deps), /metrics (live accuracy, rolling Sharpe), /regime. All responses include timestamps + staleness warnings. < 100ms response.
+
+### S13-T9: Live prediction loop [x]
+**Create**: Async event loop for live trading
+**Files**:
+- `scripts/live.py` — Main async loop: collectors + features + inference on 5-min close
+- `tests/test_api/test_live.py`
+**Verify**: `uv run pytest tests/test_api/test_live.py -v`
+**Notes**: Trigger on candle close, graceful degradation if source fails, auto-retrain every 2-4h (warm-start), prediction within 1s of close.
+
+### S13-T10: Execution quality tracker (A/B test) [x]
+**Create**: A/B test framework for market vs limit IOC execution
+**Files**:
+- `src/ep2_crypto/execution/__init__.py`
+- `src/ep2_crypto/execution/quality_tracker.py` — ExecutionQualityTracker
+- `tests/test_execution/test_quality_tracker.py`
+**Verify**: `uv run pytest tests/test_execution/test_quality_tracker.py -v`
+**Notes**: Strategy A (market) vs B (limit IOC). Track fill rate, slippage, cost. Auto-switch after 100+ trades per arm.
 
 ---
 
@@ -249,6 +450,21 @@
 - **Sprint 7 acceptance criteria**: All passed. 851 tests total.
 - **Next session**: Start Sprint 8 (Confidence Gating Pipeline)
 
+### Session 11 (2026-03-23) — Sprint 13 (parallel)
+- **What happened**: Completed Sprint 13 (API + Live Prediction + Monitoring). 239 new tests.
+- **S13-T1**: PerformanceLogger — flight recorder with SQLite trade_log + bar_state_log tables, JSON-serialized features/risk_state, query methods, latency measurement. 32 tests.
+- **S13-T2**: AlphaDecayMonitor — 4 detectors: CUSUMDetector (mean-shift), RollingSharpeMonitor (7-14d decline), ADWINDetector (distribution change), SPRTMonitor (win rate test). 4-level protocol: NORMAL→WARNING→CAUTION→STOP→EMERGENCY. 37 tests.
+- **S13-T3**: FeatureDriftDetector — PSI with equal-frequency binning, per-feature tracking, daily report with severity classification (none/moderate/significant/critical). 32 tests.
+- **S13-T4**: SlippageTracker — expected vs actual, stats by size/hour/regime, p50/p95/p99 percentiles, consecutive excess alert (>2x for 10+ trades), adaptive slippage estimate for position sizing. 20 tests.
+- **S13-T5**: RetrainTrigger — trigger conditions (PSI>0.2, Sharpe decline, ADWIN, scheduled), 3-gate validation (performance, feature overlap>70%, ECE<0.05), atomic swap or keep old, cooldown, audit trail. 22 tests.
+- **S13-T6**: FeatureRotationTracker — daily per-feature PSI, flag at PSI>0.3 for 7 consecutive days, auto-downweight (not remove), recovery on return to normal, monthly importance report. 18 tests.
+- **S13-T7**: AlertManager — 4 tiers (INFO/WARNING/CRITICAL/EMERGENCY), RateLimiter (1 INFO/hr, 5 WARNING/hr, unlimited CRITICAL/EMERGENCY), TelegramSender + SlackSender backends, Protocol-based. 25 tests.
+- **S13-T8**: FastAPI server — 4 endpoints (/predict, /health, /metrics, /regime), all responses include timestamps + staleness warnings, health checks ALL dependencies, AppState shared with live loop. 17 tests.
+- **S13-T9**: LivePredictionLoop — async event loop, 5-min candle close trigger, graceful degradation (mark_source_degraded/recovered), auto-retrain check, SIGTERM/SIGINT handling. 21 tests.
+- **S13-T10**: ExecutionQualityTracker — A/B test market vs limit IOC, auto-select after min_trades per arm, effective cost comparison with fill rate penalty, StrategyStats aggregation. 15 tests.
+- **Sprint 13 acceptance criteria**: All passed. 239 tests. Lint clean.
+- **Note**: Sprint 13 ran in parallel with Sprint 10 (Backtesting) and Sprint 17 (Polymarket). Only touched monitoring/, api/, execution/, scripts/live.py and their tests.
+
 ---
 
 ## Sprint Completion Protocol
@@ -284,12 +500,12 @@ The user pastes this prompt to start the next session.
 | Sprint 5: Features - Cross-market | Complete | 2026-03-23 |
 | Sprint 6: Regime Detection | Complete | 2026-03-23 |
 | Sprint 7: Models + Stacking | Complete | 2026-03-23 |
-| Sprint 8: Confidence Gating | Not started | — |
+| Sprint 8: Confidence Gating | Complete | 2026-03-23 |
 | **Sprint 9: Risk Management** | **Complete** | **2026-03-23** |
 | Sprint 10: Backtesting Framework | Not started | — |
 | Sprint 11: Hyperparameter Tuning | Not started | — |
 | Sprint 12: Macro Events + Cascade | Complete | 2026-03-23 |
-| Sprint 13: API + Live + Monitoring | Not started | — |
+| Sprint 13: API + Live + Monitoring | Complete | 2026-03-23 |
 | Sprint 14: Paper Trading | Not started | — |
 | Sprint 15: Validation + Ablation | Not started | — |
 
