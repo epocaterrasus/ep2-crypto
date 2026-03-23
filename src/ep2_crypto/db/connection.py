@@ -278,10 +278,12 @@ class DatabaseConnection:
             conn = self._get_sqlite_connection()
             return conn.execute(formatted, params).fetchall()
         else:
+            from psycopg2 import extras as pg_extras
+
             pool = self._get_pg_pool()
             pg_conn = pool.getconn()
             try:
-                cur = pg_conn.cursor()
+                cur = pg_conn.cursor(cursor_factory=pg_extras.RealDictCursor)
                 cur.execute(formatted, params)
                 return cur.fetchall()
             finally:
@@ -297,10 +299,12 @@ class DatabaseConnection:
             conn = self._get_sqlite_connection()
             return conn.execute(formatted, params).fetchone()
         else:
+            from psycopg2 import extras as pg_extras
+
             pool = self._get_pg_pool()
             pg_conn = pool.getconn()
             try:
-                cur = pg_conn.cursor()
+                cur = pg_conn.cursor(cursor_factory=pg_extras.RealDictCursor)
                 cur.execute(formatted, params)
                 return cur.fetchone()
             finally:
