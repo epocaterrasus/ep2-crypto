@@ -4,63 +4,110 @@
 > Updated at the end of every session. Read this FIRST in every new session.
 
 ## Current Sprints (Parallel)
-- **Sprint 10** — Backtesting Framework (in progress, separate session)
-- **Sprint 13** — API + Live + Monitoring (in progress, separate session)
-- **Sprint 17** — Venue Abstraction + Polymarket Execution (this session)
+- **Sprint 10** — Backtesting Framework (complete)
+- **Sprint 13** — API + Live + Monitoring (complete)
+- **Sprint 14** — Paper Trading (this session)
+- **Sprint 17** — Venue Abstraction + Polymarket Execution (COMPLETE: T1-T6 done, 182 tests)
 
-## Completed Sprint: Sprint 9 — Risk Management
-**Completed**: 2026-03-23
-**Result**: 183 tests, 95.3% coverage — position tracker, kill switches, drawdown gate, volatility guard, position sizer, risk manager
+## Completed Sprints
+- **Sprint 9** (2026-03-23): Risk Management — 183 tests, 95.3% coverage
+- **Sprint 10** (2026-03-23): Backtesting Framework — 174 tests passing
+- **Sprint 13** (2026-03-23): API + Live + Monitoring — 239 tests passing
+- **Sprint 17** (2026-03-23): Venue Abstraction + Polymarket Execution — 182 tests passing
+  - VenueAdapter ABC + registry, PolymarketAdapter (59 tests), BinaryPositionSizer (41 tests),
+    PolymarketRiskAdapter (20 tests), PolymarketBacktester (50 tests), integration (20 tests)
+  - py-clob-client added as optional dependency (install: uv sync --extra polymarket)
+
+---
+
+## Sprint 14 Tickets — Paper Trading
+
+### S14-T1: PaperExchange implementing VenueAdapter [ ]
+**Create**: Paper trading exchange that simulates fills against real orderbook data
+**Files**:
+- `src/ep2_crypto/execution/paper_exchange.py` — PaperExchange, PaperPosition, PaperTrade, FillSimulator
+- `tests/test_execution/test_paper_exchange.py` — Fill simulation, balance tracking, position lifecycle
+**Verify**: `uv run pytest tests/test_execution/test_paper_exchange.py -v`
+**Notes**: Walk orderbook levels for fills, taker fee 4bps, track running PnL. Reuse SlippageEstimator.
+
+### S14-T2: LiveExchange implementing VenueAdapter [ ]
+**Create**: Live Binance perps adapter via ccxt
+**Files**:
+- `src/ep2_crypto/execution/live_exchange.py` — LiveExchange wrapping ccxt for Binance USDT perps
+- `tests/test_execution/test_live_exchange.py` — Mock ccxt tests
+**Verify**: `uv run pytest tests/test_execution/test_live_exchange.py -v`
+**Notes**: API key/secret from env only. Never log credentials.
+
+### S14-T3: Paper trading orchestration [ ]
+**Create**: Wire live prediction loop to use venue adapter; add --paper/--live mode flag
+**Files**:
+- Update `scripts/live.py` — `--mode paper|live` flag, venue adapter selection
+- `src/ep2_crypto/execution/paper_runner.py` — Thin wrapper connecting live.py signals to PaperExchange
+- `tests/test_execution/test_paper_runner.py`
+**Verify**: `uv run pytest tests/test_execution/test_paper_runner.py -v`
+
+### S14-T4: Daily report generator [ ]
+**Create**: EOD report: PnL, Sharpe, drawdown, trade count, regime breakdown, feature drift, alpha decay
+**Files**:
+- `src/ep2_crypto/monitoring/daily_report.py` — DailyReportGenerator
+- `tests/test_monitoring/test_daily_report.py`
+**Verify**: `uv run pytest tests/test_monitoring/test_daily_report.py -v`
+**Notes**: Reads from SQLite performance log. Outputs JSON + human-readable text. Sends via AlertManager.
+
+### S14-T5: Integration tests + sprint acceptance criteria [ ]
+**Create**: End-to-end paper trading test covering full signal→fill→report pipeline
+**Files**:
+- `tests/test_execution/test_paper_integration.py`
+**Verify**: `uv run pytest tests/test_execution/ -v`
 
 ---
 
 ## Sprint 17 Tickets — Venue Abstraction + Polymarket Execution
 
-### S17-T1: VenueAdapter ABC + venue registry [ ]
+### S17-T1: VenueAdapter ABC + venue registry [x]
 **Create**: Abstract execution interface that both Binance and Polymarket implement
 **Files**:
 - `src/ep2_crypto/execution/venue.py` — VenueAdapter ABC, VenueType enum, OrderResult, VenueConfig
 - `src/ep2_crypto/execution/registry.py` — VenueRegistry
-- `tests/test_execution/test_venue.py` — ABC contract tests
+- `tests/test_execution/test_venue.py` — ABC contract tests (27 passing)
 **Verify**: `uv run pytest tests/test_execution/test_venue.py -v`
 
-### S17-T2: PolymarketAdapter implementation [ ]
+### S17-T2: PolymarketAdapter implementation [x]
 **Create**: Polymarket CLOB execution adapter via py-clob-client
 **Files**:
-- `src/ep2_crypto/execution/polymarket.py` — Market discovery, order placement, WebSocket, resolution tracking
+- `src/ep2_crypto/execution/polymarket.py` — Market discovery, order placement, WebSocket, resolution tracking (59 tests)
 - `src/ep2_crypto/execution/polymarket_config.py` — PolymarketConfig Pydantic model
 - `tests/test_execution/test_polymarket.py` — Mocked SDK tests
 **Verify**: `uv run pytest tests/test_execution/test_polymarket.py -v`
-**Notes**: Private key from env var only. Heartbeat every 5s. Deterministic slug for market discovery.
 
-### S17-T3: BinaryPositionSizer [ ]
+### S17-T3: BinaryPositionSizer [x]
 **Create**: Kelly criterion for binary prediction market outcomes
 **Files**:
 - `src/ep2_crypto/risk/binary_position_sizer.py` — Binary Kelly, fee-adjusted, quarter-Kelly, caps
-- `tests/test_risk/test_binary_position_sizer.py` — Golden dataset + property-based tests
+- `tests/test_risk/test_binary_position_sizer.py` — Golden dataset + property-based (500 inputs) tests (41 passing)
 **Verify**: `uv run pytest tests/test_risk/test_binary_position_sizer.py -v`
 
-### S17-T4: PolymarketRiskAdapter [ ]
+### S17-T4: PolymarketRiskAdapter [x]
 **Create**: Risk manager wrapper for binary outcome context
 **Files**:
-- `src/ep2_crypto/risk/polymarket_risk.py` — Wraps RiskManager, maps signals to binary context
-- `tests/test_risk/test_polymarket_risk.py` — Trade flow, kill switch, drawdown tests
+- `src/ep2_crypto/risk/polymarket_risk.py` — Wraps KillSwitchManager + DrawdownGate, binary signals
+- `tests/test_risk/test_polymarket_risk.py` — Trade flow, kill switch, drawdown, scenarios (20 passing)
 **Verify**: `uv run pytest tests/test_risk/test_polymarket_risk.py -v`
 
-### S17-T5: PolymarketBacktester [ ]
+### S17-T5: PolymarketBacktester [x]
 **Create**: Backtest engine for binary payoff simulation
 **Files**:
-- `src/ep2_crypto/backtest/polymarket_backtest.py` — Binary payoff sim, fee model, comparison report
+- `src/ep2_crypto/backtest/polymarket_backtest.py` — Binary payoff sim, fee model, comparison report (50 tests)
 - `tests/test_backtest/test_polymarket_backtest.py` — Synthetic signal tests
 **Verify**: `uv run pytest tests/test_backtest/test_polymarket_backtest.py -v`
 
-### S17-T6: Integration + live loop hookup [ ]
+### S17-T6: Integration + live loop hookup [x]
 **Create**: Wire everything together, add py-clob-client dependency
 **Files**:
-- Update `scripts/live.py` — venue selection via config
-- `src/ep2_crypto/execution/__init__.py` — clean exports
-- `tests/test_execution/test_integration.py` — Full pipeline mock test
-- Update `pyproject.toml` — add py-clob-client
+- Update `scripts/live.py` — venue selection via --venue flag (binance_perps | polymarket_binary)
+- `src/ep2_crypto/execution/__init__.py` — clean exports (16 public names)
+- `tests/test_execution/test_integration.py` — Full pipeline mock test (20 passing)
+- Update `pyproject.toml` — added py-clob-client>=0.18 under [polymarket] optional group
 **Verify**: `uv run pytest tests/test_execution/ -v`
 
 ---

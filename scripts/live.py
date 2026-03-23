@@ -25,6 +25,10 @@ from typing import Any
 
 import structlog
 
+from ep2_crypto.execution.paper_exchange import PaperExchange
+from ep2_crypto.execution.paper_runner import PaperRunner, TradeSignal
+from ep2_crypto.execution.venue import VenueType
+
 logger = structlog.get_logger(__name__)
 
 BAR_INTERVAL_S = 300  # 5 minutes
@@ -35,15 +39,25 @@ class LivePredictionLoop:
 
     Coordinates collectors, feature pipeline, model inference,
     and monitoring in a single asyncio event loop.
+
+    Venue selection:
+        venue_type=VenueType.BINANCE_PERPS   — perps futures (default)
+        venue_type=VenueType.POLYMARKET_BINARY — binary prediction markets
     """
 
     def __init__(
         self,
         collect_only: bool = False,
         retrain_interval_s: float = 4 * 3600,
+        venue_type: VenueType = VenueType.BINANCE_PERPS,
+        mode: str = "paper",
+        initial_balance: float = 10_000.0,
+        confidence_threshold: float = 0.60,
     ) -> None:
         self._collect_only = collect_only
         self._retrain_interval_s = retrain_interval_s
+        self._venue_type = venue_type
+        self._mode = mode
         self._running = False
         self._bar_count = 0
         self._last_retrain_time = time.monotonic()
@@ -53,13 +67,35 @@ class LivePredictionLoop:
         # with real model/pipeline instances
         self._api_state: dict[str, Any] = {}
 
+        # Paper runner (initialized in start())
+        self._paper_runner: PaperRunner | None = None
+        self._initial_balance = initial_balance
+        self._confidence_threshold = confidence_threshold
+
     async def start(self) -> None:
         """Start the live prediction loop."""
         self._running = True
+
+        # Set up paper runner if in paper mode
+        if self._mode == "paper" and not self._collect_only:
+            paper_exchange = PaperExchange(initial_balance_usd=self._initial_balance)
+            await paper_exchange.connect()
+            self._paper_runner = PaperRunner(
+                exchange=paper_exchange,
+                confidence_threshold=self._confidence_threshold,
+            )
+            logger.info(
+                "paper_mode_active",
+                initial_balance=self._initial_balance,
+                confidence_threshold=self._confidence_threshold,
+            )
+
         logger.info(
             "live_loop_starting",
+            mode=self._mode,
             collect_only=self._collect_only,
             retrain_interval_s=self._retrain_interval_s,
+            venue=self._venue_type.value,
         )
 
         try:
@@ -103,6 +139,17 @@ class LivePredictionLoop:
 
         # 3. Update API state
         self._update_api_state(prediction, timestamp_ms)
+
+        # 4. Route signal to paper/live execution
+        if self._paper_runner is not None:
+            signal = TradeSignal(
+                direction=prediction.get("direction", "flat"),
+                confidence=prediction.get("confidence", 0.0),
+                regime=prediction.get("regime", "unknown"),
+                position_size_btc=prediction.get("position_size_btc", 0.01),
+                timestamp_ms=timestamp_ms,
+            )
+            await self._paper_runner.on_signal(signal)
 
         # 4. Check retrain trigger
         await self._check_retrain()
@@ -186,6 +233,13 @@ class LivePredictionLoop:
 
     async def _shutdown(self) -> None:
         """Clean shutdown: stop collectors, flush logs."""
+        if self._paper_runner is not None:
+            await self._paper_runner.close_position()
+            summary = self._paper_runner.get_summary()
+            logger.info("paper_session_summary", **summary)
+            # Disconnect paper exchange
+            if hasattr(self._paper_runner.exchange, "disconnect"):
+                await self._paper_runner.exchange.disconnect()
         logger.info("live_loop_shutting_down", bars_processed=self._bar_count)
         self._running = False
 
@@ -235,15 +289,44 @@ def parse_args() -> argparse.Namespace:
         default=4 * 3600,
         help="Retrain interval in seconds (default: 4h)",
     )
+    parser.add_argument(
+        "--venue",
+        choices=["binance_perps", "polymarket_binary"],
+        default="binance_perps",
+        help="Execution venue (default: binance_perps)",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["paper", "live"],
+        default="paper",
+        help="Execution mode: paper (simulated fills) or live (real orders). Default: paper",
+    )
+    parser.add_argument(
+        "--initial-balance",
+        type=float,
+        default=10_000.0,
+        help="Initial paper trading balance in USD (paper mode only, default: 10000)",
+    )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.60,
+        help="Minimum confidence to act on a signal (default: 0.60)",
+    )
     return parser.parse_args()
 
 
 async def main() -> None:
     args = parse_args()
 
+    venue_type = VenueType(args.venue)
     loop_instance = LivePredictionLoop(
         collect_only=args.collect_only,
         retrain_interval_s=args.retrain_interval,
+        venue_type=venue_type,
+        mode=args.mode,
+        initial_balance=args.initial_balance,
+        confidence_threshold=args.confidence_threshold,
     )
 
     # Handle SIGTERM/SIGINT
