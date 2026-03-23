@@ -765,3 +765,230 @@ class DepthWithdrawalComputer(FeatureComputer):
 
     def output_names(self) -> list[str]:
         return ["depth_withdrawal", "bid_withdrawal", "ask_withdrawal"]
+
+
+class MultiLevelOFIComputer(FeatureComputer):
+    """Multi-level OFI extending existing ofi_l1/l3/l5 with deeper depth and normalization.
+
+    New features (S22-T2):
+    - ofi_l10: 10-level aggregate OFI, captures institutional order flow beyond top 5
+    - ofi_l1_norm: ofi_l1 z-scored over a rolling window — stationary signal for trees
+    - ofi_roll5: 5-bar rolling sum of ofi_l1 — captures order flow momentum/acceleration
+
+    Uses Cont-Stoikov-Talreja OFI formula for all levels.
+    """
+
+    def __init__(self, norm_window: int = 20, roll_window: int = 5) -> None:
+        self._norm_window = norm_window
+        self._roll_window = roll_window
+
+    @property
+    def name(self) -> str:
+        return "multi_level_ofi"
+
+    @property
+    def warmup_bars(self) -> int:
+        return max(self._norm_window + 1, self._roll_window + 1)
+
+    def compute(
+        self,
+        idx: int,
+        timestamps: NDArray[np.int64],
+        opens: NDArray[np.float64],
+        highs: NDArray[np.float64],
+        lows: NDArray[np.float64],
+        closes: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        *,
+        bids: NDArray[np.float64] | None = None,
+        asks: NDArray[np.float64] | None = None,
+        bid_sizes: NDArray[np.float64] | None = None,
+        ask_sizes: NDArray[np.float64] | None = None,
+        **kwargs: NDArray[np.float64] | None,
+    ) -> dict[str, float]:
+        nan_result = {
+            "ofi_l10": float("nan"),
+            "ofi_l1_norm": float("nan"),
+            "ofi_roll5": float("nan"),
+        }
+
+        if idx < self.warmup_bars - 1:
+            return nan_result
+
+        if bids is None or asks is None or bid_sizes is None or ask_sizes is None:
+            return nan_result
+
+        n_levels = min(bids.shape[1] if bids.ndim > 1 else 1, 10)
+        if n_levels < 1:
+            return nan_result
+
+        # ofi_l10: aggregate OFI across up to 10 levels at current bar
+        ofi_l10 = 0.0
+        for lev in range(min(10, n_levels)):
+            ofi_l10 += _compute_ofi_level(
+                bids[idx - 1, lev],
+                bid_sizes[idx - 1, lev],
+                bids[idx, lev],
+                bid_sizes[idx, lev],
+                asks[idx - 1, lev],
+                ask_sizes[idx - 1, lev],
+                asks[idx, lev],
+                ask_sizes[idx, lev],
+            )
+
+        # Compute l1 OFI for a rolling window to get norm and roll5
+        window_start = idx - self._norm_window
+        ofi_window: list[float] = []
+        for j in range(window_start, idx + 1):
+            if j < 1:
+                continue
+            ofi_window.append(
+                _compute_ofi_level(
+                    bids[j - 1, 0],
+                    bid_sizes[j - 1, 0],
+                    bids[j, 0],
+                    bid_sizes[j, 0],
+                    asks[j - 1, 0],
+                    ask_sizes[j - 1, 0],
+                    asks[j, 0],
+                    ask_sizes[j, 0],
+                )
+            )
+
+        if not ofi_window:
+            return nan_result
+
+        ofi_arr = np.array(ofi_window, dtype=np.float64)
+        ofi_std = float(np.std(ofi_arr))
+        ofi_mean = float(np.mean(ofi_arr))
+
+        # z-score of current bar l1 OFI (last element of window)
+        current_ofi_l1 = ofi_arr[-1]
+        ofi_l1_norm = (current_ofi_l1 - ofi_mean) / ofi_std if ofi_std > 0 else 0.0
+
+        # 5-bar rolling sum (momentum) from the tail of the window
+        roll_vals = ofi_arr[-self._roll_window :]
+        ofi_roll5 = float(np.sum(roll_vals))
+
+        return {
+            "ofi_l10": ofi_l10,
+            "ofi_l1_norm": ofi_l1_norm,
+            "ofi_roll5": ofi_roll5,
+        }
+
+    def output_names(self) -> list[str]:
+        return ["ofi_l10", "ofi_l1_norm", "ofi_roll5"]
+
+
+class MicropriceMlComputer(FeatureComputer):
+    """Multi-level microprice deviation features (S22-T3).
+
+    Extends the single-level MicropriceComputer with:
+    - microprice_l3_dev: Gatheral-Stoikov microprice using top 3 book levels,
+      deviation from level-1 mid. Provides a more robust fair-value estimate.
+    - microprice_l5_dev: Same using top 5 levels.
+    - microprice_dev_zscore: Rolling z-score of level-1 microprice_mid_dev
+      over a 20-bar window — makes the signal stationary for tree models.
+
+    Multi-level microprice formula (Gatheral-Stoikov):
+        mp = sum_i(ask_sz_i * bid_i + bid_sz_i * ask_i) / sum_i(bid_sz_i + ask_sz_i)
+    """
+
+    def __init__(self, zscore_window: int = 20) -> None:
+        self._zscore_window = zscore_window
+
+    @property
+    def name(self) -> str:
+        return "microprice_ml"
+
+    @property
+    def warmup_bars(self) -> int:
+        return self._zscore_window
+
+    def compute(
+        self,
+        idx: int,
+        timestamps: NDArray[np.int64],
+        opens: NDArray[np.float64],
+        highs: NDArray[np.float64],
+        lows: NDArray[np.float64],
+        closes: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        *,
+        bids: NDArray[np.float64] | None = None,
+        asks: NDArray[np.float64] | None = None,
+        bid_sizes: NDArray[np.float64] | None = None,
+        ask_sizes: NDArray[np.float64] | None = None,
+        **kwargs: NDArray[np.float64] | None,
+    ) -> dict[str, float]:
+        nan_result = {
+            "microprice_l3_dev": float("nan"),
+            "microprice_l5_dev": float("nan"),
+            "microprice_dev_zscore": float("nan"),
+        }
+
+        if idx < self.warmup_bars - 1:
+            return nan_result
+
+        if bids is None or asks is None or bid_sizes is None or ask_sizes is None:
+            return nan_result
+
+        n_levels = min(
+            bids.shape[1] if bids.ndim > 1 else 1,
+            asks.shape[1] if asks.ndim > 1 else 1,
+        )
+        if n_levels < 1:
+            return nan_result
+
+        # Level-1 mid price (reference for deviations)
+        best_bid = bids[idx, 0]
+        best_ask = asks[idx, 0]
+        if best_bid <= 0 or best_ask <= 0:
+            return nan_result
+        mid_l1 = (best_bid + best_ask) / 2.0
+
+        # Multi-level microprice (Gatheral-Stoikov)
+        result: dict[str, float] = {}
+        for depth, label in [(3, "l3"), (5, "l5")]:
+            d = min(depth, n_levels)
+            bp = bids[idx, :d]
+            ap = asks[idx, :d]
+            bs = bid_sizes[idx, :d]
+            as_ = ask_sizes[idx, :d]
+            total_sz = float(np.sum(bs) + np.sum(as_))
+            if total_sz <= 0:
+                result[f"microprice_{label}_dev"] = float("nan")
+                continue
+            mp = float(np.sum(as_ * bp + bs * ap)) / total_sz
+            result[f"microprice_{label}_dev"] = (mp - mid_l1) / mid_l1 if mid_l1 > 0 else 0.0
+
+        # Rolling z-score of level-1 microprice deviation
+        window_start = idx - self._zscore_window + 1
+        dev_window: list[float] = []
+        for j in range(window_start, idx + 1):
+            bb = bids[j, 0]
+            ba = asks[j, 0]
+            bbs = bid_sizes[j, 0]
+            bas = ask_sizes[j, 0]
+            sz = bbs + bas
+            if bb <= 0 or ba <= 0 or sz <= 0:
+                continue
+            mp_j = (bas * bb + bbs * ba) / sz
+            mid_j = (bb + ba) / 2.0
+            dev_window.append((mp_j - mid_j) / mid_j if mid_j > 0 else 0.0)
+
+        if len(dev_window) >= 2:
+            dev_arr = np.array(dev_window, dtype=np.float64)
+            dev_std = float(np.std(dev_arr))
+            dev_mean = float(np.mean(dev_arr))
+            curr_dev = dev_window[-1]
+            result["microprice_dev_zscore"] = (
+                (curr_dev - dev_mean) / dev_std if dev_std > 0 else 0.0
+            )
+        else:
+            result["microprice_dev_zscore"] = float("nan")
+
+        return result
+
+    def output_names(self) -> list[str]:
+        return ["microprice_l3_dev", "microprice_l5_dev", "microprice_dev_zscore"]

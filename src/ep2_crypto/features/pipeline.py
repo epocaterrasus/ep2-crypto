@@ -22,6 +22,8 @@ from ep2_crypto.features.cross_market import (
 from ep2_crypto.features.microstructure import (
     KyleLambdaComputer,
     MicropriceComputer,
+    MicropriceMlComputer,
+    MultiLevelOFIComputer,
     OBIComputer,
     OFIComputer,
     TFIComputer,
@@ -32,6 +34,7 @@ from ep2_crypto.features.momentum import (
     ROCComputer,
     RSIComputer,
 )
+from ep2_crypto.features.polymarket import PolymarketProbComputer
 from ep2_crypto.features.regime_features import (
     ERFeatureComputer,
     GARCHFeatureComputer,
@@ -48,7 +51,6 @@ from ep2_crypto.features.volatility import (
     RealizedVolComputer,
     VolOfVolComputer,
 )
-from ep2_crypto.features.polymarket import PolymarketProbComputer
 from ep2_crypto.features.volume import (
     VolumeDeltaComputer,
     VolumeROCComputer,
@@ -73,6 +75,10 @@ def build_default_registry() -> FeatureRegistry:
     reg.register(MicropriceComputer())
     reg.register(TFIComputer())
     reg.register(KyleLambdaComputer(window=20))
+
+    # Sprint 22: Multi-level OFI + microprice deviation features
+    reg.register(MultiLevelOFIComputer(norm_window=20, roll_window=5))
+    reg.register(MicropriceMlComputer(zscore_window=20))
 
     # Sprint 4: Volume
     reg.register(VolumeDeltaComputer())

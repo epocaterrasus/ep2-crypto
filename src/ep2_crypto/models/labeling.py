@@ -40,8 +40,9 @@ class BarrierConfig:
 
     Attributes:
         max_holding_bars: Vertical barrier — max bars to hold (default 12 = 1 hour at 5-min).
-        upper_multiplier: Upper barrier width multiplier on volatility measure.
-        lower_multiplier: Lower barrier width multiplier on volatility measure.
+        upper_multiplier: Upper barrier width multiplier on volatility measure. Default 1.8
+            — wider barriers filter noise and produce ~10-15% FLAT labels on BTC 5-min.
+        lower_multiplier: Lower barrier width multiplier on volatility measure. Default 1.8.
         vol_window: Window for computing volatility (ATR or rolling std of returns).
         min_barrier_bps: Minimum barrier width in basis points
             (prevents too-tight barriers in low-vol).
@@ -49,12 +50,12 @@ class BarrierConfig:
         flat_threshold_bps: Vertical barrier returns within this range (in basis points) are
             labeled FLAT. Prevents the ternary model from degrading to binary when exact
             zero returns are machine-precision impossible. Default 30 bps (0.003 fractional),
-            calibrated for BTC 5-min ATR of ~50-200 bps — yields ~10-15% FLAT labels.
+            combined with multiplier=1.8 yields ~10-15% FLAT labels on BTC 5-min data.
     """
 
     max_holding_bars: int = 12
-    upper_multiplier: float = 1.0
-    lower_multiplier: float = 1.0
+    upper_multiplier: float = 1.8
+    lower_multiplier: float = 1.8
     vol_window: int = 20
     min_barrier_bps: float = 5.0
     use_atr: bool = True
