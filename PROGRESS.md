@@ -3,9 +3,10 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 2 — Data Ingestion
+## Current Sprint: Sprint 4 — Feature Engineering (Volume, Volatility, Momentum)
 **Started**: Not yet
-**Target**: WebSocket and REST collectors for Binance and Bybit exchange data
+**Target**: Volume delta, VWAP deviation, realized/Parkinson volatility, momentum features
+**Target**: Core microstructure features (OBI, OFI, microprice, TFI) that capture 60-80% of 5-min signal
 
 ---
 
@@ -75,6 +76,60 @@
 **Research**: N/A
 **Notes**: Mock WS server, verify data in SQLite, verify no duplicates, verify health checks.
 
+## Sprint 3 Tickets
+
+### S3-T1: Feature base interface and registry [x]
+**Create**: Feature computation interface + registry pattern
+**Files**:
+- `src/ep2_crypto/features/base.py` — FeatureComputer ABC with compute(), warmup_bars, name
+- `tests/test_features/test_base.py` — Interface tests
+**Verify**: `uv run pytest tests/test_features/test_base.py -v`
+**Research**: N/A
+**Notes**: Each feature returns a dict[str, float]. Registry allows selecting features by name.
+
+### S3-T2: Order Book Imbalance (OBI) [x]
+**Create**: Weighted OBI at multiple levels
+**Files**:
+- `src/ep2_crypto/features/microstructure.py` — OBI computation (levels 1-3, 1-5)
+- `tests/test_features/test_microstructure.py` — Golden dataset tests for OBI
+**Verify**: `uv run pytest tests/test_features/test_microstructure.py -v -k obi`
+**Research**: `RR-ofi-microprice-implementation.md`
+**Notes**: OBI = (bid_vol - ask_vol) / (bid_vol + ask_vol). Weighted by inverse distance to mid.
+
+### S3-T3: Order Flow Imbalance (OFI) + Microprice [x]
+**Create**: Multi-level OFI (Cont-Stoikov-Talreja) and Gatheral-Stoikov microprice
+**Files**:
+- `src/ep2_crypto/features/microstructure.py` — OFI and microprice
+- `tests/test_features/test_microstructure.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_microstructure.py -v -k "ofi or microprice"`
+**Research**: `RR-ofi-microprice-implementation.md`
+**Notes**: OFI tracks changes in top-of-book quantities. Microprice = weighted mid.
+
+### S3-T4: Trade Flow Imbalance (TFI) + spread + absorption [x]
+**Create**: TFI at 30s and 5min windows, relative spread, absorption detection
+**Files**:
+- `src/ep2_crypto/features/microstructure.py` — TFI, spread, absorption, Kyle's lambda
+- `tests/test_features/test_microstructure.py` — Tests for TFI and spread
+**Verify**: `uv run pytest tests/test_features/test_microstructure.py -v`
+**Research**: `RR-ofi-microprice-implementation.md`
+**Notes**: TFI = (buy_vol - sell_vol) / total_vol over window. Absorption = high volume delta with low price change.
+
+### S3-T5: Look-ahead bias tests [x]
+**Create**: Shuffle test + truncation test for all microstructure features
+**Files**:
+- `tests/test_features/test_lookahead.py` — Bias detection tests
+**Verify**: `uv run pytest tests/test_features/test_lookahead.py -v`
+**Research**: N/A
+**Notes**: Truncation: compute(data[:150]) == compute(data[:200]) at index 150. Shuffle: permuted input should not correlate with target.
+
+### S3-T6: Sprint 3 integration test [x]
+**Create**: End-to-end feature computation from mock market data
+**Files**:
+- `tests/test_features/test_feature_integration.py`
+**Verify**: `uv run pytest tests/test_features/ -v`
+**Research**: N/A
+**Notes**: Verify feature shape, no NaN/Inf after warmup, compute time < 1ms/bar.
+
 ---
 
 ## Session Log
@@ -109,6 +164,17 @@
 - **Sprint 2 acceptance criteria**: All passed. Committed.
 - **Next session**: Start Sprint 3 (Feature Engineering)
 
+### Session 4 (2026-03-23)
+- **What happened**: Completed ALL 6 Sprint 3 tickets. 57 new tests (208 total).
+- **S3-T1**: FeatureComputer ABC (compute/warmup_bars/name) + FeatureRegistry with register/get/select/compute_all. 15 tests.
+- **S3-T2**: OBIComputer — weighted OBI at levels 1-3 and 1-5, inverse-distance weighting. 7 tests with golden dataset.
+- **S3-T3**: OFIComputer (Cont-Stoikov-Talreja 6 cases, multi-level) + MicropriceComputer (Gatheral-Stoikov weighted mid). 14 tests.
+- **S3-T4**: TFIComputer (1-bar/6-bar windows), relative spread, absorption detection, KyleLambdaComputer (rolling Cov/Var). 11 tests.
+- **S3-T5**: Truncation test (no look-ahead across 4 indices) + shuffle test (point-in-time vs windowed) + no-future-correlation test. 3 tests.
+- **S3-T6**: Integration test: consistent shape, no NaN/Inf after warmup, <1ms/bar compute, 14 features, value range sanity. 5 tests.
+- **Sprint 3 acceptance criteria**: All passed. Committed.
+- **Next session**: Start Sprint 4 (Volume, Volatility, Momentum features)
+
 ---
 
 ## Sprint Completion Protocol
@@ -139,11 +205,54 @@ The user pastes this prompt to start the next session.
 |--------|--------|-----------|
 | Sprint 1: Foundation | Complete | 2026-03-23 |
 | Sprint 2: Data Ingestion | Complete | 2026-03-23 |
-| Sprint 3-14 | Not started | — |
+| Sprint 3: Feature Engineering (Microstructure) | Complete | 2026-03-23 |
+| Sprint 4-14 | Not started | — |
+
+---
+
+## Sprint 4 Tickets
+
+### S4-T1: Volume features (delta, VWAP, rate of change) [ ]
+**Create**: Volume delta, VWAP deviation, volume rate of change
+**Files**:
+- `src/ep2_crypto/features/volume.py` — VolumeDeltaComputer, VWAPComputer, VolumeROCComputer
+- `tests/test_features/test_volume.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_volume.py -v`
+**Notes**: Volume delta = buy_vol - sell_vol (from trade_sides). VWAP deviation = (close - vwap) / vwap. Volume ROC at 1, 3, 6 bars.
+
+### S4-T2: Volatility features (realized, Parkinson, EWMA, vol-of-vol) [ ]
+**Create**: Multiple volatility estimators
+**Files**:
+- `src/ep2_crypto/features/volatility.py` — RealizedVolComputer, ParkinsonVolComputer, EWMAVolComputer
+- `tests/test_features/test_volatility.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_volatility.py -v`
+**Notes**: Parkinson uses high-low range. EWMA with configurable decay (0.94 default). Vol-of-vol = rolling std of volatility.
+
+### S4-T3: Momentum features (ROC, RSI, linreg slope, quantile rank) [ ]
+**Create**: Momentum and mean-reversion indicators
+**Files**:
+- `src/ep2_crypto/features/momentum.py` — ROCComputer, RSIComputer, LinRegSlopeComputer, QuantileRankComputer
+- `tests/test_features/test_momentum.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_momentum.py -v`
+**Notes**: ROC at 1/3/6/12 bars. RSI(14) bounded [0,100]. LinReg slope over 20 bars. Quantile rank over 60 bars.
+
+### S4-T4: Look-ahead bias tests for Sprint 4 features [ ]
+**Create**: Truncation + shuffle tests for volume, volatility, momentum
+**Files**:
+- Update `tests/test_features/test_lookahead.py` — Add Sprint 4 features to bias detection
+**Verify**: `uv run pytest tests/test_features/test_lookahead.py -v`
+**Notes**: Extend existing bias test infrastructure to cover new feature computers.
+
+### S4-T5: Sprint 4 integration test [ ]
+**Create**: Combined Sprint 3+4 feature pipeline test
+**Files**:
+- Update `tests/test_features/test_feature_integration.py` — Add Sprint 4 features
+**Verify**: `uv run pytest tests/test_features/ -v`
+**Notes**: Verify total feature count, no NaN/Inf, <1ms/bar, feature correlations documented.
 
 ---
 
 ## Future Sprint Ticket Decomposition
 
-Sprints 3-14 will be decomposed into tickets when they become the current sprint.
+Sprints 5-14 will be decomposed into tickets when they become the current sprint.
 See SPRINTS.md for high-level sprint definitions.

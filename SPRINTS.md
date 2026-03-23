@@ -2,8 +2,8 @@
 
 ## Overview
 
-14 sprints covering the full development lifecycle. Each sprint builds on the previous.
-Total estimated timeline: 40-52 days of development.
+15 sprints covering the full development lifecycle. Each sprint builds on the previous.
+Total estimated timeline: 44-58 days of development.
 
 **Status Legend**: [ ] Not started | [~] In progress | [x] Complete
 
@@ -334,7 +334,89 @@ Sprint 7 (models produce predictions to gate)
 
 ---
 
-## Sprint 9: Backtesting Framework (4-5 days) [ ]
+## Sprint 9: Risk Management Engine (3-4 days) [ ]
+
+### Objectives
+Build the capital preservation system. This MUST exist before backtesting so backtests reflect real trading constraints. Without this, backtest results are fantasy.
+
+### Why Before Backtesting
+- Backtest must simulate kill switches (daily loss halt = no more trades that day)
+- Backtest must simulate progressive drawdown reduction (not constant position size)
+- Backtest must simulate volatility guards (no trading when vol < 15% or > 150%)
+- If risk engine is bolted on after backtesting, backtest Sharpe is overstated
+
+### Deliverables
+- [ ] `src/ep2_crypto/risk/__init__.py`
+- [ ] `src/ep2_crypto/risk/position_tracker.py`:
+  - Real-time position state (entry price, size, unrealized PnL, duration)
+  - Mark-to-market on every bar
+  - Margin and liquidation price tracking
+  - Maximum position cap enforcement (5% of capital per trade)
+  - Maximum 1 open position at a time
+- [ ] `src/ep2_crypto/risk/kill_switches.py`:
+  - DailyLossLimit: halt trading when daily loss > 2-3% of capital
+  - WeeklyLossLimit: halt when weekly loss > 5%
+  - MaxDrawdownHalt: halt when peak-to-trough > 15%
+  - ConsecutiveLossHalt: halt after 15 consecutive losses
+  - EmergencyKillSwitch: close all positions immediately (manual trigger)
+  - ALL kill switches persist to disk (survive restart)
+  - ALL require manual reset (no auto-resume)
+  - State exposed via health endpoint data
+- [ ] `src/ep2_crypto/risk/drawdown_gate.py`:
+  - Progressive position reduction:
+    - 0-3% drawdown: full size (1.0x)
+    - 3-5% drawdown: 0.75x
+    - 5-10% drawdown: 0.50x
+    - 10-15% drawdown: 0.25x
+    - >15% drawdown: 0.0x (halt)
+  - Graduated re-entry: restore over 5 profitable trades
+  - Cooldown period after halt before re-entry allowed
+- [ ] `src/ep2_crypto/risk/volatility_guard.py`:
+  - Minimum volatility: 15% annualized (below = no trade, costs eat signal)
+  - Maximum volatility: 150% annualized (above = reduce size or abstain)
+  - Trading hours: 08:00-21:00 UTC only (optional, configurable)
+  - Weekend sizing: -30% reduction (configurable)
+- [ ] `src/ep2_crypto/risk/position_sizer.py`:
+  - Quarter-Kelly: `size = 0.25 * kelly_fraction * confidence`
+  - ATR-based stop loss (3 ATR catastrophic stop)
+  - Maximum holding period: 6 bars (30 min) then force exit
+  - Minimum trade size: enforce exchange minimums
+  - Integration with drawdown gate (size × drawdown_multiplier)
+- [ ] `src/ep2_crypto/risk/risk_manager.py`:
+  - RiskManager class that orchestrates all components
+  - `approve_trade(signal) -> (approved: bool, adjusted_size: float, reason: str)`
+  - `on_fill(fill)` — update position tracker
+  - `on_bar(bar)` — update mark-to-market, check kill switches
+  - `get_risk_state() -> RiskState` — full state for health/monitoring
+  - Integrates: position_tracker + kill_switches + drawdown_gate + volatility_guard + position_sizer
+- [ ] `tests/test_risk/test_kill_switches.py` — Each switch triggers at exact threshold
+- [ ] `tests/test_risk/test_drawdown_gate.py` — Progressive reduction matches spec
+- [ ] `tests/test_risk/test_position_sizer.py` — Kelly, ATR stop, max hold
+- [ ] `tests/test_risk/test_risk_manager.py` — Full orchestration test
+
+### Acceptance Criteria
+- Daily loss limit triggers at exactly 2% (configurable)
+- Drawdown gate reduces position size progressively (test with simulated equity curve)
+- Kill switch state persists to disk and survives process restart
+- Kill switch requires explicit `reset()` call (no auto-resume)
+- Volatility guard correctly blocks trades when vol < 15%
+- Position sizer never exceeds 5% of capital
+- Maximum holding period force-exits at 6 bars
+- RiskManager.approve_trade() returns reason string for every rejection
+- All decisions logged via structlog with full context
+
+### Key Research Reference
+- `RR-backtest-pitfalls-best-practices.md` (Section 9: Position Sizing, Section 10: Risk Management)
+- `RR-confidence-calibration-signal-gating.md` (Section 9: Drawdown-Based Gating)
+- `RR-papertrade-system-architecture.md` (Section 8: Margin, Liquidation, Funding)
+- REQUIREMENTS.md Section 5: Risk Requirements (RR-1 through RR-5)
+
+### Dependencies
+Sprint 1 (database for state persistence), Sprint 4 (volatility features for vol guard)
+
+---
+
+## Sprint 10: Backtesting Framework (4-5 days) [ ]
 
 ### Objectives
 Build the complete backtesting infrastructure: walk-forward engine, execution simulator, statistical validation, and benchmarks.
@@ -392,7 +474,7 @@ Sprint 7 (models), Sprint 8 (confidence gating)
 
 ---
 
-## Sprint 10: Hyperparameter Tuning (2-3 days) [ ]
+## Sprint 11: Hyperparameter Tuning (2-3 days) [ ]
 
 ### Objectives
 Optimize model and pipeline hyperparameters using Optuna with walk-forward Sharpe as objective.
@@ -430,7 +512,7 @@ Sprint 9 (backtest framework for Sharpe evaluation)
 
 ---
 
-## Sprint 11: Event-Driven Macro Module + Cascade Detector (3-4 days) [ ]
+## Sprint 12: Event-Driven Macro Module + Cascade Detector (3-4 days) [ ]
 
 ### Objectives
 Build independent alpha sources: macro event trading (NQ lead-lag) and liquidation cascade detection.
@@ -469,7 +551,7 @@ Sprint 2 (derivatives data for cascade), Sprint 5 (cross-market data for NQ)
 
 ---
 
-## Sprint 12: API + Live Prediction + Monitoring (3-4 days) [ ]
+## Sprint 13: API + Live Prediction + Monitoring (3-4 days) [ ]
 
 ### Objectives
 Build the production API, live prediction loop, and monitoring infrastructure.
@@ -517,7 +599,7 @@ Sprint 7-8 (models + gating), Sprint 9 (metrics)
 
 ---
 
-## Sprint 13: Paper Trading (2-3 days setup + 14-30 days running) [ ]
+## Sprint 14: Paper Trading (2-3 days setup + 14-30 days running) [ ]
 
 ### Objectives
 Deploy paper trading with real market data, simulated execution, and full monitoring.
@@ -553,7 +635,7 @@ Sprint 12 (live prediction system)
 
 ---
 
-## Sprint 14: Validation + Ablation Study (3-4 days) [ ]
+## Sprint 15: Validation + Ablation Study (3-4 days) [ ]
 
 ### Objectives
 Final validation: ablation study proving each component adds value, stress testing, and documentation.
