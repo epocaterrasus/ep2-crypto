@@ -257,12 +257,16 @@ def load_model_signals(
         (signals, confidences) arrays of length n_bars.
     """
     n = len(data["closes"])
-    ensemble_path = model_dir / "ensemble" / "stacking_meta.pkl"
+    # train.py saves: lgbm_direction.bin (.txt actual), catboost_direction.bin (.cbm actual),
+    # stacking_ensemble.pkl (.joblib actual), calibrator.pkl (.joblib actual)
+    stacking_joblib = model_dir / "stacking_ensemble.joblib"
+    lgbm_path = model_dir / "lgbm_direction.bin"
+    catboost_path = model_dir / "catboost_direction.bin"
 
-    if not ensemble_path.exists():
+    if not stacking_joblib.exists():
         logger.warning(
             "model_not_found",
-            path=str(ensemble_path),
+            path=str(stacking_joblib),
             fallback="zero_signals",
             hint="Run scripts/train.py first to train and save models",
         )
@@ -270,6 +274,8 @@ def load_model_signals(
 
     try:
         from ep2_crypto.features.pipeline import FeaturePipeline
+        from ep2_crypto.models.catboost_direction import CatBoostDirectionModel
+        from ep2_crypto.models.lgbm_direction import LGBMDirectionModel
         from ep2_crypto.models.stacking import StackingEnsemble
 
         pipeline = FeaturePipeline()
@@ -282,8 +288,20 @@ def load_model_signals(
             volumes=data["volumes"],
         )
 
-        ensemble = StackingEnsemble.load(ensemble_path)
-        proba = ensemble.predict_proba(X)  # shape (n, 3): [down, flat, up]
+        # Load base models and get their probability outputs
+        lgbm = LGBMDirectionModel()
+        lgbm.load(lgbm_path)
+        lgbm_proba = lgbm.predict_proba(X)  # (n, 3)
+
+        catboost = CatBoostDirectionModel()
+        catboost.load(catboost_path)
+        catboost_proba = catboost.predict_proba(X)  # (n, 3)
+
+        # Stack base probas and run through meta-learner (matches train.py logic)
+        base_probas = np.hstack([lgbm_proba, catboost_proba])  # (n, 6)
+        ensemble = StackingEnsemble()
+        ensemble.load(model_dir / "stacking_ensemble.pkl")
+        proba = ensemble.predict_proba(base_probas)  # (n, 3): [DOWN, FLAT, UP]
 
         # ternary: -1=down (class 0), 0=flat (class 1), +1=up (class 2)
         predicted_class = np.argmax(proba, axis=1) - 1  # map 0,1,2 → -1,0,+1
@@ -296,14 +314,14 @@ def load_model_signals(
             "model_signals_loaded",
             n_bars=n,
             n_signals=int(np.count_nonzero(signals)),
-            model_path=str(ensemble_path),
+            model_path=str(stacking_joblib),
         )
         return signals, confidences
 
     except Exception:
         logger.exception(
             "model_load_failed",
-            path=str(ensemble_path),
+            path=str(stacking_joblib),
             fallback="zero_signals",
         )
         return np.zeros(n, dtype=np.int8), np.zeros(n, dtype=np.float64)
