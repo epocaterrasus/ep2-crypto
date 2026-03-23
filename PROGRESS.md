@@ -67,7 +67,7 @@
 - **HuggingFace download cancelled**: SII-WANGZJ/Polymarket_data unauthenticated streaming fails;
   BTC Up/Down markets only started ~Jan 2025 anyway so no historical benefit
 
-### EXACT NEXT STEP — S20-T1: Verify local training completes (~00:20 UTC Mar 24)
+### EXACT NEXT STEP — S22-T4: Run full retrain, compare accuracy vs S21 baseline
 
 After training finishes, verify in `/tmp/local_train.log`:
 ```
@@ -132,12 +132,67 @@ Defined 2026-03-23. Run in order — each sprint builds on the previous.
 | Sprint | Focus | Expected Accuracy Gain | Status |
 |--------|-------|----------------------|--------|
 | S21 | Baseline evaluation + Telegram notifications | — (establish baseline) | [ ] |
-| S22 | FLAT label fix (0→0.3%) + OFI + Microprice features | +1.5-2% | [ ] |
+| S22 | FLAT label fix + OFI + Microprice features | +1.5-2% | [~] T1-T3 done, T4 pending |
 | S23 | Extend data to 2019 + Optuna tuning | +0.5-1.5% | [ ] |
 | S24 | GRU hidden state as 3rd stacking model | +1-2% | [ ] |
 | S25 | Regime-aware training + adaptive thresholds | +1-2% | [ ] |
 
 **Decision gate after S25:** if aggregate Sharpe > 2.0 → paper trading. If < 1.0 → consider 15-min timeframe.
+
+---
+
+## Sprint 22 Tickets
+
+### S22-T1: FLAT label fix [x]
+- `BarrierConfig.flat_threshold_bps`: 10 → 30 (0.003 fractional)
+- `BarrierConfig.upper_multiplier` / `lower_multiplier`: 1.0 → 1.8
+- Expected FLAT ratio: ~12% (was <2%) on BTC 5-min data
+- Commit: df75328
+
+### S22-T2: Multi-level OFI [x]
+- New `MultiLevelOFIComputer` in `microstructure.py`
+- Features: `ofi_l10`, `ofi_l1_norm` (z-scored rolling 20), `ofi_roll5` (5-bar sum)
+- Registered in `build_default_registry()`; truncation test passes
+- Commit: df75328
+
+### S22-T3: Microprice deviation [x]
+- New `MicropriceMlComputer` in `microstructure.py`
+- Features: `microprice_l3_dev`, `microprice_l5_dev`, `microprice_dev_zscore`
+- Registered in `build_default_registry()`; truncation test passes
+- Commit: df75328
+
+### S22-T4: Retrain + compare vs S21 baseline [ ]
+Run full retrain locally (2373 folds) with new features + fixed labels:
+
+```bash
+# Kill any running train processes first
+pkill -f "scripts/train.py" 2>/dev/null; sleep 2
+
+# Export DB env vars (use your SSH tunnel on 5433)
+export DB_BACKEND=postgresql
+export DB_HOST=127.0.0.1
+export DB_PORT=5433
+export DB_NAME=ep2_crypto
+export DB_USER=ep2
+export DB_PASSWORD=<your_password>
+
+# Start training (logs to /tmp/local_train_s22.log)
+nohup uv run python scripts/train.py \
+  > /tmp/local_train_s22.log 2>&1 &
+echo "PID: $!"
+
+# Monitor
+tail -f /tmp/local_train_s22.log | grep -E "fold|complete|accuracy|sharpe|flat"
+```
+
+After training completes, verify in `/tmp/local_train_s22.log`:
+```
+training_complete  mean_accuracy=X  mean_sharpe=X
+```
+Compare: S21 baseline accuracy was recorded in previous session logs.
+Expected improvement: +1.5-2% accuracy from FLAT fix + 6 new features.
+
+Feature count should now be 74 (was 68): +3 OFI + 3 microprice.
 
 ---
 
