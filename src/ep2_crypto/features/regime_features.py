@@ -221,11 +221,11 @@ class HMMFeatureComputer(FeatureComputer):
         median_vol = float(np.median(vol_series))
 
         # Smooth probability: sigmoid-like mapping of current vs median
+        k = 5.0  # logistic steepness — used in both prob and prev_prob calculations
         if median_vol > 1e-15:
             ratio = current_vol / median_vol
             # Map ratio to probability: ratio > 1 -> high vol regime
             # Using logistic: p = 1 / (1 + exp(-k*(ratio - 1)))
-            k = 5.0  # steepness
             prob = 1.0 / (1.0 + math.exp(-k * (ratio - 1.0)))
         else:
             prob = 0.5
