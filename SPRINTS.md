@@ -286,7 +286,7 @@ Sprint 3-5 (features), Sprint 6 (regime as input feature)
 
 ---
 
-## Sprint 8: Confidence Gating Pipeline (3-4 days) [ ]
+## Sprint 8: Confidence Gating Pipeline (3-4 days) [x]
 
 ### Objectives
 Build the full confidence gating pipeline - the single biggest Sharpe multiplier (2-4x improvement).
@@ -334,7 +334,7 @@ Sprint 7 (models produce predictions to gate)
 
 ---
 
-## Sprint 9: Risk Management Engine (5-7 days) [ ]
+## Sprint 9: Risk Management Engine (5-7 days) [x]
 
 ### Objectives
 Build the MOST CRITICAL module in the entire system: capital preservation. This MUST exist before backtesting so backtests reflect real trading constraints. Without this, backtest results are fantasy. **Backed by 23 dedicated research reports totaling 3MB.**
@@ -703,6 +703,48 @@ Build the production API, live prediction loop, and monitoring infrastructure.
   - Consecutive loss limit
   - Automated trading halt with manual reset required
 
+#### Feedback Loop Infrastructure (critical for operational edge)
+- [ ] `src/ep2_crypto/monitoring/performance_logger.py`:
+  - Log every trade: prediction, confidence, actual direction, PnL, slippage (expected vs actual), latency (bar close to order fill), regime, features used
+  - Log every bar: model state, risk engine state, feature values snapshot
+  - Store in TimescaleDB (or SQLite with time-series indices for dev)
+  - This is the "flight recorder" — everything else depends on it
+- [ ] `src/ep2_crypto/monitoring/slippage_tracker.py`:
+  - Track expected slippage (from model) vs actual slippage (from fill price)
+  - Aggregate stats: mean, p50, p95, p99 slippage by order size, time of day, volatility regime
+  - Feed slippage stats back to position sizer (adaptive cost model)
+  - Alert when actual slippage > 2x expected for 10+ consecutive trades
+- [ ] `src/ep2_crypto/monitoring/retrain_trigger.py`:
+  - Auto-retrain pipeline with validation gate:
+    1. Trigger conditions: PSI > 0.2 on any top-10 feature, OR rolling 7d Sharpe < 50% of baseline, OR ADWIN fires
+    2. Retrain: new walk-forward fold on last 14 days, warm-start LightGBM/CatBoost, GRU fine-tune (2 epochs)
+    3. Recalibrate: isotonic regression + conformal thresholds
+    4. Validate: new model must beat old model on last 24h holdout AND top-10 feature overlap > 70% AND calibration ECE < 0.05
+    5. Deploy: atomic model swap if validation passes; keep old model + alert if fails
+  - Configurable schedule: every 4h (default) or drift-triggered
+  - Full audit trail of every retrain decision
+- [ ] `src/ep2_crypto/monitoring/feature_rotation.py`:
+  - Track per-feature PSI daily
+  - If any feature has PSI > 0.3 for 7 consecutive days: flag for review
+  - Auto-downweight (not remove) drifted features in next retrain cycle
+  - Monthly feature importance report: which features gained/lost importance
+- [ ] `src/ep2_crypto/monitoring/alerts.py`:
+  - Telegram bot integration (python-telegram-bot library)
+  - Alert tiers:
+    - INFO: daily summary (PnL, Sharpe, trade count, regime)
+    - WARNING: alpha decay warning, feature drift, slippage anomaly
+    - CRITICAL: kill switch triggered, model validation failed, API down
+    - EMERGENCY: exchange error, position stuck, catastrophic loss
+  - Rate limiting: max 1 INFO/hour, max 5 WARNING/hour, unlimited CRITICAL/EMERGENCY
+  - Optional Slack webhook as secondary channel
+- [ ] `src/ep2_crypto/execution/quality_tracker.py`:
+  - A/B test framework for execution strategies:
+    - Strategy A: market orders (baseline)
+    - Strategy B: limit IOC 1-2 ticks from mid
+  - Track fill rate, slippage, and total cost per strategy
+  - Auto-switch to best strategy after 100+ trades per arm
+  - Log execution quality metrics for optimization
+
 ### Acceptance Criteria
 - API responds in < 100ms
 - Health endpoint checks ALL dependencies (not just "ok")
@@ -710,9 +752,14 @@ Build the production API, live prediction loop, and monitoring infrastructure.
 - Alpha decay detection fires on simulated decay scenario
 - Kill switches halt trading at configured thresholds
 - System survives 24h continuous run without memory leaks
+- Performance logger captures every trade with all fields (no missing data)
+- Slippage tracker alerts when actual > 2x expected
+- Auto-retrain validates new model before deploy (never blind swap)
+- Telegram alerts fire within 30 seconds of trigger event
+- Feature rotation correctly identifies drifted features on synthetic test
 
 ### Dependencies
-Sprint 7-8 (models + gating), Sprint 9 (metrics)
+Sprint 7-8 (models + gating), Sprint 9 (risk engine)
 
 ---
 

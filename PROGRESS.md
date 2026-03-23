@@ -3,9 +3,13 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 8 — Confidence Gating
+## Current Sprint: Sprint 10 — Backtesting Framework
 **Started**: Not yet
-**Target**: Meta-labeling, conformal prediction, gating pipeline, position sizing
+**Target**: Walk-forward engine, execution simulator, statistical validation, benchmarks
+
+## Completed Sprint: Sprint 8 — Confidence Gating
+**Completed**: 2026-03-23
+**Result**: 142 tests passing — meta-labeling, conformal prediction, 7-gate pipeline, confidence position sizing
 
 ---
 
@@ -599,7 +603,51 @@ The user pastes this prompt to start the next session.
 
 ---
 
+## Sprint 8 Tickets
+
+### S8-T1: Meta-labeling model (secondary classifier) [x]
+**Create**: Secondary LightGBM model that predicts "will THIS trade be profitable?" — Lopez de Prado's technique
+**Files**:
+- `src/ep2_crypto/confidence/meta_labeling.py` — MetaLabeler: binary classifier (profitable/not) on primary model output + features + regime
+- `tests/test_confidence/test_meta_labeling.py` — Training, prediction, save/load, Sharpe improvement
+**Verify**: `uv run pytest tests/test_confidence/test_meta_labeling.py -v`
+**Research**: `RR-metalabeling-implementation-guide.md`
+**Notes**: Input = primary model prediction + probabilities + features + regime. Output = P(profitable). Uses LightGBM binary classifier. Must improve Sharpe by >50% on backtest data.
+
+### S8-T2: Conformal prediction gate [x]
+**Create**: Conformal prediction with adaptive alpha for ambiguity detection
+**Files**:
+- `src/ep2_crypto/confidence/conformal.py` — ConformalPredictor: calibrate nonconformity scores, produce prediction sets
+- `tests/test_confidence/test_conformal.py` — Coverage guarantees, singleton filtering, adaptive alpha
+**Verify**: `uv run pytest tests/test_confidence/test_conformal.py -v`
+**Notes**: Prediction set must be singleton {UP} or {DOWN} to trade. If set is {UP, DOWN} or {UP, FLAT, DOWN}: abstain. Adaptive alpha tracks empirical coverage.
+
+### S8-T3: Gating pipeline orchestrator [x]
+**Create**: Full confidence gating pipeline combining all gates
+**Files**:
+- `src/ep2_crypto/confidence/gating.py` — ConfidenceGatingPipeline: 7-stage gate orchestration
+- `tests/test_confidence/test_gating.py` — Individual gate enable/disable, full pipeline, logging
+**Verify**: `uv run pytest tests/test_confidence/test_gating.py -v`
+**Notes**: Pipeline: (1) isotonic calibration, (2) meta-labeling gate, (3) ensemble agreement, (4) conformal prediction, (5) signal filters (vol/regime/liquidity), (6) adaptive threshold, (7) drawdown gate. Each gate independently enable/disable for ablation.
+
+### S8-T4: Confidence-aware position sizing [x]
+**Create**: Quarter-Kelly position sizing with Bayesian Kelly and confidence scaling
+**Files**:
+- `src/ep2_crypto/confidence/position_sizing.py` — ConfidencePositionSizer: Kelly × confidence → size
+- `tests/test_confidence/test_position_sizing.py` — Sizing calculations, max cap enforcement, edge cases
+**Verify**: `uv run pytest tests/test_confidence/test_position_sizing.py -v`
+**Notes**: quarter-Kelly: size = 0.25 * kelly_fraction * composite_confidence. Bayesian Kelly with uncertain probabilities. Max position cap 5% of capital. Integrates with risk/position_sizer.py for final enforcement.
+
+### S8-T5: Sprint 8 integration tests + acceptance criteria [x]
+**Create**: End-to-end confidence gating pipeline test
+**Files**:
+- `tests/test_confidence/test_confidence_integration.py` — Full pipeline: predict → calibrate → meta-label → conformal → gate → size
+**Verify**: `uv run pytest tests/test_confidence/ -v`
+**Notes**: Acceptance criteria: meta-labeling improves Sharpe >50%, conformal filters ambiguous, each gate toggleable, position sizing respects cap, drawdown gate reduces progressively.
+
+---
+
 ## Future Sprint Ticket Decomposition
 
-Sprints 8-14 (excluding 9 and 12, now complete) will be decomposed into tickets when they become the current sprint.
+Sprints 10-14 (excluding 9 and 12, now complete) will be decomposed into tickets when they become the current sprint.
 See SPRINTS.md for high-level sprint definitions.
