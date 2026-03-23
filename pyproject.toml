@@ -10,6 +10,9 @@ dependencies = [
     "structlog>=24.0",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "huggingface-hub>=1.7.2",
+    "datasets>=4.8.4",
+    "kaggle>=2.0.0",
 ]
 
 [project.optional-dependencies]

@@ -1238,6 +1238,318 @@ Sprint 13 (API + monitoring), Sprint 17 (Polymarket execution), Sprint 18 (histo
 
 ---
 
+---
+
+## Sprint 21: Baseline Evaluation + Training Infrastructure (1-2 days) [ ]
+
+**Status**: Not started
+
+### Objectives
+Complete the full 2,373-fold walk-forward training run, compute aggregate performance metrics, and establish a rigorous baseline before any model improvements. Without a clean baseline, we cannot measure whether future changes actually help.
+
+### Why This Sprint Comes First
+The training pipeline has been fixed (11 bugs resolved in Sprint 20) but has never run to completion. We need the full OOS aggregate Sharpe, accuracy, and regime breakdown before making any changes — otherwise we are flying blind. This sprint also installs Telegram notifications so training progress arrives passively.
+
+### Deliverables
+
+#### T1: Telegram fold notifications in train.py
+- [ ] Wire `AlertManager` (already built in `monitoring/alerts.py`) into `scripts/train.py`
+- [ ] Send INFO alert every 100 folds: `fold=N/2373, acc=X%, sharpe=Y`
+- [ ] Send WARNING alert if 20-fold rolling accuracy drops below 49%
+- [ ] Send CRITICAL alert on any exception (crash notification)
+- [ ] Send completion alert: final aggregate metrics summary
+- Rate limits already configured in AlertManager — no changes needed
+
+#### T2: Fix feature_names UserWarning in stacking meta-learner
+- [ ] Identify where stacking meta-learner gets arrays without feature names
+- [ ] Pass feature names from OOF array column headers to logistic regression
+- [ ] Verify: `grep "UserWarning" /tmp/train.log | wc -l` returns 0
+
+#### T3: Full training run to completion
+- [ ] Start training locally: `uv run python scripts/train.py --output models/ 2>&1 | tee /tmp/train_full.log`
+- [ ] Monitor via Telegram notifications (every 100 folds)
+- [ ] Verify all 2,373 folds complete without crash
+- [ ] Verify 4 model files saved: `lgbm_direction.txt`, `catboost_direction.cbm`, `stacking_ensemble.joblib`, `calibrator.joblib`
+
+#### T4: Aggregate baseline metrics report
+- [ ] Parse `/tmp/train_full.log` to extract all fold metrics
+- [ ] Compute and record in PROGRESS.md:
+  - Overall accuracy mean ± std
+  - Overall Sharpe mean ± std (per-fold and aggregate)
+  - % folds with positive Sharpe
+  - Per-regime breakdown (if regime labels available)
+  - Rolling 30-fold accuracy trend (is it stable or degrading?)
+- [ ] Decision gate: if mean accuracy < 50.5% → proceed to Sprint 22 immediately
+- [ ] Decision gate: if mean accuracy ≥ 52% → run backtest first (Sprint 10 tools)
+
+### Acceptance Criteria
+- All 2,373 folds complete without crash
+- 4 model files present in `models/`
+- Telegram alert received at fold 100, 500, 1000, 1500, 2000, and completion
+- Baseline metrics documented in PROGRESS.md
+- No `UserWarning` spam in training log
+
+### Key Files
+- `scripts/train.py` — add AlertManager wiring
+- `src/ep2_crypto/monitoring/alerts.py` — already built, no changes needed
+- `/tmp/train_full.log` — output log
+
+### Dependencies
+Sprint 20 (all pipeline bugs fixed and committed)
+
+---
+
+## Sprint 22: FLAT Label Fix + OFI/Microprice Features (3-4 days) [ ]
+
+**Status**: Not started
+
+### Objectives
+Two changes that together are expected to give the largest accuracy improvement of any single sprint: (1) fix the ternary label distribution so FLAT is meaningful (~13% of bars vs current 0.009%), and (2) add the two highest-signal microstructure features — Order Flow Imbalance (OFI) and microprice. Research shows OFI alone achieves R² of 0.6+ at 5-min horizon.
+
+### Why These Two Together
+The FLAT threshold fix changes what the model is trying to predict. The OFI/microprice features give the model new information that genuinely predicts direction. Running them together in one sprint lets us evaluate combined impact cleanly.
+
+### Background
+- Current `flat_threshold=0.0` → only 62/687K bars (0.009%) are FLAT → model is effectively binary
+- `flat_threshold=0.003` (0.3%) → ~13% FLAT bars → model learns to abstain in low-signal periods
+- OFI (Cont-Stoikov-Talreja): tracks net signed order flow at each price level; the single best predictor of 5-min price direction documented in academic literature
+- Microprice (Gatheral-Stoikov): volume-weighted mid-price, more accurate than (bid+ask)/2
+
+### Deliverables
+
+#### T1: Configurable flat_threshold in LabelingConfig
+- [ ] `src/ep2_crypto/models/labeling.py` — `LabelingConfig.flat_threshold` default: `0.003`
+- [ ] Verify: on 687K bars, FLAT label ratio is 10-15% with threshold=0.003
+- [ ] Update test in `tests/test_models/test_labeling.py` to cover threshold parameter
+- [ ] Verify ternary balance: ~43% UP, ~44% DOWN, ~13% FLAT (approximate)
+
+#### T2: OFI feature implementation
+- [ ] `src/ep2_crypto/features/microstructure.py` — add `compute_ofi()`:
+  - Multi-level OFI: `OFI = Σ_i (ΔBidQty_i - ΔAskQty_i)` across top 5 levels
+  - Normalize by average order size (rolling 60-bar window)
+  - Rolling OFI: 1-bar, 5-bar, 12-bar (1min, 5min, 1hr)
+  - Signed: positive = net buying pressure
+- [ ] Truncation test: `compute_ofi(data[:200])[150] == compute_ofi(data[:150])[-1]`
+- [ ] Golden dataset test with hand-verified values (3+ samples)
+- [ ] No look-ahead: only uses data at time <= t
+
+#### T3: Microprice feature implementation
+- [ ] `src/ep2_crypto/features/microstructure.py` — add `compute_microprice()`:
+  - `microprice = (bid_price × ask_qty + ask_price × bid_qty) / (bid_qty + ask_qty)`
+  - Microprice deviation from mid: `(microprice - mid) / spread`
+  - Rolling deviation momentum: 5-bar and 12-bar
+- [ ] Truncation test and golden dataset tests
+- [ ] Add to feature pipeline in `features/pipeline.py`
+
+#### T4: Retrain and compare to baseline
+- [ ] Run full 2,373-fold training with new flat_threshold + OFI + microprice features
+- [ ] Compare to Sprint 21 baseline:
+  - Accuracy improvement (target: +1.5% minimum)
+  - FLAT precision: model should learn to abstain ~13% of bars
+  - % positive Sharpe folds (target: >60%)
+- [ ] Document delta in PROGRESS.md
+
+### Acceptance Criteria
+- FLAT label ratio: 10-15% of all bars with `flat_threshold=0.003`
+- OFI passes truncation test and golden dataset test
+- Microprice passes truncation test and golden dataset test
+- Accuracy improvement vs Sprint 21 baseline: +1% or more
+- All existing tests still pass: `uv run pytest`
+- Ruff + mypy clean: `uv run ruff check src/ && uv run mypy src/ep2_crypto/`
+
+### Key Research References
+- `research/microstructure_ofi_microprice.md` — OFI and microprice implementation
+- `research/RR-ofi-microprice-implementation.md` — detailed formulas
+
+### Dependencies
+Sprint 21 (baseline metrics to compare against)
+
+---
+
+## Sprint 23: Extended Historical Data + Optuna Tuning (2-3 days) [ ]
+
+**Status**: Not started
+
+### Objectives
+Extend the training dataset back to January 2019 (from current September 2019) to add ~1,750 more bars (~6 months) covering the 2019 bull run and crash. Then run Optuna hyperparameter search using the already-built `models/tuning.py` infrastructure. Together these typically add +0.5-1.5% accuracy.
+
+### Why More Data Matters
+- Current dataset: Sep 2019 → Jan 2026 (6.3 years, 687K bars)
+- Extended: Jan 2019 → Jan 2026 (7 years, ~736K bars, +7%)
+- More importantly: captures the 2019 bull market cycle (BTC $3K → $13K) — a regime the model has never seen
+- More data → more folds → tighter confidence intervals on Sharpe estimates
+
+### Deliverables
+
+#### T1: Backfill OHLCV data to 2019-01-01
+- [ ] Run: `uv run python scripts/collect_history.py --start 2019-01-01 --end 2019-09-01`
+- [ ] Verify row count: `~50,000 new 5-min bars` (Jan → Sep 2019)
+- [ ] Verify no gaps: daily bar count should be 288 ± 2 for every day in range
+- [ ] Run training with extended data; verify fold count increases from 2,373 to ~2,600+
+
+#### T2: Optuna hyperparameter search — LightGBM
+- [ ] `scripts/train.py --tune --trials 50 --model lgbm`
+- [ ] Uses `models/tuning.py` — already built in Sprint 11
+- [ ] Search space: `num_leaves` [15-63], `max_depth` [3-8], `learning_rate` [0.01-0.1], `min_child_samples` [20-100], `subsample` [0.5-1.0]
+- [ ] Objective: Deflated Sharpe Ratio (DSR) on held-out 500 folds
+- [ ] Record best params; compare DSR vs defaults
+
+#### T3: Optuna hyperparameter search — CatBoost
+- [ ] `scripts/train.py --tune --trials 50 --model catboost`
+- [ ] Search space: `depth` [3-8], `learning_rate` [0.01-0.1], `l2_leaf_reg` [1-10], `subsample` [0.5-1.0]
+- [ ] Record best params
+
+#### T4: Retrain with best params + extended data
+- [ ] Update `LGBMConfig` and `CatBoostConfig` defaults with tuned values
+- [ ] Full 2,600+ fold training run
+- [ ] Compare vs Sprint 22 baseline: accuracy and Sharpe delta
+- [ ] Document in PROGRESS.md
+
+### Acceptance Criteria
+- OHLCV data available from 2019-01-01 with no gaps
+- Optuna completes 50 trials for each model
+- Best params improve DSR vs defaults by any positive margin
+- Full retraining run completes without crash
+- Results documented with before/after comparison
+
+### Key Files
+- `scripts/collect_history.py` — extend date range
+- `src/ep2_crypto/models/tuning.py` — already built in Sprint 11
+- `scripts/train.py --tune` — already wired
+
+### Dependencies
+Sprint 22 (improved labels + features as the base to tune)
+
+---
+
+## Sprint 24: GRU Integration into Stacking Ensemble (3-4 days) [ ]
+
+**Status**: Not started
+
+### Objectives
+Wire the GRU sequence model (already built in `models/gru_features.py`) into the stacking ensemble as a third base model. GRU extracts temporal patterns that tree models cannot capture — research shows +2-3% accuracy improvement when combined with LightGBM/CatBoost via stacking.
+
+### Why GRU Adds Value
+Tree models (LightGBM, CatBoost) treat each bar independently — they see a feature vector at time t but have no memory of the sequence leading to t. The GRU's hidden state encodes "what happened in the last 24 bars (2 hours)" as a compressed 64-dimensional vector. This captures momentum, reversals, and volatility patterns that raw features miss.
+
+### Current State
+`models/gru_features.py` exists and is tested but is NOT connected to `scripts/train.py`. It produces a `(batch, hidden_size=64)` hidden state tensor that can be passed to the stacking meta-learner alongside LightGBM/CatBoost OOF predictions.
+
+### Deliverables
+
+#### T1: Review and verify gru_features.py interface
+- [ ] Read `src/ep2_crypto/models/gru_features.py`
+- [ ] Verify: `GRUFeatureExtractor.extract(x_sequence) → NDArray[float64, (n, hidden_size)]`
+- [ ] Verify sequence preparation: `x_sequence.shape == (n_samples, seq_len=24, n_features)`
+- [ ] Verify ONNX export path works (required for inference latency)
+- [ ] Run existing GRU tests: `uv run pytest tests/test_models/test_gru_features.py -v`
+
+#### T2: Wire GRU into walk-forward OOF generation
+- [ ] `scripts/train.py` — add GRU to the OOF loop alongside LightGBM + CatBoost:
+  - Prepare sequence tensors: rolling 24-bar window per training sample
+  - Train GRU on fold training data
+  - Extract OOF hidden states on fold test data
+  - Stack: `oof_features = [oof_lgbm, oof_catboost, oof_gru_hidden]` (list of 3 arrays)
+- [ ] Handle sequence warmup: first 24 bars of each fold have no valid GRU input → zero-pad
+- [ ] GRU must use only past data (no look-ahead in sequence window)
+
+#### T3: Update stacking meta-learner input
+- [ ] `src/ep2_crypto/models/stacking.py` — verify it handles variable number of base models
+- [ ] Meta-learner input: `[lgbm_proba(n,3), catboost_proba(n,3), gru_hidden(n,64)]` → concatenate → `(n, 70)`
+- [ ] Ensure stacking `train()` method accepts list of any length
+
+#### T4: Retrain 3-model ensemble and compare
+- [ ] Full training run with GRU in stack
+- [ ] Compare vs Sprint 23 baseline:
+  - Accuracy delta (target: +1% minimum)
+  - Stacking weight given to GRU vs tree models
+  - Feature importance of GRU hidden dimensions (which hidden units matter?)
+- [ ] Document training time impact (GRU adds GPU/MPS compute per fold)
+
+### Acceptance Criteria
+- GRU hidden states successfully integrated as 3rd base model in stacking
+- Sequence preparation uses no future data (verified by truncation test on sequence window)
+- Accuracy improvement vs Sprint 23 baseline: +1% or more (else document why not)
+- Training completes in reasonable time (< 2x Sprint 23 training time)
+- ONNX export of GRU works for inference path
+- All tests pass: `uv run pytest tests/test_models/`
+
+### Key Files
+- `src/ep2_crypto/models/gru_features.py` — already built
+- `src/ep2_crypto/models/stacking.py` — verify multi-base-model support
+- `scripts/train.py` — main integration point
+
+### Dependencies
+Sprint 23 (tuned base models as foundation for GRU to improve upon)
+
+---
+
+## Sprint 25: Regime-Aware Training + Adaptive Thresholds (2-3 days) [ ]
+
+**Status**: Not started
+
+### Objectives
+Make the model regime-aware in two ways: (1) pass regime probabilities as direct input features to all base models, and (2) implement adaptive confidence thresholds that are calibrated per-regime. This is the final layer of the model improvement plan — combining all previous improvements into a complete adaptive system.
+
+### Why Regime Awareness Is The Final Layer
+The current model treats all market conditions identically. In trending markets, momentum features dominate. In ranging/choppy markets, mean-reversion features dominate. In high-volatility regimes, the model should be more conservative. A model that knows which regime it's in can weight its features appropriately — without this, features from different regimes "cancel out" each other's signal.
+
+### Deliverables
+
+#### T1: Regime features as model inputs
+- [ ] `src/ep2_crypto/features/regime_features.py` — verify output: `(efficiency_ratio, garch_vol, hmm_prob_trending, bocpd_alarm)`
+- [ ] `scripts/train.py` — ensure regime features are included in the feature matrix passed to LightGBM/CatBoost/GRU
+- [ ] Verify regime features are computed without look-ahead (HMM uses only past observations)
+- [ ] Feature importance check: regime features should appear in top-20 after training
+
+#### T2: Per-regime FLAT threshold
+- [ ] `src/ep2_crypto/models/labeling.py` — extend `LabelingConfig` with:
+  - `flat_threshold_trending: float = 0.005` (higher bar to call UP/DOWN in trending markets)
+  - `flat_threshold_ranging: float = 0.002` (lower bar when market is choppy)
+  - `flat_threshold_volatile: float = 0.008` (much higher bar during volatile regimes)
+- [ ] Apply per-regime threshold during label generation in walk-forward folds
+- [ ] Verify label distribution changes appropriately across regimes
+
+#### T3: Per-regime confidence thresholds (adaptive gating)
+- [ ] `src/ep2_crypto/confidence/gating.py` — extend `ConfidenceGate` with `RegimeThresholdAdapter`:
+  - After each fold, compute optimal confidence threshold per regime (grid search on fold val set)
+  - Store regime → threshold map
+  - At inference: use current regime to look up threshold
+- [ ] This replaces the single global threshold (0.60) with 3 regime-specific thresholds
+
+#### T4: Full retrain with all improvements and final evaluation
+- [ ] Full 2,600+ fold training run with:
+  - Tuned hyperparams (Sprint 23)
+  - OFI + microprice features (Sprint 22)
+  - FLAT threshold fix (Sprint 22)
+  - GRU in stack (Sprint 24)
+  - Regime features + adaptive thresholds (this sprint)
+- [ ] Final metrics vs Sprint 21 baseline:
+  - Accuracy delta
+  - Sharpe delta
+  - Per-regime accuracy breakdown
+  - Trade selectivity: % bars traded (lower is often better with good gating)
+- [ ] Decision gate: if aggregate Sharpe > 2.0 → proceed to paper trading (Sprint 14 tools)
+- [ ] Decision gate: if aggregate Sharpe < 1.0 → escalate to 15-min timeframe research
+
+### Acceptance Criteria
+- Regime features present in top-20 feature importance
+- Per-regime FLAT thresholds produce label distributions that differ across regimes
+- Adaptive confidence thresholds differ by at least 0.05 across regimes
+- Final accuracy vs Sprint 21 baseline: +2% or more (combined effect of all sprints)
+- Final aggregate Sharpe documented with confidence interval
+- Go/No-Go decision for paper trading recorded in PROGRESS.md with rationale
+
+### Key Files
+- `src/ep2_crypto/features/regime_features.py`
+- `src/ep2_crypto/models/labeling.py`
+- `src/ep2_crypto/confidence/gating.py`
+
+### Dependencies
+Sprint 24 (complete 3-model stack), Sprint 6 (regime detector must be operational)
+
+---
+
 ## Sprint Dependencies Graph
 
 ```

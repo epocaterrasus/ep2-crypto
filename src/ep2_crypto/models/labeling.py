@@ -48,7 +48,8 @@ class BarrierConfig:
         use_atr: If True, use ATR for barrier width. If False, use rolling std of log returns.
         flat_threshold_bps: Vertical barrier returns within this range (in basis points) are
             labeled FLAT. Prevents the ternary model from degrading to binary when exact
-            zero returns are machine-precision impossible. Default 10 bps.
+            zero returns are machine-precision impossible. Default 30 bps (0.003 fractional),
+            calibrated for BTC 5-min ATR of ~50-200 bps — yields ~10-15% FLAT labels.
     """
 
     max_holding_bars: int = 12
@@ -57,7 +58,7 @@ class BarrierConfig:
     vol_window: int = 20
     min_barrier_bps: float = 5.0
     use_atr: bool = True
-    flat_threshold_bps: float = 10.0
+    flat_threshold_bps: float = 30.0
 
 
 def compute_atr(
