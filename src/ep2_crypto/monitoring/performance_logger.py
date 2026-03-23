@@ -330,17 +330,17 @@ class PerformanceLogger:
     def get_trade_count(self) -> int:
         """Total number of trades logged (including those without outcomes)."""
         cursor = self._conn.execute("SELECT COUNT(*) FROM trade_log")
-        return cursor.fetchone()[0]
+        return int(cursor.fetchone()[0])
 
     def get_completed_trade_count(self) -> int:
         """Number of trades with outcomes filled in."""
         cursor = self._conn.execute("SELECT COUNT(*) FROM trade_log WHERE pnl IS NOT NULL")
-        return cursor.fetchone()[0]
+        return int(cursor.fetchone()[0])
 
     def get_bar_count(self) -> int:
         """Total number of bar states logged."""
         cursor = self._conn.execute("SELECT COUNT(*) FROM bar_state_log")
-        return cursor.fetchone()[0]
+        return int(cursor.fetchone()[0])
 
     def get_latest_bar_state(self) -> dict[str, Any] | None:
         """Get the most recent bar state snapshot."""
@@ -358,16 +358,25 @@ class PerformanceLogger:
         cursor = self._conn.execute(
             "SELECT COALESCE(SUM(pnl), 0.0) FROM trade_log WHERE pnl IS NOT NULL"
         )
-        return cursor.fetchone()[0]
+        return float(cursor.fetchone()[0])
 
     def get_accuracy(self, n_trades: int | None = None) -> float | None:
         """Directional accuracy: how often predicted direction matched actual."""
-        limit_clause = f"LIMIT {n_trades}" if n_trades else ""
-        cursor = self._conn.execute(
-            f"SELECT direction, actual_direction FROM trade_log "  # noqa: S608
-            f"WHERE actual_direction IS NOT NULL "
-            f"ORDER BY timestamp_ms DESC {limit_clause}"
-        )
+        # Use parameterized LIMIT to avoid any SQL injection risk even though
+        # n_trades is typed as int | None.
+        if n_trades is not None:
+            cursor = self._conn.execute(
+                "SELECT direction, actual_direction FROM trade_log "
+                "WHERE actual_direction IS NOT NULL "
+                "ORDER BY timestamp_ms DESC LIMIT ?",
+                (n_trades,),
+            )
+        else:
+            cursor = self._conn.execute(
+                "SELECT direction, actual_direction FROM trade_log "
+                "WHERE actual_direction IS NOT NULL "
+                "ORDER BY timestamp_ms DESC"
+            )
         rows = cursor.fetchall()
         if not rows:
             return None

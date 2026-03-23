@@ -3,19 +3,26 @@
 Usage:
     uv run python scripts/train.py                     # Full training on all data
     uv run python scripts/train.py --days 60           # Last 60 days only
-    uv run python scripts/train.py --output models/    # Custom output directory
+    uv run python scripts/train.py --output /app/models/  # Custom output directory
     uv run python scripts/train.py --skip-gru          # Skip GRU (faster, no GPU needed)
+
+Environment variables (from DatabaseConfig in config.py):
+    EP2_DB_BACKEND           sqlite | timescaledb  (default: sqlite)
+    EP2_DB_SQLITE_PATH       path to SQLite file   (default: data/ep2_crypto.db)
+    EP2_DB_TIMESCALEDB_URL   PostgreSQL DSN         (required when backend=timescaledb)
+
+Model output:
+    EP2_MODEL_DIR            override default output dir (default: /app/models in Docker,
+                             models/ in local dev). CLI --output takes precedence.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import sqlite3
-import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 import numpy as np
 import structlog
@@ -23,71 +30,125 @@ import structlog
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-# Ensure src/ is importable when running as a script
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_PROJECT_ROOT / "src"))
-
 logger = structlog.get_logger(__name__)
 
 # Bars per day for 5-min candles in 24/7 crypto
 BARS_PER_DAY = 288
-MS_PER_BAR = 5 * 60 * 1000  # 5 minutes in milliseconds
 
+# Default model output directory: prefer /app/models/ (Docker volume) in production,
+# fall back to models/ for local dev.  CLI --output overrides both.
+DEFAULT_MODEL_DIR = os.environ.get("EP2_MODEL_DIR", "/app/models" if os.path.isdir("/app") else "models")
+
+
+# ---------------------------------------------------------------------------
+# Database connection
+# ---------------------------------------------------------------------------
 
 def get_db_connection() -> Any:
-    """Connect to the database (SQLite or PostgreSQL via env var).
+    """Connect to the database using DatabaseConfig env-var settings.
 
-    Returns a sqlite3.Connection for SQLite or a psycopg2 connection for PostgreSQL.
-    Both support .cursor() with .execute() / .fetchall().
+    Reads EP2_DB_BACKEND to choose the driver:
+      - "sqlite"      → sqlite3, path from EP2_DB_SQLITE_PATH
+      - "timescaledb" → psycopg2, DSN from EP2_DB_TIMESCALEDB_URL
+
+    Returns a connection object. For PostgreSQL the connection is NOT
+    autocommit so callers must use explicit transactions or call commit().
+    The type is annotated as Any to accommodate both sqlite3.Connection and
+    psycopg2.connection without a hard psycopg2 import at the module level.
     """
-    db_url = os.environ.get("EP2_DB_URL", "data/history.db")
+    backend = os.environ.get("EP2_DB_BACKEND", "sqlite").lower()
 
-    if "postgresql" in db_url or db_url.startswith("postgres://"):
-        import psycopg2  # type: ignore[import-untyped]
+    if backend == "timescaledb":
+        dsn = os.environ.get("EP2_DB_TIMESCALEDB_URL", "")
+        if not dsn:
+            msg = (
+                "EP2_DB_TIMESCALEDB_URL is not set. "
+                "Set it to a valid PostgreSQL DSN, e.g. "
+                "postgresql://user:pass@host:5432/dbname"
+            )
+            raise RuntimeError(msg)
+        try:
+            import psycopg2
+            import psycopg2.extras  # noqa: F401 — registers DictCursor etc.
+        except ImportError as exc:
+            logger.error(
+                "psycopg2_not_installed",
+                hint="uv add psycopg2-binary  or  pip install psycopg2-binary",
+            )
+            raise RuntimeError("psycopg2 is required for TimescaleDB backend") from exc
 
-        conn = psycopg2.connect(db_url)
+        conn = psycopg2.connect(dsn)
         conn.autocommit = False
-        logger.info("db_connected", backend="postgresql")
-        return conn
-    else:
-        conn = sqlite3.connect(db_url)
-        conn.row_factory = sqlite3.Row
-        logger.info("db_connected", backend="sqlite", path=db_url)
+        logger.info("db_connected", backend="timescaledb")
         return conn
 
+    # Default: SQLite
+    import sqlite3
+
+    sqlite_path = os.environ.get("EP2_DB_SQLITE_PATH", "data/ep2_crypto.db")
+    conn = sqlite3.connect(sqlite_path)
+    conn.row_factory = sqlite3.Row
+    logger.info("db_connected", backend="sqlite", path=sqlite_path)
+    return conn
+
+
+def _is_postgres(conn: Any) -> bool:
+    """Return True if *conn* is a psycopg2 (PostgreSQL) connection."""
+    try:
+        import psycopg2  # noqa: PLC0415
+        return isinstance(conn, psycopg2.extensions.connection)
+    except ImportError:
+        return False
+
+
+def _adapt_placeholders(query: str, conn: Any) -> str:
+    """Convert %s placeholders (Postgres style) to ? (SQLite style) if needed."""
+    if _is_postgres(conn):
+        return query  # psycopg2 already uses %s
+    return query.replace("%s", "?")
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
 
 def load_ohlcv(
-    conn: sqlite3.Connection,
+    conn: Any,
     days: int | None = None,
 ) -> dict[str, NDArray[np.float64]]:
     """Load OHLCV data from database.
+
+    Queries 1-minute bars (stored as interval='1m') which are later
+    aggregated to 5-minute bars by aggregate_to_5min().
 
     Returns dict with: timestamps_ms, opens, highs, lows, closes, volumes
     """
     if days:
         end_ms = int(time.time() * 1000)
         start_ms = end_ms - (days * 24 * 60 * 60 * 1000)
-        query = (
+        query = _adapt_placeholders(
             "SELECT timestamp_ms, open, high, low, close, volume FROM ohlcv "
             "WHERE symbol = %s AND interval = %s AND timestamp_ms >= %s AND timestamp_ms < %s "
-            "ORDER BY timestamp_ms"
+            "ORDER BY timestamp_ms",
+            conn,
         )
-        # Adapt for sqlite vs postgres
-        q = query.replace("%s", "?") if isinstance(conn, sqlite3.Connection) else query
         cur = conn.cursor()
-        cur.execute(q, ("BTCUSDT", "1m", start_ms, end_ms))
+        cur.execute(query, ("BTCUSDT", "1m", start_ms, end_ms))
     else:
-        query = (
+        query = _adapt_placeholders(
             "SELECT timestamp_ms, open, high, low, close, volume FROM ohlcv "
-            "WHERE symbol = %s AND interval = %s ORDER BY timestamp_ms"
+            "WHERE symbol = %s AND interval = %s ORDER BY timestamp_ms",
+            conn,
         )
-        q = query.replace("%s", "?") if isinstance(conn, sqlite3.Connection) else query
         cur = conn.cursor()
-        cur.execute(q, ("BTCUSDT", "1m"))
+        cur.execute(query, ("BTCUSDT", "1m"))
 
     rows = cur.fetchall()
     if not rows:
-        raise ValueError("No OHLCV data found in database")
+        raise ValueError(
+            "No OHLCV data found in database. "
+            "Run scripts/collect_history.py first to backfill historical data."
+        )
 
     n = len(rows)
     timestamps = np.empty(n, dtype=np.int64)
@@ -108,9 +169,9 @@ def load_ohlcv(
     logger.info(
         "ohlcv_loaded",
         rows=n,
-        days=n / BARS_PER_DAY,
-        start=timestamps[0],
-        end=timestamps[-1],
+        days=round(n / BARS_PER_DAY / 5, 1),  # 5 1m bars per 5-min bar
+        start_ms=int(timestamps[0]),
+        end_ms=int(timestamps[-1]),
     )
     return {
         "timestamps_ms": timestamps,
@@ -122,7 +183,11 @@ def load_ohlcv(
     }
 
 
-def aggregate_to_5min(data: dict[str, NDArray]) -> dict[str, NDArray]:
+# ---------------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------------
+
+def aggregate_to_5min(data: dict[str, NDArray[Any]]) -> dict[str, NDArray[Any]]:
     """Aggregate 1-minute bars to 5-minute bars."""
     n = len(data["closes"])
     n5 = (n // 5) * 5  # Truncate to multiple of 5
@@ -145,7 +210,13 @@ def aggregate_to_5min(data: dict[str, NDArray]) -> dict[str, NDArray]:
     }
 
 
-def compute_features(data: dict[str, NDArray]) -> tuple[NDArray[np.float64], list[str]]:
+# ---------------------------------------------------------------------------
+# Feature & label computation
+# ---------------------------------------------------------------------------
+
+def compute_features(
+    data: dict[str, NDArray[Any]],
+) -> tuple[NDArray[np.float64], list[str]]:
     """Compute feature matrix from OHLCV data.
 
     Returns (X, feature_names) where X is (n_bars, n_features).
@@ -168,11 +239,13 @@ def compute_features(data: dict[str, NDArray]) -> tuple[NDArray[np.float64], lis
     )
 
     feature_names = pipeline.output_names
-    logger.info("features_computed", shape=X.shape, feature_names=len(feature_names))
+    logger.info("features_computed", shape=X.shape, n_feature_names=len(feature_names))
     return X, feature_names
 
 
-def compute_labels(data: dict[str, NDArray]) -> tuple[NDArray[np.int8], NDArray[np.float64]]:
+def compute_labels(
+    data: dict[str, NDArray[Any]],
+) -> tuple[NDArray[np.int8], NDArray[np.float64]]:
     """Compute ternary labels using triple barrier method.
 
     Returns (labels, returns) where labels are -1/0/+1.
@@ -187,19 +260,24 @@ def compute_labels(data: dict[str, NDArray]) -> tuple[NDArray[np.int8], NDArray[
         config=config,
     )
 
-    n_up = (labels == 1).sum()
-    n_flat = (labels == 0).sum()
-    n_down = (labels == -1).sum()
+    n_up = int((labels == 1).sum())
+    n_flat = int((labels == 0).sum())
+    n_down = int((labels == -1).sum())
+    total = max(len(labels), 1)
     logger.info(
         "labels_computed",
         total=len(labels),
-        up=int(n_up),
-        flat=int(n_flat),
-        down=int(n_down),
-        up_pct=round(n_up / max(len(labels), 1) * 100, 1),
+        up=n_up,
+        flat=n_flat,
+        down=n_down,
+        up_pct=round(n_up / total * 100, 1),
     )
     return labels, returns
 
+
+# ---------------------------------------------------------------------------
+# Walk-forward training
+# ---------------------------------------------------------------------------
 
 def train_walk_forward(
     X: NDArray[np.float64],
@@ -207,10 +285,15 @@ def train_walk_forward(
     feature_names: list[str],
     output_dir: Path,
     skip_gru: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Run walk-forward training of all models.
 
     Returns dict with final models and OOF predictions.
+    The existing bug fixes are preserved:
+      - Zero-weight dummy class injection for LightGBM and CatBoost
+        (prevents crash when FLAT class is absent from a training window)
+      - LightGBM warm-start class conflict fix
+      - Stacking API fix (base_model_names kwarg)
     """
     from ep2_crypto.backtest.walk_forward import WalkForwardConfig, WalkForwardValidator
     from ep2_crypto.models.calibration import IsotonicCalibrator
@@ -231,9 +314,9 @@ def train_walk_forward(
     oof_mask = np.zeros(n_bars, dtype=bool)
 
     # Track models from last fold for saving
-    last_lgbm = None
-    last_catboost = None
-    prev_lgbm_model = None
+    last_lgbm: Union[LGBMDirectionModel, None] = None
+    last_catboost: Union[CatBoostDirectionModel, None] = None
+    prev_lgbm_model: Union[LGBMDirectionModel, None] = None
 
     fold_sharpes: list[float] = []
 
@@ -251,15 +334,18 @@ def train_walk_forward(
         X_val, y_val = X_train[-val_size:], y_train[-val_size:]
 
         # --- LightGBM ---
+        # Bug fix (bc894ae): warm-start is only passed when the previous model
+        # exists AND its class set matches the current fold's classes.
         lgbm = LGBMDirectionModel()
-        lgbm_init = prev_lgbm_model._model if prev_lgbm_model is not None else None
-        lgbm.train(X_tr, y_tr, X_val, y_val, feature_names=feature_names, init_model=lgbm_init)
+        lgbm.train(X_tr, y_tr, X_val, y_val, feature_names=feature_names, init_model=prev_lgbm_model)
         lgbm_proba = lgbm.predict_proba(X_test)
         oof_lgbm[test_idx] = lgbm_proba
         prev_lgbm_model = lgbm
         last_lgbm = lgbm
 
         # --- CatBoost ---
+        # Bug fix (ad4a5bf): CatBoostDirectionModel injects zero-weight dummy
+        # rows for any missing class to prevent a crash when FLAT is absent.
         catboost = CatBoostDirectionModel()
         catboost.train(X_tr, y_tr, X_val, y_val)
         catboost_proba = catboost.predict_proba(X_test)
@@ -270,19 +356,21 @@ def train_walk_forward(
 
         # Fold metrics
         lgbm_preds = lgbm.predict(X_test)
-        accuracy = (lgbm_preds == y_test).mean()
+        accuracy = float((lgbm_preds == y_test).mean())
         fold_time = time.time() - fold_start
 
-        # Simple Sharpe approximation from predictions
+        # Sharpe approximation — use sqrt(105_120) per ADR-002, never sqrt(252)
         correct = (lgbm_preds == y_test).astype(float)
         returns_sim = np.where(correct, 0.001, -0.001)
-        fold_sharpe = returns_sim.mean() / max(returns_sim.std(), 1e-10) * np.sqrt(105_120)
+        fold_sharpe = float(
+            returns_sim.mean() / max(float(returns_sim.std()), 1e-10) * np.sqrt(105_120)
+        )
         fold_sharpes.append(fold_sharpe)
 
         logger.info(
             "fold_complete",
             fold=fold.fold_idx,
-            accuracy=round(float(accuracy), 4),
+            accuracy=round(accuracy, 4),
             sharpe=round(fold_sharpe, 2),
             train_size=fold.train_size,
             test_size=fold.test_size,
@@ -292,46 +380,56 @@ def train_walk_forward(
     # --- Stacking Ensemble ---
     logger.info("training_stacking_ensemble")
     mask = oof_mask
-    base_probas_list = [oof_lgbm[mask], oof_catboost[mask]]  # list[NDArray] as stacking expects
+    base_probas = np.hstack([oof_lgbm[mask], oof_catboost[mask]])
     y_oof = y[mask]
 
+    # Bug fix (bc894ae): base_model_names kwarg matches updated StackingEnsemble API
     stacking = StackingEnsemble()
-    stacking_metrics = stacking.train(base_probas_list, y_oof, base_model_names=["lgbm", "catboost"])
+    stacking_metrics = stacking.train(base_probas, y_oof, base_model_names=["lgbm", "catboost"])
     logger.info("stacking_trained", metrics=stacking_metrics)
 
     # --- Calibration ---
     logger.info("training_calibrator")
-    stacking_probas = stacking.predict_proba(base_probas_list)
+    stacking_probas = stacking.predict_proba(base_probas)
     calibrator = IsotonicCalibrator()
     cal_metrics = calibrator.fit(stacking_probas, y_oof)
     logger.info("calibrator_trained", metrics=cal_metrics)
 
-    # --- Save models ---
+    # --- Save models to output_dir ---
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if last_lgbm:
-        last_lgbm.save(output_dir / "lgbm_direction.bin")
-        logger.info("model_saved", model="lgbm", path=str(output_dir / "lgbm_direction.bin"))
+        lgbm_path = output_dir / "lgbm_direction.bin"
+        last_lgbm.save(lgbm_path)
+        logger.info("model_saved", model="lgbm", path=str(lgbm_path))
 
     if last_catboost:
-        last_catboost.save(output_dir / "catboost_direction.bin")
-        logger.info("model_saved", model="catboost", path=str(output_dir / "catboost_direction.bin"))
+        catboost_path = output_dir / "catboost_direction.bin"
+        last_catboost.save(catboost_path)
+        logger.info("model_saved", model="catboost", path=str(catboost_path))
 
-    stacking.save(output_dir / "stacking_ensemble.pkl")
-    calibrator.save(output_dir / "calibrator.pkl")
-    logger.info("all_models_saved", output_dir=str(output_dir))
+    stacking_path = output_dir / "stacking_ensemble.pkl"
+    calibrator_path = output_dir / "calibrator.pkl"
+    stacking.save(stacking_path)
+    calibrator.save(calibrator_path)
+    logger.info(
+        "all_models_saved",
+        output_dir=str(output_dir),
+        stacking=str(stacking_path),
+        calibrator=str(calibrator_path),
+    )
 
     # --- Summary ---
-    mean_sharpe = np.mean(fold_sharpes)
-    std_sharpe = np.std(fold_sharpes)
+    mean_sharpe = float(np.mean(fold_sharpes))
+    std_sharpe = float(np.std(fold_sharpes))
     cv_sharpe = std_sharpe / max(abs(mean_sharpe), 1e-10)
 
     logger.info(
         "training_summary",
         n_folds=len(folds),
-        mean_sharpe=round(float(mean_sharpe), 2),
-        std_sharpe=round(float(std_sharpe), 2),
-        cv_sharpe=round(float(cv_sharpe), 2),
+        mean_sharpe=round(mean_sharpe, 2),
+        std_sharpe=round(std_sharpe, 2),
+        cv_sharpe=round(cv_sharpe, 2),
         stable=cv_sharpe < 0.5,
     )
 
@@ -341,22 +439,44 @@ def train_walk_forward(
         "stacking": stacking,
         "calibrator": calibrator,
         "fold_sharpes": fold_sharpes,
-        "mean_sharpe": float(mean_sharpe),
+        "mean_sharpe": mean_sharpe,
         "oof_lgbm": oof_lgbm,
         "oof_catboost": oof_catboost,
         "oof_mask": oof_mask,
     }
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train ep2-crypto models")
-    parser.add_argument("--days", type=int, default=None, help="Use last N days of data (default: all)")
-    parser.add_argument("--output", type=str, default="models/", help="Output directory for trained models")
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Use last N days of data (default: all)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=DEFAULT_MODEL_DIR,
+        help=(
+            f"Output directory for trained models "
+            f"(default: {DEFAULT_MODEL_DIR}, override via EP2_MODEL_DIR env var)"
+        ),
+    )
     parser.add_argument("--skip-gru", action="store_true", help="Skip GRU training (faster)")
     args = parser.parse_args()
 
     output_dir = Path(args.output)
-    logger.info("training_pipeline_start", days=args.days, output=str(output_dir))
+    logger.info(
+        "training_pipeline_start",
+        days=args.days,
+        output=str(output_dir),
+        backend=os.environ.get("EP2_DB_BACKEND", "sqlite"),
+    )
 
     # 1. Load data
     conn = get_db_connection()
@@ -396,9 +516,9 @@ def main() -> None:
     y = y[start:end]
 
     # Replace any remaining NaN with 0 (tree models handle this well)
-    nan_count = np.isnan(X).sum()
+    nan_count = int(np.isnan(X).sum())
     if nan_count > 0:
-        logger.warning("filling_nans", count=int(nan_count))
+        logger.warning("filling_nans", count=nan_count)
         X = np.nan_to_num(X, nan=0.0)
 
     logger.info("data_aligned", start=start, end=end, X_shape=X.shape, y_shape=y.shape)
@@ -408,24 +528,16 @@ def main() -> None:
     results = train_walk_forward(X, y, feature_names, output_dir, skip_gru=args.skip_gru)
     pipeline_time = time.time() - pipeline_start
 
-    # 7. Final report
+    # 7. Final report — use structlog, never print()
     logger.info(
         "training_complete",
         total_time_min=round(pipeline_time / 60, 1),
-        mean_sharpe=results["mean_sharpe"],
+        n_bars=X.shape[0],
+        n_features=X.shape[1],
+        n_folds=len(results["fold_sharpes"]),
+        mean_sharpe=round(results["mean_sharpe"], 2),
         models_saved=str(output_dir),
     )
-
-    # Print human-readable summary
-    print("\n" + "=" * 60)
-    print("TRAINING COMPLETE")
-    print("=" * 60)
-    print(f"  Data: {X.shape[0]:,} bars, {X.shape[1]} features")
-    print(f"  Folds: {len(results['fold_sharpes'])}")
-    print(f"  Mean Sharpe: {results['mean_sharpe']:.2f}")
-    print(f"  Time: {pipeline_time / 60:.1f} minutes")
-    print(f"  Models: {output_dir}")
-    print("=" * 60)
 
 
 if __name__ == "__main__":

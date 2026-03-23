@@ -83,8 +83,13 @@ class MetaLabeler:
 
     @property
     def is_fitted(self) -> bool:
-        """Whether the model has been trained."""
-        return self._model is not None and self._model.fitted_
+        """Whether the model has been trained.
+
+        Uses n_features_in_ which is set by LGBMClassifier after fit() and also
+        explicitly set in load(). LGBMClassifier does not expose a `fitted_`
+        attribute — that attribute is not part of the sklearn or LightGBM API.
+        """
+        return self._model is not None and hasattr(self._model, "n_features_in_")
 
     def create_meta_features(
         self,

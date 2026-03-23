@@ -184,7 +184,10 @@ def lo_corrected_sharpe(
         return _raw_sharpe(returns)
 
     correction = np.sqrt(q / eta)
-    return float(raw_sr * np.sqrt(q) * correction / np.sqrt(q))
+    # Annualize: raw_sr (per-bar) * sqrt(q) gives the naive annualized Sharpe,
+    # then multiply by correction factor (= sqrt(q/eta)) to get Lo-corrected value.
+    # Previously this divided by sqrt(q) again, canceling annualization — fixed.
+    return float(raw_sr * np.sqrt(q) * correction)
 
 
 def _raw_sharpe(returns: NDArray[np.float64]) -> float:

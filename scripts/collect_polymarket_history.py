@@ -1,13 +1,19 @@
 """Backfill historical 5-minute BTC Up/Down markets from Polymarket.
 
 Queries the Gamma API (public, no auth) for resolved BTC 5-minute
-prediction markets and stores results in SQLite for later joining
-with BTC OHLCV data.
+prediction markets and stores results in SQLite or TimescaleDB.
+
+The --derive-from-btc flag creates synthetic Polymarket-like outcomes
+from BTC OHLCV data already in the database (SQLite or TimescaleDB).
 
 Usage:
     uv run python scripts/collect_polymarket_history.py --start 2026-02-01
     uv run python scripts/collect_polymarket_history.py --resume
     uv run python scripts/collect_polymarket_history.py --derive-from-btc --start 2026-01-01
+
+    # TimescaleDB (production):
+    EP2_DB_BACKEND=timescaledb EP2_DB_TIMESCALEDB_URL=postgresql://... \\
+        uv run python scripts/collect_polymarket_history.py --derive-from-btc --start 2026-01-01
 """
 
 from __future__ import annotations
@@ -15,7 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import sqlite3
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +30,15 @@ from typing import Any
 import aiohttp
 import structlog
 from tqdm import tqdm
+
+# ---------------------------------------------------------------------------
+# Ensure project src is on sys.path so ep2_crypto imports work when
+# running this script directly (not via `uv run` from the project root).
+# ---------------------------------------------------------------------------
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT / "src"))
+
+from ep2_crypto.db.schema import create_tables  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -38,11 +53,48 @@ MAX_CONCURRENT = 25
 RATE_LIMIT_PER_10S = 300
 CHECKPOINT_INTERVAL = 1000
 
+# Symbol as stored by collect_history.py (Binance raw format)
+BTC_SYMBOL = "BTCUSDT"
+
 # ---------------------------------------------------------------------------
-# DB helpers
+# Database backend detection
 # ---------------------------------------------------------------------------
 
-POLYMARKET_TABLE_DDL = """
+
+def _is_timescaledb_url(url: str) -> bool:
+    """Return True if the URL looks like a PostgreSQL/TimescaleDB connection string."""
+    return url.startswith(("postgresql://", "postgres://", "postgresql+"))
+
+
+def _get_db_config() -> tuple[str, bool]:
+    """Return (connection_string_or_path, is_postgres) from environment.
+
+    Reads EP2_DB_BACKEND and EP2_DB_TIMESCALEDB_URL (or legacy EP2_DB_URL).
+    """
+    backend = os.environ.get("EP2_DB_BACKEND", "sqlite").lower()
+    if backend == "timescaledb":
+        # Prefer the typed env var; fall back to EP2_DB_URL if it looks like a pg URL
+        pg_url = os.environ.get("EP2_DB_TIMESCALEDB_URL", "")
+        if not pg_url:
+            legacy = os.environ.get("EP2_DB_URL", "")
+            if _is_timescaledb_url(legacy):
+                pg_url = legacy
+        if not pg_url:
+            pg_url = "postgresql://ep2:ep2_secret@localhost:5432/ep2_crypto"
+        return pg_url, True
+
+    # SQLite path
+    legacy = os.environ.get("EP2_DB_URL", "")
+    if legacy and not _is_timescaledb_url(legacy):
+        return legacy, False
+    return str(_PROJECT_ROOT / "data" / "history.db"), False
+
+
+# ---------------------------------------------------------------------------
+# Polymarket table DDL (SQLite and PostgreSQL variants)
+# ---------------------------------------------------------------------------
+
+_POLYMARKET_TABLE_DDL_SQLITE = """
 CREATE TABLE IF NOT EXISTS polymarket_5m_history (
     window_ts       INTEGER PRIMARY KEY,
     slug            TEXT NOT NULL,
@@ -55,36 +107,73 @@ CREATE TABLE IF NOT EXISTS polymarket_5m_history (
 )
 """
 
-POLYMARKET_INDEX_DDL = (
-    "CREATE INDEX IF NOT EXISTS idx_poly5m_resolved ON polymarket_5m_history (resolved)"
+_POLYMARKET_TABLE_DDL_PG = """
+CREATE TABLE IF NOT EXISTS polymarket_5m_history (
+    window_ts       TIMESTAMPTZ     PRIMARY KEY,
+    slug            TEXT            NOT NULL,
+    outcome         TEXT,
+    yes_close_price DOUBLE PRECISION,
+    no_close_price  DOUBLE PRECISION,
+    volume          DOUBLE PRECISION,
+    resolved        BOOLEAN         DEFAULT FALSE,
+    condition_id    TEXT
+)
+"""
+
+_POLYMARKET_INDEX_DDL_SQLITE = (
+    "CREATE INDEX IF NOT EXISTS idx_poly5m_resolved "
+    "ON polymarket_5m_history (resolved)"
+)
+
+_POLYMARKET_INDEX_DDL_PG = (
+    "CREATE INDEX IF NOT EXISTS idx_poly5m_resolved "
+    "ON polymarket_5m_history (resolved)"
 )
 
 
-def get_db_path() -> Path:
-    """Resolve DB path from EP2_DB_URL env or default."""
-    raw = os.environ.get("EP2_DB_URL", "")
-    if raw:
-        return Path(raw)
-    return Path("data/history.db")
+# ---------------------------------------------------------------------------
+# Connection helpers
+# ---------------------------------------------------------------------------
 
 
-def init_db(db_path: Path) -> sqlite3.Connection:
-    """Open DB, create polymarket table if needed, return connection."""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    conn.execute("PRAGMA busy_timeout = 5000")
-    conn.execute(POLYMARKET_TABLE_DDL)
-    conn.execute(POLYMARKET_INDEX_DDL)
+def _open_sqlite(db_path: str) -> Any:
+    """Open SQLite, create all project tables + polymarket table."""
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = create_tables(path)  # sets WAL + all standard tables
+    conn.execute(_POLYMARKET_TABLE_DDL_SQLITE)
+    conn.execute(_POLYMARKET_INDEX_DDL_SQLITE)
     conn.commit()
-    logger.info("db_initialized", path=str(db_path))
+    logger.info("sqlite_ready", path=str(path))
     return conn
 
 
-def upsert_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
-    """Insert or replace rows into polymarket_5m_history."""
+def _open_postgres(pg_url: str) -> Any:
+    """Open psycopg2 connection, create polymarket table if absent."""
+    try:
+        import psycopg2  # type: ignore[import]
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg2 is required for TimescaleDB. Run: uv add psycopg2-binary"
+        ) from exc
+
+    conn = psycopg2.connect(pg_url)
+    conn.autocommit = False
+    cur = conn.cursor()
+    cur.execute(_POLYMARKET_TABLE_DDL_PG)
+    cur.execute(_POLYMARKET_INDEX_DDL_PG)
+    conn.commit()
+    logger.info("timescaledb_ready", host=pg_url.split("@")[-1])
+    return conn
+
+
+# ---------------------------------------------------------------------------
+# Repository helpers (backend-agnostic)
+# ---------------------------------------------------------------------------
+
+
+def _upsert_rows_sqlite(conn: Any, rows: list[dict[str, Any]]) -> int:
+    """Insert or replace rows into polymarket_5m_history (SQLite)."""
     if not rows:
         return 0
     conn.executemany(
@@ -110,12 +199,136 @@ def upsert_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
-def get_last_stored_ts(conn: sqlite3.Connection) -> int | None:
-    """Return the most recent window_ts in the table, or None."""
-    row = conn.execute("SELECT MAX(window_ts) AS max_ts FROM polymarket_5m_history").fetchone()
+def _upsert_rows_pg(conn: Any, rows: list[dict[str, Any]]) -> int:
+    """Insert or replace rows into polymarket_5m_history (PostgreSQL)."""
+    if not rows:
+        return 0
+
+    cur = conn.cursor()
+    cur.executemany(
+        "INSERT INTO polymarket_5m_history "
+        "(window_ts, slug, outcome, yes_close_price, no_close_price, "
+        "volume, resolved, condition_id) "
+        "VALUES (to_timestamp(%s), %s, %s, %s, %s, %s, %s, %s) "
+        "ON CONFLICT (window_ts) DO UPDATE SET "
+        "slug = EXCLUDED.slug, outcome = EXCLUDED.outcome, "
+        "yes_close_price = EXCLUDED.yes_close_price, "
+        "no_close_price = EXCLUDED.no_close_price, "
+        "volume = EXCLUDED.volume, resolved = EXCLUDED.resolved, "
+        "condition_id = EXCLUDED.condition_id",
+        [
+            (
+                r["window_ts"],
+                r["slug"],
+                r.get("outcome"),
+                r.get("yes_close_price"),
+                r.get("no_close_price"),
+                r.get("volume"),
+                bool(r.get("resolved")),
+                r.get("condition_id"),
+            )
+            for r in rows
+        ],
+    )
+    conn.commit()
+    return len(rows)
+
+
+def upsert_rows(conn: Any, rows: list[dict[str, Any]], *, is_postgres: bool) -> int:
+    """Dispatch upsert to the correct backend."""
+    if is_postgres:
+        return _upsert_rows_pg(conn, rows)
+    return _upsert_rows_sqlite(conn, rows)
+
+
+def get_last_stored_ts_sqlite(conn: Any) -> int | None:
+    """Return the most recent window_ts (unix seconds) from SQLite table."""
+    row = conn.execute(
+        "SELECT MAX(window_ts) AS max_ts FROM polymarket_5m_history"
+    ).fetchone()
     if row and row["max_ts"] is not None:
         return int(row["max_ts"])
     return None
+
+
+def get_last_stored_ts_pg(conn: Any) -> int | None:
+    """Return the most recent window_ts (unix seconds) from PostgreSQL table."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT EXTRACT(EPOCH FROM MAX(window_ts))::BIGINT AS max_ts "
+        "FROM polymarket_5m_history"
+    )
+    row = cur.fetchone()
+    if row and row[0] is not None:
+        return int(row[0])
+    return None
+
+
+def get_last_stored_ts(conn: Any, *, is_postgres: bool) -> int | None:
+    """Return the most recent window_ts as unix seconds, or None."""
+    if is_postgres:
+        return get_last_stored_ts_pg(conn)
+    return get_last_stored_ts_sqlite(conn)
+
+
+# ---------------------------------------------------------------------------
+# OHLCV query helpers (backend-agnostic)
+# ---------------------------------------------------------------------------
+
+
+def _query_ohlcv_sqlite(
+    conn: Any,
+    interval: str,
+    start_ms: int,
+    end_ms: int,
+) -> list[tuple[int, float, float]]:
+    """Query ohlcv from SQLite. Returns list of (timestamp_ms, open, close)."""
+    rows = conn.execute(
+        "SELECT timestamp_ms, open, close FROM ohlcv "
+        "WHERE symbol = ? AND interval = ? "
+        "AND timestamp_ms >= ? AND timestamp_ms < ? "
+        "ORDER BY timestamp_ms",
+        (BTC_SYMBOL, interval, start_ms, end_ms),
+    ).fetchall()
+    return [(int(r["timestamp_ms"]), float(r["open"]), float(r["close"])) for r in rows]
+
+
+def _query_ohlcv_pg(
+    conn: Any,
+    interval: str,
+    start_ms: int,
+    end_ms: int,
+) -> list[tuple[int, float, float]]:
+    """Query ohlcv from TimescaleDB. Returns list of (timestamp_ms, open, close).
+
+    TimescaleDB schema uses column `ts` (TIMESTAMPTZ), not `timestamp_ms`.
+    """
+    start_iso = datetime.fromtimestamp(start_ms / 1000, tz=UTC).isoformat()
+    end_iso = datetime.fromtimestamp(end_ms / 1000, tz=UTC).isoformat()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT EXTRACT(EPOCH FROM ts)::BIGINT * 1000 AS timestamp_ms, open, close "
+        "FROM ohlcv "
+        "WHERE symbol = %s AND interval = %s "
+        "AND ts >= %s AND ts < %s "
+        "ORDER BY ts",
+        (BTC_SYMBOL, interval, start_iso, end_iso),
+    )
+    return [(int(r[0]), float(r[1]), float(r[2])) for r in cur.fetchall()]
+
+
+def query_ohlcv(
+    conn: Any,
+    interval: str,
+    start_ms: int,
+    end_ms: int,
+    *,
+    is_postgres: bool,
+) -> list[tuple[int, float, float]]:
+    """Query OHLCV rows from the active backend. Returns (timestamp_ms, open, close)."""
+    if is_postgres:
+        return _query_ohlcv_pg(conn, interval, start_ms, end_ms)
+    return _query_ohlcv_sqlite(conn, interval, start_ms, end_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +342,6 @@ class RateLimiter:
     def __init__(self, rate: int, per: float) -> None:
         self._rate = rate
         self._per = per
-        self._semaphore = asyncio.Semaphore(rate)
         self._timestamps: list[float] = []
         self._lock = asyncio.Lock()
 
@@ -252,7 +464,7 @@ async def fetch_window(
             return parse_event_response(data, window_ts)
         return None
 
-    except TimeoutError:
+    except aiohttp.ServerTimeoutError:
         logger.debug("fetch_timeout", slug=slug)
         return None
     except aiohttp.ClientError as exc:
@@ -268,13 +480,14 @@ async def fetch_window(
 async def collect_polymarket_history(
     start_ts: int,
     end_ts: int,
-    conn: sqlite3.Connection,
+    conn: Any,
+    *,
+    is_postgres: bool,
 ) -> dict[str, Any]:
     """Iterate backwards from end_ts to start_ts, fetching each 5-min window.
 
     Returns summary statistics.
     """
-    # Generate all window timestamps (descending)
     # Align to 5-min boundaries
     end_aligned = (end_ts // WINDOW_SECONDS) * WINDOW_SECONDS
     start_aligned = (start_ts // WINDOW_SECONDS) * WINDOW_SECONDS
@@ -331,7 +544,7 @@ async def collect_polymarket_history(
 
             # Checkpoint: flush to DB
             if pending_buffer:
-                inserted = upsert_rows(conn, pending_buffer)
+                inserted = upsert_rows(conn, pending_buffer, is_postgres=is_postgres)
                 logger.info(
                     "checkpoint",
                     inserted=inserted,
@@ -343,9 +556,9 @@ async def collect_polymarket_history(
 
     pbar.close()
 
-    # Final flush
+    # Final flush (should be empty after per-batch flushing, but guard against it)
     if pending_buffer:
-        upsert_rows(conn, pending_buffer)
+        upsert_rows(conn, pending_buffer, is_postgres=is_postgres)
         found_rows.extend(pending_buffer)
 
     up_rate = (total_up / total_resolved * 100) if total_resolved > 0 else 0.0
@@ -370,50 +583,45 @@ async def collect_polymarket_history(
 
 
 def derive_from_btc_ohlcv(
-    conn: sqlite3.Connection,
+    conn: Any,
     start_ts: int,
     end_ts: int,
+    *,
+    is_postgres: bool,
 ) -> dict[str, Any]:
     """Create synthetic Polymarket-like outcomes from ohlcv_1m or ohlcv table.
 
     For each 5-min window, compare close at window_end vs open at window_start.
     If close > open => "up", else "down".
+
+    Works against both SQLite (timestamp_ms INTEGER) and TimescaleDB (ts TIMESTAMPTZ).
+    The OHLCV symbol is "BTCUSDT" (Binance raw format as stored by collect_history.py).
     """
     start_ms = start_ts * 1000
     end_ms = end_ts * 1000
 
-    # Try to query 1-minute OHLCV data (interval = '1m')
-    rows = conn.execute(
-        "SELECT timestamp_ms, open, close FROM ohlcv "
-        "WHERE symbol = ? AND interval = ? "
-        "AND timestamp_ms >= ? AND timestamp_ms < ? "
-        "ORDER BY timestamp_ms",
-        ("BTC/USDT:USDT", "1m", start_ms, end_ms),
-    ).fetchall()
+    # Try 1-minute bars first
+    raw_rows = query_ohlcv(conn, "1m", start_ms, end_ms, is_postgres=is_postgres)
 
-    if not rows:
+    if not raw_rows:
         # Fallback: try 5-minute bars directly
-        rows = conn.execute(
-            "SELECT timestamp_ms, open, close FROM ohlcv "
-            "WHERE symbol = ? AND interval = ? "
-            "AND timestamp_ms >= ? AND timestamp_ms < ? "
-            "ORDER BY timestamp_ms",
-            ("BTC/USDT:USDT", "5m", start_ms, end_ms),
-        ).fetchall()
-        if not rows:
+        raw_rows = query_ohlcv(conn, "5m", start_ms, end_ms, is_postgres=is_postgres)
+        if not raw_rows:
             logger.warning(
                 "no_ohlcv_data_found",
+                symbol=BTC_SYMBOL,
                 start_ms=start_ms,
                 end_ms=end_ms,
+                backend="timescaledb" if is_postgres else "sqlite",
             )
             return {"derived_count": 0, "error": "No OHLCV data found"}
 
-        # 5m bars: each row IS a window
+        # 5m bars: each row IS a 5-min window
         derived_rows: list[dict[str, Any]] = []
-        for row in rows:
-            ts_s = row["timestamp_ms"] // 1000
+        for ts_ms, open_, close in raw_rows:
+            ts_s = ts_ms // 1000
             window_ts = (ts_s // WINDOW_SECONDS) * WINDOW_SECONDS
-            outcome = "up" if row["close"] > row["open"] else "down"
+            outcome = "up" if close > open_ else "down"
             derived_rows.append(
                 {
                     "window_ts": window_ts,
@@ -427,7 +635,7 @@ def derive_from_btc_ohlcv(
                 }
             )
 
-        inserted = upsert_rows(conn, derived_rows)
+        inserted = upsert_rows(conn, derived_rows, is_postgres=is_postgres)
         total_up = sum(1 for r in derived_rows if r["outcome"] == "up")
         up_rate = (total_up / len(derived_rows) * 100) if derived_rows else 0.0
 
@@ -442,16 +650,13 @@ def derive_from_btc_ohlcv(
         return summary
 
     # 1-minute bars: aggregate into 5-min windows
-    # Build a dict: window_ts -> list of (timestamp_ms, open, close)
     window_bars: dict[int, list[tuple[int, float, float]]] = {}
-    for row in rows:
-        ts_s = row["timestamp_ms"] // 1000
+    for ts_ms, open_, close in raw_rows:
+        ts_s = ts_ms // 1000
         window_ts = (ts_s // WINDOW_SECONDS) * WINDOW_SECONDS
         if window_ts not in window_bars:
             window_bars[window_ts] = []
-        window_bars[window_ts].append(
-            (row["timestamp_ms"], float(row["open"]), float(row["close"]))
-        )
+        window_bars[window_ts].append((ts_ms, open_, close))
 
     derived_rows = []
     for window_ts, bars in sorted(window_bars.items()):
@@ -459,8 +664,8 @@ def derive_from_btc_ohlcv(
             # Skip incomplete windows (need at least 3 of 5 minutes)
             continue
         bars_sorted = sorted(bars, key=lambda x: x[0])
-        window_open = bars_sorted[0][1]  # open of first bar
-        window_close = bars_sorted[-1][2]  # close of last bar
+        window_open = bars_sorted[0][1]   # open of first 1m bar
+        window_close = bars_sorted[-1][2]  # close of last 1m bar
         outcome = "up" if window_close > window_open else "down"
         derived_rows.append(
             {
@@ -475,7 +680,7 @@ def derive_from_btc_ohlcv(
             }
         )
 
-    inserted = upsert_rows(conn, derived_rows)
+    inserted = upsert_rows(conn, derived_rows, is_postgres=is_postgres)
     total_up = sum(1 for r in derived_rows if r["outcome"] == "up")
     up_rate = (total_up / len(derived_rows) * 100) if derived_rows else 0.0
 
@@ -525,7 +730,10 @@ def parse_args() -> argparse.Namespace:
         "--db-path",
         type=str,
         default=None,
-        help="Override database path (default: EP2_DB_URL env or data/history.db)",
+        help=(
+            "Override SQLite database path. "
+            "For TimescaleDB use EP2_DB_BACKEND=timescaledb + EP2_DB_TIMESCALEDB_URL env vars."
+        ),
     )
     return parser.parse_args()
 
@@ -542,12 +750,29 @@ def main() -> None:
 
     args = parse_args()
 
-    # Resolve DB path
-    db_path = Path(args.db_path) if args.db_path else get_db_path()
+    # ---------------------------------------------------------------------------
+    # Resolve database backend
+    # ---------------------------------------------------------------------------
+    if args.db_path:
+        # Explicit path override always means SQLite
+        conn_str, is_postgres = args.db_path, False
+    else:
+        conn_str, is_postgres = _get_db_config()
 
-    conn = init_db(db_path)
+    # Open connection
+    try:
+        conn = _open_postgres(conn_str) if is_postgres else _open_sqlite(conn_str)
+    except Exception as exc:
+        logger.error(
+            "db_connection_failed",
+            backend="timescaledb" if is_postgres else "sqlite",
+            error=str(exc),
+        )
+        raise
 
+    # ---------------------------------------------------------------------------
     # Resolve time range
+    # ---------------------------------------------------------------------------
     now_ts = int(time.time())
 
     if args.end:
@@ -557,7 +782,7 @@ def main() -> None:
         end_ts = now_ts
 
     if args.resume:
-        last_ts = get_last_stored_ts(conn)
+        last_ts = get_last_stored_ts(conn, is_postgres=is_postgres)
         if last_ts is not None:
             # Resume from the window after the last stored one
             start_ts = last_ts + WINDOW_SECONDS
@@ -567,10 +792,10 @@ def main() -> None:
                 from_date=datetime.fromtimestamp(last_ts, tz=UTC).isoformat(),
             )
         else:
-            # No data yet, use default start
+            # No data yet — use default start
             start_dt = datetime.strptime("2026-02-01", "%Y-%m-%d").replace(tzinfo=UTC)
             start_ts = int(start_dt.timestamp())
-            logger.info("no_previous_data_found, starting_from_default")
+            logger.info("no_previous_data_found", starting_from="2026-02-01")
     elif args.start:
         start_dt = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=UTC)
         start_ts = int(start_dt.timestamp())
@@ -583,13 +808,21 @@ def main() -> None:
         conn.close()
         return
 
+    # ---------------------------------------------------------------------------
+    # Run collection or derivation
+    # ---------------------------------------------------------------------------
     try:
         if args.derive_from_btc:
-            summary = derive_from_btc_ohlcv(conn, start_ts, end_ts)
+            summary = derive_from_btc_ohlcv(
+                conn, start_ts, end_ts, is_postgres=is_postgres
+            )
         else:
-            summary = asyncio.run(collect_polymarket_history(start_ts, end_ts, conn))
+            summary = asyncio.run(
+                collect_polymarket_history(
+                    start_ts, end_ts, conn, is_postgres=is_postgres
+                )
+            )
 
-        # Print summary to structured log
         logger.info("final_summary", **summary)
     except KeyboardInterrupt:
         logger.info("collection_interrupted_by_user")

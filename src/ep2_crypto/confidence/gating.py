@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 import structlog
@@ -28,9 +28,29 @@ import structlog
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from ep2_crypto.confidence.conformal import ConformalPredictor
     from ep2_crypto.confidence.meta_labeling import MetaLabeler
     from ep2_crypto.models.calibration import IsotonicCalibrator
+
+
+@runtime_checkable
+class ConformalPredictorProtocol(Protocol):
+    """Structural protocol covering ConformalPredictor, AdaptiveConformalPredictor,
+    and CQRConformalPredictor. Any object implementing these three methods is
+    accepted by set_conformal(), enabling ablation between predictor variants.
+    """
+
+    @property
+    def is_calibrated(self) -> bool: ...
+
+    def gate(
+        self,
+        probas: NDArray[np.float64],
+    ) -> tuple[NDArray[np.bool_], NDArray[np.int8]]: ...
+
+    def predict_sets(
+        self,
+        probas: NDArray[np.float64],
+    ) -> list[set[int]]: ...
 
 logger = structlog.get_logger(__name__)
 
@@ -182,7 +202,7 @@ class ConfidenceGatingPipeline:
         # Injected components (optional — gates disabled if not set)
         self._calibrator: IsotonicCalibrator | None = None
         self._meta_labeler: MetaLabeler | None = None
-        self._conformal: ConformalPredictor | None = None
+        self._conformal: ConformalPredictorProtocol | None = None
 
     # -- Component injection ------------------------------------------------
 
@@ -194,8 +214,12 @@ class ConfidenceGatingPipeline:
         """Inject meta-labeling model."""
         self._meta_labeler = meta_labeler
 
-    def set_conformal(self, conformal: ConformalPredictor) -> None:
-        """Inject conformal predictor."""
+    def set_conformal(self, conformal: ConformalPredictorProtocol) -> None:
+        """Inject any conformal predictor implementing ConformalPredictorProtocol.
+
+        Accepts ConformalPredictor, AdaptiveConformalPredictor, or
+        CQRConformalPredictor — any object satisfying the protocol.
+        """
         self._conformal = conformal
 
     # -- Main entry point ---------------------------------------------------
@@ -367,7 +391,29 @@ class ConfidenceGatingPipeline:
     # -- Individual gate implementations ------------------------------------
 
     def _gate_calibration(self, probas: NDArray[np.float64]) -> GateDecision:
-        """Gate 1: Isotonic calibration."""
+        """Gate 1: Isotonic calibration.
+
+        Always passes (calibration is a transform, not a filter), but validates
+        that input probabilities are well-formed. Rejects on NaN, negative values,
+        or probability mass that deviates by more than 1% from 1.0.
+        """
+        # Validate probability vector before any processing
+        if np.any(np.isnan(probas)) or np.any(probas < 0.0):
+            return GateDecision(
+                gate_id=GateID.CALIBRATION,
+                passed=False,
+                reason="invalid_probas_nan_or_negative",
+                value=0.0,
+            )
+        prob_sum = float(probas.sum())
+        if abs(prob_sum - 1.0) > 0.01:
+            return GateDecision(
+                gate_id=GateID.CALIBRATION,
+                passed=False,
+                reason=f"invalid_probas_sum={prob_sum:.4f}",
+                value=0.0,
+            )
+
         if not self._config.enable_calibration:
             return GateDecision(
                 gate_id=GateID.CALIBRATION,
@@ -586,7 +632,7 @@ class ConfidenceGatingPipeline:
 
         at = self._config.adaptive_threshold
         adjustment = at.regime_adjustments.get(regime_label, 0.0)
-        threshold = np.clip(at.base_threshold + adjustment, at.min_threshold, at.max_threshold)
+        threshold = float(np.clip(at.base_threshold + adjustment, at.min_threshold, at.max_threshold))
 
         passed = current_confidence >= threshold
         reason = "passed" if passed else f"conf={current_confidence:.3f}<threshold={threshold:.3f}"

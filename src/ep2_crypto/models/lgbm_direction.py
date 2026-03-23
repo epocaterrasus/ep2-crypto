@@ -113,13 +113,60 @@ class LGBMDirectionModel:
                 weights[i] = self._config.class_weight[direction]
         return weights
 
-    def _with_feature_names(self, x: NDArray[np.float64]) -> Any:
-        """Wrap numpy array with feature names if available (avoids LightGBM warning)."""
-        if self._feature_names is None:
-            return x
-        import pandas as pd
+    def _inject_dummy_classes(
+        self,
+        x_train: NDArray[np.float64],
+        y_encoded: NDArray[np.int32],
+    ) -> tuple[NDArray[np.float64], NDArray[np.int32], NDArray[np.float64] | None]:
+        """Inject zero-weight dummy rows for any missing class so LightGBM always
+        sees all 3 classes (0=DOWN, 1=FLAT, 2=UP).
 
-        return pd.DataFrame(x, columns=self._feature_names)
+        Without this, when FLAT is absent from a training window LightGBM will
+        crash because num_class=3 but only 2 classes appear in y.
+
+        Returns:
+            (x_augmented, y_augmented, sample_weight_or_None)
+            When all classes are present and no class_weight is set, returns
+            (x_train, y_encoded, None) to preserve original behaviour.
+        """
+        present = set(int(v) for v in y_encoded)
+        missing = {0, 1, 2} - present
+
+        if not missing:
+            # No dummy rows needed — return original arrays unchanged.
+            # _build_sample_weights returns None when no class_weight is configured,
+            # which is equivalent to uniform weighting but avoids unnecessary overhead.
+            return x_train, y_encoded, self._build_sample_weights(y_encoded)
+
+        # Build per-row weights: configured weight (or 1.0) for real rows,
+        # 0.0 for dummy rows so they contribute nothing to the loss.
+        real_weights = self._build_sample_weights(y_encoded)
+        if real_weights is None:
+            real_weights = np.ones(len(y_encoded), dtype=np.float64)
+
+        dummy_x_rows = [np.zeros((1, x_train.shape[1]), dtype=np.float64) for _ in missing]
+        dummy_y_rows = [np.array([cls], dtype=np.int32) for cls in missing]
+        dummy_w_rows = [np.zeros(1, dtype=np.float64) for _ in missing]
+
+        x_aug = np.concatenate([x_train] + dummy_x_rows, axis=0)
+        y_aug = np.concatenate([y_encoded] + dummy_y_rows, axis=0)
+        w_aug = np.concatenate([real_weights] + dummy_w_rows, axis=0)
+
+        return x_aug, y_aug, w_aug
+
+    def _classes_match(self, other: LGBMDirectionModel) -> bool:
+        """Check if the other model was trained on the same 3 classes.
+
+        Used to guard warm-start: if class sets differ between folds,
+        skipping init_model prevents a LightGBM crash.
+        """
+        if other._model is None:
+            return False
+        try:
+            other_classes = set(int(c) for c in other._model.classes_)
+            return other_classes == {0, 1, 2}
+        except AttributeError:
+            return False
 
     def train(
         self,
@@ -128,7 +175,7 @@ class LGBMDirectionModel:
         x_val: NDArray[np.float64] | None = None,
         y_val: NDArray[np.int8] | None = None,
         feature_names: list[str] | None = None,
-        init_model: lgb.LGBMClassifier | None = None,
+        init_model: LGBMDirectionModel | None = None,
     ) -> dict[str, float]:
         """Train the LightGBM classifier.
 
@@ -138,7 +185,9 @@ class LGBMDirectionModel:
             x_val: Validation features (purged from training).
             y_val: Validation labels.
             feature_names: Feature names for importance tracking.
-            init_model: Previous model for warm-start.
+            init_model: Previous LGBMDirectionModel for warm-start.
+                Warm-start is skipped automatically when class sets differ
+                between folds to prevent LightGBM crashes.
 
         Returns:
             Dict with training metrics (accuracy, best_iteration, etc.).
@@ -146,19 +195,9 @@ class LGBMDirectionModel:
         y_encoded = self._encode_labels(y_train)
         self._feature_names = feature_names
 
-        # LightGBM's sklearn wrapper fits an internal LabelEncoder on y_train.
-        # If a class is absent from the training window (flat labels are ~0.009%
-        # of bars, so most 4032-bar windows have zero), the encoder only knows
-        # the seen classes and crashes when the eval_set contains the missing
-        # class. Fix: inject one zero-weight dummy row per missing class so the
-        # encoder always sees all 3 classes without affecting training.
-        missing = set([0, 1, 2]) - set(int(c) for c in np.unique(y_encoded))
-        if missing:
-            n_missing = len(missing)
-            dummy_x = np.zeros((n_missing, x_train.shape[1]), dtype=np.float64)
-            dummy_y = np.array(sorted(missing), dtype=np.int32)
-            x_train = np.vstack([x_train, dummy_x])
-            y_encoded = np.append(y_encoded, dummy_y)
+        # Inject zero-weight dummy rows for missing classes so LightGBM always
+        # receives all 3 classes regardless of which labels appear in this fold.
+        x_aug, y_aug, sample_weight = self._inject_dummy_classes(x_train, y_encoded)
 
         cfg = self._config
         model = lgb.LGBMClassifier(
@@ -178,29 +217,21 @@ class LGBMDirectionModel:
             importance_type="gain",
         )
 
-        sample_weight = self._build_sample_weights(y_encoded)
-        # Zero-weight the dummy rows so they don't influence training
-        if missing:
-            n_missing = len(missing)
-            if sample_weight is None:
-                sample_weight = np.ones(len(y_encoded), dtype=np.float64)
-            sample_weight[-n_missing:] = 0.0
-
         fit_kwargs: dict[str, Any] = {
-            "X": x_train,
-            "y": y_encoded,
+            "X": x_aug,
+            "y": y_aug,
             "sample_weight": sample_weight,
         }
 
-        if init_model is not None:
-            # Only warm-start if init_model was trained on the same set of classes.
-            # When flat-labeled bars are absent from a fold window, LightGBM trains
-            # with fewer classes, and its internal LabelEncoder conflicts with a
-            # subsequent fold that has a different class count.
-            current_classes = set(int(c) for c in np.unique(y_encoded))
-            init_classes = set(int(c) for c in getattr(init_model, "classes_", []))
-            if current_classes == init_classes:
-                fit_kwargs["init_model"] = init_model.booster_
+        # Warm-start: only inject init_model when the previous model also saw
+        # all 3 classes. If class sets differ between folds, skip init_model
+        # to prevent LightGBM from crashing on class count mismatch.
+        if (
+            init_model is not None
+            and init_model._model is not None
+            and self._classes_match(init_model)
+        ):
+            fit_kwargs["init_model"] = init_model._model.booster_
 
         callbacks: list[Any] = []
         eval_set = []
@@ -237,14 +268,9 @@ class LGBMDirectionModel:
         # Track feature importance
         self._update_feature_importance()
 
-        # Compute training metrics via predict_proba + argmax to avoid LabelEncoder
-        # conflicts when some classes are absent from the training window.
-        train_proba = model.predict_proba(self._with_feature_names(x_train))
-        train_pred = np.argmax(train_proba, axis=1).astype(np.int32)
-        # Remap internal indices back through the fitted LabelEncoder
-        trained_classes = list(model.classes_)
-        train_pred_mapped = np.array([trained_classes[i] for i in train_pred], dtype=np.int32)
-        train_acc = float(np.mean(train_pred_mapped == y_encoded))
+        # Compute training metrics on the ORIGINAL (non-augmented) data
+        train_pred = model.predict(x_train)
+        train_acc = float(np.mean(train_pred == y_encoded))
 
         metrics: dict[str, float] = {
             "train_accuracy": train_acc,
@@ -252,10 +278,8 @@ class LGBMDirectionModel:
         }
 
         if x_val is not None and y_val is not None:
-            val_proba = model.predict_proba(self._with_feature_names(x_val))
-            val_pred = np.argmax(val_proba, axis=1).astype(np.int32)
-            val_pred_mapped = np.array([trained_classes[i] for i in val_pred], dtype=np.int32)
-            val_acc = float(np.mean(val_pred_mapped == y_val_encoded))
+            val_pred = model.predict(x_val)
+            val_acc = float(np.mean(val_pred == self._encode_labels(y_val)))
             metrics["val_accuracy"] = val_acc
 
         return metrics
@@ -272,7 +296,7 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        classes = self._model.predict(self._with_feature_names(x)).astype(np.int32)
+        classes = self._model.predict(x).astype(np.int32)
         return self._decode_labels(classes)
 
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -287,7 +311,7 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        result: NDArray[np.float64] = self._model.predict_proba(self._with_feature_names(x)).astype(np.float64)
+        result: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
         return result
 
     def _update_feature_importance(self) -> None:
@@ -415,12 +439,3 @@ class LGBMDirectionModel:
     def raw_model(self) -> lgb.LGBMClassifier | None:
         """Access the underlying LightGBM model (for warm-start)."""
         return self._model
-
-
-class _LabelEncoder3:
-    """Minimal label encoder for 3-class LightGBM reconstruction."""
-
-    classes_ = np.array([0, 1, 2])
-
-    def inverse_transform(self, y: NDArray[np.int64]) -> NDArray[np.int64]:
-        return y

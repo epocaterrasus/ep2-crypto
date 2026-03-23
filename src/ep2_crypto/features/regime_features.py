@@ -51,9 +51,11 @@ class ERFeatureComputer(FeatureComputer):
         volumes: NDArray[np.float64],
         **kwargs: NDArray[np.float64] | None,
     ) -> dict[str, float]:
+        w1 = self._window
+        w2 = self._window * 2
         nan_result = {
-            "er_10": float("nan"),
-            "er_20": float("nan"),
+            f"er_{w1}": float("nan"),
+            f"er_{w2}": float("nan"),
         }
 
         if idx < self.warmup_bars - 1:
@@ -61,9 +63,10 @@ class ERFeatureComputer(FeatureComputer):
 
         result: dict[str, float] = {}
 
-        for window, label in [(self._window, "10"), (self._window * 2, "20")]:
+        for window in [w1, w2]:
+            key = f"er_{window}"
             if idx < window:
-                result[f"er_{label}"] = float("nan")
+                result[key] = float("nan")
                 continue
 
             start = idx - window
@@ -71,14 +74,14 @@ class ERFeatureComputer(FeatureComputer):
             individual_moves = float(np.sum(np.abs(np.diff(closes[start : idx + 1]))))
 
             if individual_moves > 0:
-                result[f"er_{label}"] = net_move / individual_moves
+                result[key] = net_move / individual_moves
             else:
-                result[f"er_{label}"] = 0.0
+                result[key] = 0.0
 
         return result
 
     def output_names(self) -> list[str]:
-        return ["er_10", "er_20"]
+        return [f"er_{self._window}", f"er_{self._window * 2}"]
 
 
 class GARCHFeatureComputer(FeatureComputer):
@@ -150,7 +153,11 @@ class GARCHFeatureComputer(FeatureComputer):
             if sigma2 <= 0:
                 sigma2 = 1e-8
 
-            for i in range(1, len(returns)):
+            # Iterate range(1, len(returns)+1) so the last step uses returns[idx-1],
+            # matching the incremental path which also uses r = log(closes[idx]/closes[idx-1]).
+            # Previously range(1, len(returns)) stopped at returns[idx-2], causing
+            # cold-start vs incremental divergence of ~1-2% in garch_vol.
+            for i in range(1, len(returns) + 1):
                 r2 = returns[i - 1] ** 2
                 sigma2 = self._omega + self._alpha * r2 + self._beta * sigma2
 

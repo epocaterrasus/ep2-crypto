@@ -613,6 +613,10 @@ class MultiTaskGRUFeatureExtractor:
     def hidden_size(self) -> int:
         return self._config.hidden_size
 
+    @property
+    def seq_len(self) -> int:
+        return self._config.seq_len
+
     def train(
         self,
         x_train: NDArray[np.float64],
@@ -802,3 +806,56 @@ class MultiTaskGRUFeatureExtractor:
             return np.empty((0, cfg.hidden_size), dtype=np.float64)
 
         return torch.cat(hidden_states, dim=0).numpy().astype(np.float64)
+
+    def save(self, path: Path | str) -> None:
+        """Save multi-task GRU model weights to disk.
+
+        Saves a single .pt checkpoint (same layout as GRUFeatureExtractor).
+        """
+        if self._model is None:
+            msg = "Model not fitted. Cannot save."
+            raise RuntimeError(msg)
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cfg = self._config
+        torch.save(
+            {
+                "state_dict": self._model.state_dict(),
+                "input_size": self._input_size,
+                "config": {
+                    "hidden_size": cfg.hidden_size,
+                    "num_layers": cfg.num_layers,
+                    "dropout": cfg.dropout,
+                    "seq_len": cfg.seq_len,
+                    "vol_weight": cfg.vol_weight,
+                    "volume_weight": cfg.volume_weight,
+                },
+            },
+            str(path.with_suffix(".pt")),
+        )
+
+    def load(self, path: Path | str) -> None:
+        """Load multi-task GRU model weights from disk."""
+        path = Path(path)
+        checkpoint = torch.load(
+            str(path.with_suffix(".pt")),
+            map_location=self._device,
+            weights_only=True,
+        )
+        self._input_size = checkpoint["input_size"]
+        cfg_dict = checkpoint["config"]
+        self._config = MultiTaskGRUConfig(
+            hidden_size=cfg_dict["hidden_size"],
+            num_layers=cfg_dict["num_layers"],
+            dropout=cfg_dict["dropout"],
+            seq_len=cfg_dict["seq_len"],
+            vol_weight=cfg_dict.get("vol_weight", 0.1),
+            volume_weight=cfg_dict.get("volume_weight", 0.1),
+        )
+        self._model = _MultiTaskGRUNet(
+            input_size=self._input_size,
+            hidden_size=self._config.hidden_size,
+            num_layers=self._config.num_layers,
+            dropout=self._config.dropout,
+        ).to(self._device)
+        self._model.load_state_dict(checkpoint["state_dict"])

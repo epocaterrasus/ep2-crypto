@@ -10,8 +10,6 @@ dependencies = [
     "structlog>=24.0",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    "onnxscript>=0.6.2",
-    "psycopg2-binary>=2.9",
 ]
 
 [project.optional-dependencies]
@@ -22,18 +20,23 @@ ml = [
     "hmmlearn>=0.3",
     "optuna>=4.0",
     "scikit-learn>=1.5",
+    "joblib>=1.4",            # model serialization (calibration.py, stacking.py)
     "shap>=0.46",
     "onnx>=1.17",
     "onnxruntime>=1.20",
     "numba>=0.60",
-    "arch>=7.1",
 ]
 ingest = [
     "ccxt>=4.4",
     "websockets>=13.0",
     "httpx>=0.27",
+    "aiohttp>=3.10",          # deribit.py and polymarket.py (lazy import), collect_polymarket_history.py
     "aiosqlite>=0.20",
     "yfinance>=0.2",
+    "tqdm>=4.67",             # collect_history.py, collect_polymarket_history.py
+]
+db = [
+    "psycopg2-binary>=2.9",   # TimescaleDB/PostgreSQL (train.py, migrate_to_timescale.py)
 ]
 api = [
     "fastapi>=0.115",
@@ -42,6 +45,7 @@ api = [
 ]
 polymarket = [
     "py-clob-client>=0.18",
+    "aiohttp>=3.10",          # polymarket.py WebSocket client
 ]
 dev = [
     "pytest>=8.0",
@@ -53,7 +57,7 @@ dev = [
     "types-pyyaml>=6.0",
 ]
 all = [
-    "ep2-crypto[ml,ingest,api,polymarket]",
+    "ep2-crypto[ml,ingest,db,api,polymarket]",
 ]
 
 [project.scripts]
@@ -127,7 +131,6 @@ module = [
     "optuna.*",
     "shap.*",
     "numba.*",
-    "arch.*",
     "ccxt.*",
     "yfinance.*",
     "onnx.*",
@@ -135,6 +138,10 @@ module = [
     "scipy.*",
     "sklearn.*",
     "joblib.*",
+    "aiohttp.*",
+    "tqdm.*",
+    "psycopg2.*",
+    "py_clob_client.*",
 ]
 ignore_missing_imports = true
 

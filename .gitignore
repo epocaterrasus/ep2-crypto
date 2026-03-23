@@ -35,9 +35,11 @@ data/
 .DS_Store
 Thumbs.db
 
-# Secrets
+# Secrets — ignore real env files, but track the example template
 .env
 .env.*
+!.env.example
+!docker/.env.example
 credentials.json
 
 # Claude

@@ -37,14 +37,18 @@ USER ep2
 COPY --chown=ep2:ep2 pyproject.toml uv.lock ./
 
 # Install dependencies (frozen = exact lockfile versions)
-RUN uv sync --frozen --extra all --extra polymarket --no-dev --no-install-project
+# --extra all resolves to ml + ingest + api + polymarket (see pyproject.toml [all])
+RUN uv sync --frozen --extra all --no-dev --no-install-project
 
 # Copy application code
 COPY --chown=ep2:ep2 src/ src/
 COPY --chown=ep2:ep2 scripts/ scripts/
 
 # Install the project itself
-RUN uv sync --frozen --extra all --extra polymarket --no-dev
+RUN uv sync --frozen --extra all --no-dev
+
+# Persist trained models across container restarts via a named volume
+RUN mkdir -p /app/models
 
 EXPOSE 8000
 

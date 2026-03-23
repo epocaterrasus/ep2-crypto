@@ -250,13 +250,34 @@ class FeaturePipeline:
     ) -> NDArray[np.float64]:
         """Compute features for all bars, returning a 2D array.
 
+        Works with OHLCV-only data (no order book or trade data required).
+        Features that need missing optional arrays (bids, asks, trade_sizes,
+        nq_closes, eth_closes, etc.) return NaN for those specific columns;
+        all OHLCV-derived features (volatility, momentum, temporal, regime)
+        compute normally.
+
+        Column order matches ``self.output_names`` exactly.  Use
+        ``pipeline.output_names`` to get the feature name for each column.
+
         Args:
-            timestamps, opens, highs, lows, closes, volumes: OHLCV arrays.
-            fill_nan: If True, forward-fill NaN values in output.
-            **kwargs: Optional arrays.
+            timestamps: Bar open timestamps in milliseconds (int64).
+            opens, highs, lows, closes, volumes: OHLCV float64 arrays,
+                all the same length.
+            fill_nan: If True (default), forward-fill NaN values column-wise
+                after warmup.  NaN columns that never have a valid value
+                (e.g. OBI when no order-book data supplied) remain all-NaN.
+            **kwargs: Optional supplementary arrays keyed by name:
+                ``bids``, ``asks``, ``bid_sizes``, ``ask_sizes`` — 2-D
+                (n_bars, n_levels) order-book snapshots;
+                ``trade_sizes``, ``trade_sides`` — per-bar aggregated trade
+                data (1-D);
+                ``nq_closes``, ``eth_closes`` — cross-market close prices
+                (1-D, same length as OHLCV).
 
         Returns:
-            2D array (n_bars, n_features). Rows before warmup are NaN.
+            float64 array of shape ``(n_bars, n_features)``.
+            Rows before ``warmup_bars`` contain NaN (or forward-filled values
+            when ``fill_nan=True``).
         """
         n_bars = len(timestamps)
         names = self.output_names

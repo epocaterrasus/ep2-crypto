@@ -24,14 +24,14 @@ References:
 
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import dataclass, field
 from enum import Enum
 
 import numpy as np
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

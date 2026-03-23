@@ -75,8 +75,8 @@ class TestBarProcessing:
         loop._running = True
         await loop._on_bar_close()
         assert loop.bar_count == 1
-        # No API state update in collect-only mode
-        assert loop.api_state == {}
+        # No API state update in collect-only mode — last_prediction_ms stays 0
+        assert loop.api_state.last_prediction_ms == 0
 
     @pytest.mark.asyncio()
     async def test_on_bar_close_full_mode(self) -> None:
@@ -84,8 +84,9 @@ class TestBarProcessing:
         loop._running = True
         await loop._on_bar_close()
         assert loop.bar_count == 1
-        assert "direction" in loop.api_state
-        assert "last_prediction_ms" in loop.api_state
+        # API state updated with direction and timestamp
+        assert loop.api_state.direction in ("up", "down", "flat")
+        assert loop.api_state.last_prediction_ms > 0
 
     @pytest.mark.asyncio()
     async def test_multiple_bars(self) -> None:
@@ -134,24 +135,40 @@ class TestInference:
     async def test_prediction_direction_valid(self) -> None:
         loop = LivePredictionLoop()
         prediction = await loop._run_inference({})
-        assert prediction["direction"] in ("long", "short", "flat")
+        assert prediction["direction"] in ("up", "down", "flat")
 
 
 class TestAPIState:
     def test_update_api_state(self) -> None:
         loop = LivePredictionLoop()
         prediction = {
-            "direction": "long",
+            "direction": "up",
             "magnitude": 0.002,
             "confidence": 0.72,
             "regime": "trending",
+            "regime_confidence": 0.85,
         }
         loop._update_api_state(prediction, timestamp_ms=5000)
         state = loop.api_state
-        assert state["direction"] == "long"
-        assert state["magnitude"] == 0.002
-        assert state["confidence"] == 0.72
-        assert state["last_prediction_ms"] == 5000
+        assert state.direction == "up"
+        assert state.magnitude == 0.002
+        assert state.confidence == 0.72
+        assert state.last_prediction_ms == 5000
+        assert state.regime == "trending"
+        assert state.regime_confidence == 0.85
+
+    def test_api_state_is_appstate(self) -> None:
+        """api_state must be AppState (not a raw dict) so the FastAPI server can read it."""
+        from ep2_crypto.api.server import AppState
+        loop = LivePredictionLoop()
+        assert isinstance(loop.api_state, AppState)
+
+    def test_shared_api_state_is_same_object(self) -> None:
+        """Passing api_state into the constructor must share the same object."""
+        from ep2_crypto.api.server import AppState
+        shared = AppState()
+        loop = LivePredictionLoop(api_state=shared)
+        assert loop.api_state is shared
 
 
 class TestRetrainCheck:
@@ -180,8 +197,9 @@ class TestShutdown:
         assert not loop.running
 
     @pytest.mark.asyncio()
-    async def test_start_and_stop(self) -> None:
-        loop = LivePredictionLoop()
+    async def test_start_and_stop(self, tmp_path: Path) -> None:
+        db = str(tmp_path / "test.db")
+        loop = LivePredictionLoop(collect_only=True, db_path=db)
 
         async def stop_after_delay() -> None:
             await asyncio.sleep(0.1)

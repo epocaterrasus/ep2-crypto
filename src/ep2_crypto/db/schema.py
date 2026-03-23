@@ -1,15 +1,18 @@
-"""Database schema for all ep2-crypto data types.
+"""Database schema for ep2-crypto.
 
-SQLite (dev): timestamps as INTEGER (unix ms), REAL for floats.
-PostgreSQL/TimescaleDB (prod): timestamps as BIGINT, DOUBLE PRECISION for floats.
+SQLite is used in development; TimescaleDB (PostgreSQL) is used in production.
+All timestamps are stored as INTEGER (Unix milliseconds) in SQLite.
+TimescaleDB uses TIMESTAMPTZ — the migration script handles conversion.
 
-INTEGER in PostgreSQL is 32-bit (max ~2.1 billion); unix-ms values (~1.74e12) require BIGINT.
+TimescaleDB DDL lives in scripts/migrate_to_timescale.py.
+This file owns the SQLite schema and the create_tables() helper used by dev
+and test code.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -57,7 +60,7 @@ CREATE TABLE IF NOT EXISTS agg_trades (
     price           REAL    NOT NULL,
     quantity        REAL    NOT NULL,
     is_buyer_maker  INTEGER NOT NULL,
-    trade_id        TEXT,
+    trade_id        TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (timestamp_ms, symbol, trade_id)
 )
 """
@@ -106,10 +109,10 @@ CREATE TABLE IF NOT EXISTS cross_market (
 
 ONCHAIN_TABLE = """
 CREATE TABLE IF NOT EXISTS onchain_whale (
-    timestamp_ms    INTEGER NOT NULL,
-    tx_hash         TEXT    NOT NULL,
-    value_btc       REAL    NOT NULL,
-    fee_rate        REAL,
+    timestamp_ms     INTEGER NOT NULL,
+    tx_hash          TEXT    NOT NULL,
+    value_btc        REAL    NOT NULL,
+    fee_rate         REAL,
     is_exchange_flow INTEGER,
     PRIMARY KEY (timestamp_ms, tx_hash)
 )
@@ -117,13 +120,13 @@ CREATE TABLE IF NOT EXISTS onchain_whale (
 
 REGIME_TABLE = """
 CREATE TABLE IF NOT EXISTS regime_label (
-    timestamp_ms    INTEGER NOT NULL,
-    symbol          TEXT    NOT NULL,
-    regime          TEXT    NOT NULL,
-    hmm_state       INTEGER,
-    hmm_prob        REAL,
+    timestamp_ms     INTEGER NOT NULL,
+    symbol           TEXT    NOT NULL,
+    regime           TEXT    NOT NULL,
+    hmm_state        INTEGER,
+    hmm_prob         REAL,
     bocpd_run_length REAL,
-    garch_vol       REAL,
+    garch_vol        REAL,
     efficiency_ratio REAL,
     PRIMARY KEY (timestamp_ms, symbol)
 )
@@ -131,15 +134,15 @@ CREATE TABLE IF NOT EXISTS regime_label (
 
 PREDICTION_TABLE = """
 CREATE TABLE IF NOT EXISTS prediction (
-    timestamp_ms        INTEGER NOT NULL,
-    symbol              TEXT    NOT NULL,
-    direction           TEXT    NOT NULL,
-    confidence          REAL    NOT NULL,
-    calibrated_prob_up  REAL,
+    timestamp_ms         INTEGER NOT NULL,
+    symbol               TEXT    NOT NULL,
+    direction            TEXT    NOT NULL,
+    confidence           REAL    NOT NULL,
+    calibrated_prob_up   REAL,
     calibrated_prob_down REAL,
-    position_size       REAL,
-    regime              TEXT,
-    model_version       TEXT,
+    position_size        REAL,
+    regime               TEXT,
+    model_version        TEXT,
     PRIMARY KEY (timestamp_ms, symbol)
 )
 """
@@ -150,6 +153,89 @@ CREATE TABLE IF NOT EXISTS feature_snapshot (
     symbol          TEXT    NOT NULL,
     features_json   TEXT    NOT NULL,
     PRIMARY KEY (timestamp_ms, symbol)
+)
+"""
+
+# -- Monitoring tables (also defined in monitoring/performance_logger.py) ------
+# Canonical DDL lives here; performance_logger.py creates its own SQLite
+# connection independently and duplicates these definitions for isolation.
+
+TRADE_LOG_TABLE = """
+CREATE TABLE IF NOT EXISTS trade_log (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_ms         INTEGER NOT NULL,
+    direction            TEXT    NOT NULL,
+    predicted_confidence REAL    NOT NULL,
+    predicted_magnitude  REAL    NOT NULL,
+    actual_direction     TEXT,
+    actual_return        REAL,
+    pnl                  REAL,
+    slippage_expected    REAL,
+    slippage_actual      REAL,
+    latency_ms           REAL,
+    regime               TEXT,
+    features_json        TEXT,
+    entry_price          REAL,
+    exit_price           REAL,
+    position_size        REAL,
+    meta_json            TEXT,
+    created_at           REAL    NOT NULL DEFAULT (strftime('%s', 'now'))
+)
+"""
+
+BAR_STATE_LOG_TABLE = """
+CREATE TABLE IF NOT EXISTS bar_state_log (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_ms         INTEGER NOT NULL,
+    bar_close            REAL    NOT NULL,
+    regime               TEXT,
+    regime_confidence    REAL,
+    model_prediction     TEXT,
+    model_confidence     REAL,
+    risk_state_json      TEXT,
+    feature_values_json  TEXT,
+    kill_switch_active   INTEGER NOT NULL DEFAULT 0,
+    drawdown_multiplier  REAL,
+    volatility_ann       REAL,
+    position_open        INTEGER NOT NULL DEFAULT 0,
+    equity               REAL,
+    created_at           REAL    NOT NULL DEFAULT (strftime('%s', 'now'))
+)
+"""
+
+# -- Polymarket tables ---------------------------------------------------------
+# SQLite versions for dev/test; TimescaleDB versions are in migrate_to_timescale.py.
+
+POLYMARKET_MARKETS_TABLE = """
+CREATE TABLE IF NOT EXISTS polymarket_markets (
+    timestamp_ms    INTEGER NOT NULL,
+    condition_id    TEXT    NOT NULL,
+    question        TEXT    NOT NULL,
+    end_date_iso    TEXT,
+    active          INTEGER NOT NULL DEFAULT 1,
+    resolved        INTEGER NOT NULL DEFAULT 0,
+    resolution      TEXT,
+    yes_price       REAL,
+    no_price        REAL,
+    volume_usd      REAL,
+    liquidity_usd   REAL,
+    raw_json        TEXT,
+    PRIMARY KEY (timestamp_ms, condition_id)
+)
+"""
+
+POLYMARKET_POSITIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS polymarket_positions (
+    timestamp_ms    INTEGER NOT NULL,
+    condition_id    TEXT    NOT NULL,
+    side            TEXT    NOT NULL,
+    size            REAL    NOT NULL,
+    avg_price       REAL    NOT NULL,
+    current_price   REAL,
+    unrealized_pnl  REAL,
+    realized_pnl    REAL,
+    status          TEXT    NOT NULL DEFAULT 'open',
+    PRIMARY KEY (timestamp_ms, condition_id, side)
 )
 """
 
@@ -165,11 +251,19 @@ ALL_TABLES = [
     REGIME_TABLE,
     PREDICTION_TABLE,
     FEATURE_SNAPSHOT_TABLE,
+    TRADE_LOG_TABLE,
+    BAR_STATE_LOG_TABLE,
+    POLYMARKET_MARKETS_TABLE,
+    POLYMARKET_POSITIONS_TABLE,
 ]
 
 # -- Index definitions --------------------------------------------------------
+# All time-series tables: compound (symbol, timestamp_ms) index for the
+# most common query pattern (WHERE symbol = ? AND timestamp_ms BETWEEN ? AND ?).
+# Single-column timestamp_ms indexes are retained for queries without a symbol filter.
 
 INDEXES = [
+    # Single-column time indexes
     "CREATE INDEX IF NOT EXISTS idx_ohlcv_ts ON ohlcv (timestamp_ms)",
     "CREATE INDEX IF NOT EXISTS idx_orderbook_ts ON orderbook_snapshot (timestamp_ms)",
     "CREATE INDEX IF NOT EXISTS idx_trades_ts ON agg_trades (timestamp_ms)",
@@ -179,6 +273,23 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cross_market_ts ON cross_market (timestamp_ms)",
     "CREATE INDEX IF NOT EXISTS idx_regime_ts ON regime_label (timestamp_ms)",
     "CREATE INDEX IF NOT EXISTS idx_prediction_ts ON prediction (timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_trade_log_ts ON trade_log (timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_bar_state_log_ts ON bar_state_log (timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_polymarket_markets_ts ON polymarket_markets (timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_polymarket_positions_ts ON polymarket_positions (timestamp_ms)",
+    # Compound (symbol, timestamp_ms) indexes — covers the repository.py query pattern
+    "CREATE INDEX IF NOT EXISTS idx_ohlcv_sym_ts ON ohlcv (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_orderbook_sym_ts ON orderbook_snapshot (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_trades_sym_ts ON agg_trades (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_funding_sym_ts ON funding_rate (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_oi_sym_ts ON open_interest (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_liquidation_sym_ts ON liquidation (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_cross_market_sym_ts ON cross_market (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_regime_sym_ts ON regime_label (symbol, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_prediction_sym_ts ON prediction (symbol, timestamp_ms)",
+    # Polymarket condition_id lookup
+    "CREATE INDEX IF NOT EXISTS idx_polymarket_markets_cid ON polymarket_markets (condition_id, timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_polymarket_positions_cid ON polymarket_positions (condition_id, timestamp_ms)",
 ]
 
 # -- PRAGMA settings ----------------------------------------------------------
@@ -186,219 +297,20 @@ INDEXES = [
 PRAGMA_SETTINGS = [
     "PRAGMA journal_mode = WAL",
     "PRAGMA synchronous = NORMAL",
-    "PRAGMA cache_size = -64000",  # 64 MB
+    "PRAGMA cache_size = -64000",        # 64 MB
     "PRAGMA busy_timeout = 5000",
     "PRAGMA journal_size_limit = 67108864",  # 64 MB
-    "PRAGMA mmap_size = 268435456",  # 256 MB
+    "PRAGMA mmap_size = 268435456",          # 256 MB
     "PRAGMA temp_store = MEMORY",
     "PRAGMA foreign_keys = ON",
 ]
 
 
-# -- PostgreSQL table definitions (BIGINT for ms timestamps, DOUBLE PRECISION for floats) ------
-
-_PG_OHLCV = """
-CREATE TABLE IF NOT EXISTS ohlcv (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    interval        TEXT             NOT NULL,
-    open            DOUBLE PRECISION NOT NULL,
-    high            DOUBLE PRECISION NOT NULL,
-    low             DOUBLE PRECISION NOT NULL,
-    close           DOUBLE PRECISION NOT NULL,
-    volume          DOUBLE PRECISION NOT NULL,
-    quote_volume    DOUBLE PRECISION,
-    trades_count    INTEGER,
-    PRIMARY KEY (timestamp_ms, symbol, interval)
-)
-"""
-
-_PG_ORDERBOOK = """
-CREATE TABLE IF NOT EXISTS orderbook_snapshot (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    bid_prices      TEXT             NOT NULL,
-    bid_sizes       TEXT             NOT NULL,
-    ask_prices      TEXT             NOT NULL,
-    ask_sizes       TEXT             NOT NULL,
-    mid_price       DOUBLE PRECISION NOT NULL,
-    spread          DOUBLE PRECISION NOT NULL,
-    PRIMARY KEY (timestamp_ms, symbol)
-)
-"""
-
-_PG_TRADES = """
-CREATE TABLE IF NOT EXISTS agg_trades (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    price           DOUBLE PRECISION NOT NULL,
-    quantity        DOUBLE PRECISION NOT NULL,
-    is_buyer_maker  INTEGER          NOT NULL,
-    trade_id        TEXT,
-    PRIMARY KEY (timestamp_ms, symbol, trade_id)
-)
-"""
-
-_PG_FUNDING = """
-CREATE TABLE IF NOT EXISTS funding_rate (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    funding_rate    DOUBLE PRECISION NOT NULL,
-    mark_price      DOUBLE PRECISION,
-    index_price     DOUBLE PRECISION,
-    PRIMARY KEY (timestamp_ms, symbol)
-)
-"""
-
-_PG_OI = """
-CREATE TABLE IF NOT EXISTS open_interest (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    open_interest   DOUBLE PRECISION NOT NULL,
-    oi_value_usd    DOUBLE PRECISION,
-    PRIMARY KEY (timestamp_ms, symbol)
-)
-"""
-
-_PG_LIQUIDATION = """
-CREATE TABLE IF NOT EXISTS liquidation (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    side            TEXT             NOT NULL,
-    price           DOUBLE PRECISION NOT NULL,
-    quantity        DOUBLE PRECISION NOT NULL,
-    PRIMARY KEY (timestamp_ms, symbol, side, price)
-)
-"""
-
-_PG_CROSS_MARKET = """
-CREATE TABLE IF NOT EXISTS cross_market (
-    timestamp_ms    BIGINT           NOT NULL,
-    symbol          TEXT             NOT NULL,
-    price           DOUBLE PRECISION NOT NULL,
-    source          TEXT             NOT NULL,
-    PRIMARY KEY (timestamp_ms, symbol, source)
-)
-"""
-
-_PG_ONCHAIN = """
-CREATE TABLE IF NOT EXISTS onchain_whale (
-    timestamp_ms     BIGINT           NOT NULL,
-    tx_hash          TEXT             NOT NULL,
-    value_btc        DOUBLE PRECISION NOT NULL,
-    fee_rate         DOUBLE PRECISION,
-    is_exchange_flow INTEGER,
-    PRIMARY KEY (timestamp_ms, tx_hash)
-)
-"""
-
-_PG_REGIME = """
-CREATE TABLE IF NOT EXISTS regime_label (
-    timestamp_ms     BIGINT           NOT NULL,
-    symbol           TEXT             NOT NULL,
-    regime           TEXT             NOT NULL,
-    hmm_state        INTEGER,
-    hmm_prob         DOUBLE PRECISION,
-    bocpd_run_length DOUBLE PRECISION,
-    garch_vol        DOUBLE PRECISION,
-    efficiency_ratio DOUBLE PRECISION,
-    PRIMARY KEY (timestamp_ms, symbol)
-)
-"""
-
-_PG_PREDICTION = """
-CREATE TABLE IF NOT EXISTS prediction (
-    timestamp_ms         BIGINT           NOT NULL,
-    symbol               TEXT             NOT NULL,
-    direction            TEXT             NOT NULL,
-    confidence           DOUBLE PRECISION NOT NULL,
-    calibrated_prob_up   DOUBLE PRECISION,
-    calibrated_prob_down DOUBLE PRECISION,
-    position_size        DOUBLE PRECISION,
-    regime               TEXT,
-    model_version        TEXT,
-    PRIMARY KEY (timestamp_ms, symbol)
-)
-"""
-
-_PG_FEATURE_SNAPSHOT = """
-CREATE TABLE IF NOT EXISTS feature_snapshot (
-    timestamp_ms    BIGINT NOT NULL,
-    symbol          TEXT   NOT NULL,
-    features_json   TEXT   NOT NULL,
-    PRIMARY KEY (timestamp_ms, symbol)
-)
-"""
-
-_PG_ALL_TABLES = [
-    _PG_OHLCV,
-    _PG_ORDERBOOK,
-    _PG_TRADES,
-    _PG_FUNDING,
-    _PG_OI,
-    _PG_LIQUIDATION,
-    _PG_CROSS_MARKET,
-    _PG_ONCHAIN,
-    _PG_REGIME,
-    _PG_PREDICTION,
-    _PG_FEATURE_SNAPSHOT,
-]
-
-# Indexes are identical for both backends (PostgreSQL supports IF NOT EXISTS since 9.5)
-_PG_INDEXES = INDEXES  # same DDL works
-
-
-def create_postgres_tables(dsn: str) -> Any:
-    """Create all tables and indexes in a PostgreSQL/TimescaleDB database.
-
-    Args:
-        dsn: PostgreSQL connection string, e.g.
-             "postgresql://ep2:secret@localhost:5432/ep2_crypto"
-
-    Returns:
-        Open psycopg2 connection with all tables created.
-    """
-    try:
-        import psycopg2  # type: ignore[import-untyped]
-    except ImportError:
-        msg = "psycopg2-binary required for PostgreSQL. Run: uv sync"
-        raise ImportError(msg) from None
-
-    conn = psycopg2.connect(dsn)
-    conn.autocommit = False
-    cur = conn.cursor()
-
-    for ddl in _PG_ALL_TABLES:
-        cur.execute(ddl)
-
-    for idx_ddl in _PG_INDEXES:
-        cur.execute(idx_ddl)
-
-    conn.commit()
-
-    cur.execute(
-        "SELECT count(*) FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
-    )
-    row = cur.fetchone()
-    table_count = row[0] if row else 0
-    cur.close()
-
-    logger.info("postgres_db_initialized", dsn=_redact_dsn(dsn), tables=table_count)
-    return conn
-
-
-def _redact_dsn(dsn: str) -> str:
-    if "@" in dsn:
-        prefix, rest = dsn.rsplit("@", 1)
-        if ":" in prefix:
-            scheme_user, _ = prefix.rsplit(":", 1)
-            return f"{scheme_user}:***@{rest}"
-    return dsn
-
-
-def create_tables(db_path: Path | str) -> sqlite3.Connection:
+def create_tables(db_path: "Path | str") -> sqlite3.Connection:
     """Create all tables, indexes, and set PRAGMA options.
+
+    This function is idempotent — it uses IF NOT EXISTS throughout and
+    can be called multiple times without side effects.
 
     Args:
         db_path: Path to SQLite database file. Use ":memory:" for in-memory.

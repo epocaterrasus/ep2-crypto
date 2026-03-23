@@ -80,6 +80,59 @@ class CatBoostDirectionModel:
             decoded[i] = self.CLASS_TO_LABEL[int(cls)]
         return decoded
 
+    def _build_pool_with_all_classes(
+        self,
+        x: NDArray[np.float64],
+        y_encoded: NDArray[np.int32],
+        feature_names: list[str] | None,
+        class_weights: dict[int, float] | None,
+    ) -> Pool:
+        """Build a CatBoost Pool that always contains all 3 classes (0, 1, 2).
+
+        When a class is absent from the training window CatBoost will only
+        output probabilities for the classes it saw, causing predict_proba to
+        return (n, 2) instead of (n, 3) and breaking the stacking ensemble.
+
+        Fix: append a single zero-weight dummy row for each missing class so
+        that CatBoost registers all three classes during fit.
+        """
+        present = set(int(v) for v in y_encoded)
+        missing = {0, 1, 2} - present
+
+        x_aug = x
+        y_aug = y_encoded
+        weights: NDArray[np.float64] | None = None
+
+        if missing:
+            # Build per-row weights: 1.0 for real rows, 0.0 for dummy rows
+            if class_weights:
+                real_weights = np.array(
+                    [class_weights.get(int(v), 1.0) for v in y_encoded],
+                    dtype=np.float64,
+                )
+            else:
+                real_weights = np.ones(len(y_encoded), dtype=np.float64)
+
+            dummy_x = np.zeros((len(missing), x.shape[1]), dtype=np.float64)
+            dummy_y = np.array(sorted(missing), dtype=np.int32)
+            dummy_w = np.zeros(len(missing), dtype=np.float64)
+
+            x_aug = np.concatenate([x, dummy_x], axis=0)
+            y_aug = np.concatenate([y_encoded, dummy_y], axis=0)
+            weights = np.concatenate([real_weights, dummy_w], axis=0)
+        elif class_weights:
+            weights = np.array(
+                [class_weights.get(int(v), 1.0) for v in y_encoded],
+                dtype=np.float64,
+            )
+
+        return Pool(
+            x_aug,
+            y_aug,
+            weight=weights,
+            feature_names=feature_names,
+        )
+
     def train(
         self,
         x_train: NDArray[np.float64],
@@ -105,27 +158,10 @@ class CatBoostDirectionModel:
         y_encoded = self._encode_labels(y_train)
         self._feature_names = feature_names
 
-        # CatBoost crashes if eval_set contains a class absent from training.
-        # With only ~62 flat bars across 687K total, most training windows have
-        # no flat samples. Fix: inject one zero-weight dummy row per missing class.
-        missing = set([0, 1, 2]) - set(int(c) for c in np.unique(y_encoded))
-        if missing:
-            n_missing = len(missing)
-            dummy_x = np.zeros((n_missing, x_train.shape[1]), dtype=np.float64)
-            dummy_y = np.array(sorted(missing), dtype=np.int32)
-            x_train = np.vstack([x_train, dummy_x])
-            y_encoded = np.append(y_encoded, dummy_y)
-            dummy_weights = np.append(
-                np.ones(len(y_encoded) - n_missing, dtype=np.float64),
-                np.zeros(n_missing, dtype=np.float64),
-            )
-        else:
-            dummy_weights = None
-
         cfg = self._config
 
-        # Convert class weights from label space to CatBoost class index space
-        cb_class_weights = None
+        # Convert class weights from label space (-1,0,1) to class index space (0,1,2)
+        cb_class_weights: dict[int, float] | None = None
         if class_weights:
             cb_class_weights = {self.LABEL_TO_CLASS[k]: v for k, v in class_weights.items()}
 
@@ -136,18 +172,17 @@ class CatBoostDirectionModel:
             l2_leaf_reg=cfg.l2_leaf_reg,
             random_seed=cfg.random_seed,
             loss_function="MultiClass",
+            classes_count=3,  # Always declare 3 classes so predict_proba → (n,3)
             verbose=0,
-            class_weights=cb_class_weights,
             boosting_type="Ordered",
             bootstrap_type="Bayesian",
             bagging_temperature=1.0,
         )
 
-        train_pool = Pool(
-            x_train,
-            y_encoded,
-            feature_names=feature_names,
-            weight=dummy_weights,
+        # Build Pool with zero-weight dummy rows for missing classes so CatBoost
+        # always sees all 3 classes, keeping predict_proba output shape (n,3).
+        train_pool = self._build_pool_with_all_classes(
+            x_train, y_encoded, feature_names, cb_class_weights
         )
 
         eval_pool = None
@@ -170,7 +205,7 @@ class CatBoostDirectionModel:
         self._best_iteration = best_iter if best_iter is not None else cfg.iterations
         self._update_feature_importance()
 
-        # Metrics
+        # Metrics computed on original (non-augmented) data
         train_pred = model.predict(x_train).astype(np.int32).ravel()
         train_acc = float(np.mean(train_pred == y_encoded))
 
@@ -195,24 +230,32 @@ class CatBoostDirectionModel:
         return self._decode_labels(classes)
 
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
-        """Predict class probabilities [DOWN, FLAT, UP] — always returns (n, 3).
+        """Predict class probabilities [DOWN, FLAT, UP].
 
-        CatBoost only outputs columns for classes seen during training. When the
-        training window has no flat-labeled bars (common since flat is rare), it
-        returns (n, 2). We expand to (n, 3) by inserting zeros for missing classes.
+        Always returns (n_samples, 3) regardless of how many classes the model
+        saw during training.  Missing class columns are padded with zero and the
+        result is renormalized so rows still sum to 1.
         """
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
         raw: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
-        trained_classes = list(self._model.classes_)
-        if len(trained_classes) == 3:
+        n = len(x)
+        if raw.shape[1] == 3:
             return raw
-        # Fewer than 3 classes seen — pad output to full 3-column shape
-        full = np.zeros((raw.shape[0], 3), dtype=np.float64)
-        for col_idx, class_id in enumerate(trained_classes):
-            full[:, int(class_id)] = raw[:, col_idx]
-        return full
+
+        # Pad missing class columns with 0 and renormalize
+        full = np.zeros((n, 3), dtype=np.float64)
+        model_classes = self._model.classes_
+        for i, cls in enumerate(model_classes):
+            col = int(cls)
+            if 0 <= col < 3:
+                full[:, col] = raw[:, i]
+
+        row_sums = full.sum(axis=1, keepdims=True)
+        row_sums = np.maximum(row_sums, 1e-10)
+        result: NDArray[np.float64] = full / row_sums
+        return result
 
     def _update_feature_importance(self) -> None:
         if self._model is None:

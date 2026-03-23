@@ -146,7 +146,7 @@ class KillSwitchManager:
             "SELECT count(*) FROM risk_kill_switches WHERE state = ?",
             (SwitchState.TRIGGERED.value,),
         ).fetchone()
-        return row[0] > 0
+        return int(row[0]) > 0
 
     def get_triggered_names(self) -> list[SwitchName]:
         """Return names of all currently triggered switches."""

@@ -119,7 +119,10 @@ class RetrainTrigger:
         self._max_calibration_ece = max_calibration_ece
         self._cooldown_s = cooldown_s
 
-        self._last_retrain_time: float = time.monotonic()
+        # None = never retrained; cooldown is inactive and scheduled trigger
+        # uses object creation time as the reference.
+        self._last_retrain_time: float | None = None
+        self._created_at: float = time.monotonic()
         self._baseline_sharpe: float | None = None
         self._retrain_count = 0
         self._swap_count = 0
@@ -140,11 +143,14 @@ class RetrainTrigger:
         """Check if any retrain trigger fires.
 
         Returns the reason if triggered, None otherwise.
+
+        Cooldown logic: only applies after the first retrain has completed.
+        A freshly-created RetrainTrigger is never blocked by cooldown.
         """
         now = time.monotonic()
 
-        # Cooldown check
-        if not force and (now - self._last_retrain_time) < self._cooldown_s:
+        # Cooldown check — only active after at least one retrain has run.
+        if not force and self._last_retrain_time is not None and (now - self._last_retrain_time) < self._cooldown_s:
             return None
 
         # 1. Feature drift
@@ -178,8 +184,9 @@ class RetrainTrigger:
         if force:
             return RetrainReason.MANUAL
 
-        # 5. Scheduled
-        if (now - self._last_retrain_time) >= self._schedule_interval_s:
+        # 5. Scheduled — measure elapsed time from last retrain or object creation.
+        reference_time = self._last_retrain_time if self._last_retrain_time is not None else self._created_at
+        if (now - reference_time) >= self._schedule_interval_s:
             return RetrainReason.SCHEDULED
 
         return None
@@ -306,5 +313,9 @@ class RetrainTrigger:
         return self._baseline_sharpe
 
     def reset_cooldown(self) -> None:
-        """Allow immediate retrain."""
-        self._last_retrain_time = 0.0
+        """Allow immediate retrain by clearing the last-retrain timestamp.
+
+        This resets to the "never retrained" state: cooldown is inactive
+        and the scheduled trigger measures from object creation time.
+        """
+        self._last_retrain_time = None

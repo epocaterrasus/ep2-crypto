@@ -4,11 +4,16 @@ Simulates trading 5-minute BTC binary prediction markets using historical
 directional signals. Models the binary payoff structure exactly:
 - WIN: cost of shares → $1.00/share (payout = 1/price - 1 return)
 - LOSS: cost of shares → $0.00 (full loss of premium)
-- Fee: ~2% of notional each way
+- Fee: ~2% of notional charged at ENTRY (regardless of outcome)
+
+Polymarket charges a taker fee on the notional at time of purchase.
+There is no separate fee on the winning payout — resolution is automatic.
 
 This is NOT a continuous PnL simulation. Each trade is a separate binary
 bet that resolves in 5 minutes. The backtest runs signal × history and
 produces metrics appropriate for binary market evaluation.
+
+Sharpe annualization: sqrt(105,120) — 288 bars/day × 365 days (24/7 crypto).
 """
 
 from __future__ import annotations
@@ -20,6 +25,12 @@ import numpy as np
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Annualization constant — 5-min bars, 24/7 crypto (NEVER sqrt(252))
+# ---------------------------------------------------------------------------
+_BARS_PER_YEAR: float = 288.0 * 365.0  # 105,120
+_SQRT_BARS_PER_YEAR: float = float(np.sqrt(_BARS_PER_YEAR))  # ~324.22
 
 
 # ---------------------------------------------------------------------------
@@ -327,18 +338,26 @@ class PolymarketBacktester:
 
     @staticmethod
     def _compute_sharpe(pnl_series: np.ndarray) -> float:
-        """Per-trade Sharpe (not annualized — binary bets don't have a fixed horizon)."""
+        """Annualized Sharpe ratio for the binary trade sequence.
+
+        Binary bets each resolve in one 5-minute bar, so the trade sequence
+        maps directly to bar-level returns. Annualize with sqrt(105,120)
+        per project convention (288 bars/day × 365 days, 24/7 crypto).
+        """
         if len(pnl_series) < 2:
             return 0.0
         mean = float(np.mean(pnl_series))
         std = float(np.std(pnl_series, ddof=1))
         if std == 0:
             return 0.0
-        return mean / std
+        return mean / std * _SQRT_BARS_PER_YEAR
 
     @staticmethod
     def _compute_sortino(pnl_series: np.ndarray) -> float:
-        """Per-trade Sortino ratio (downside deviation only)."""
+        """Annualized Sortino ratio (downside deviation only).
+
+        Uses sqrt(105,120) annualization consistent with project convention.
+        """
         if len(pnl_series) < 2:
             return 0.0
         mean = float(np.mean(pnl_series))
@@ -348,7 +367,7 @@ class PolymarketBacktester:
         downside_std = float(np.std(downside, ddof=1))
         if downside_std == 0:
             return 0.0
-        return mean / downside_std
+        return mean / downside_std * _SQRT_BARS_PER_YEAR
 
 
 # ---------------------------------------------------------------------------

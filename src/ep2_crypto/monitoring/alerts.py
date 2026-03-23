@@ -92,7 +92,7 @@ class TelegramSender:
                 url, data=payload, headers={"Content-Type": "application/json"}
             )
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                return resp.status == 200
+                return bool(resp.status == 200)
         except Exception:
             logger.exception("telegram_send_failed", title=alert.title)
             return False
@@ -128,7 +128,7 @@ class SlackSender:
                 headers={"Content-Type": "application/json"},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                return resp.status == 200
+                return bool(resp.status == 200)
         except Exception:
             logger.exception("slack_send_failed", title=alert.title)
             return False
@@ -212,6 +212,14 @@ class AlertManager:
             return False
 
         self._rate_limiter.record(alert.tier)
+        return self._deliver(alert)
+
+    def _deliver(self, alert: Alert) -> bool:
+        """Deliver an alert to all backends without rate-limit checks.
+
+        Used internally for both rate-limited sends and direct trade
+        notifications that must not be suppressed.
+        """
         self._history.append(alert)
 
         delivered = False
@@ -269,9 +277,14 @@ class AlertManager:
         model_prob: float,
         window_slug: str = "",
     ) -> bool:
-        """Notify when a Polymarket trade is placed."""
+        """Notify when a Polymarket trade is placed.
+
+        Bypasses the INFO rate limiter — trade notifications must never be
+        suppressed because the operator needs a real-time record of every fill.
+        """
         arrow = "🟢 UP" if direction.lower() == "up" else "🔴 DOWN"
-        return self.send_info(
+        alert = Alert(
+            tier=AlertTier.INFO,
             title=f"Trade Opened: {arrow}",
             message=(
                 f"Direction: {arrow}\n"
@@ -282,6 +295,7 @@ class AlertManager:
                 f"Window: {window_slug}"
             ),
         )
+        return self._deliver(alert)
 
     def notify_trade_resolved(
         self,
@@ -293,10 +307,15 @@ class AlertManager:
         daily_pnl: float,
         consecutive_losses: int = 0,
     ) -> bool:
-        """Notify when a Polymarket trade resolves."""
+        """Notify when a Polymarket trade resolves.
+
+        Bypasses the INFO rate limiter — trade notifications must never be
+        suppressed because the operator needs a real-time record of every fill.
+        """
         result = "✅ WIN" if won else "❌ LOSS"
         arrow = "UP" if direction.lower() == "up" else "DOWN"
-        return self.send_info(
+        alert = Alert(
+            tier=AlertTier.INFO,
             title=f"Trade Resolved: {result}",
             message=(
                 f"Direction: {arrow} → {result}\n"
@@ -306,13 +325,20 @@ class AlertManager:
                 f"{'⚠️ Consecutive losses: ' + str(consecutive_losses) if consecutive_losses >= 3 else ''}"
             ),
         )
+        return self._deliver(alert)
 
     def notify_trade_skipped(self, reason: str) -> bool:
-        """Notify when a trade signal is rejected by risk engine."""
-        return self.send_info(
+        """Notify when a trade signal is rejected by risk engine.
+
+        Bypasses the INFO rate limiter — skipped trade notifications must never
+        be suppressed; operators need to see every rejection for audit purposes.
+        """
+        alert = Alert(
+            tier=AlertTier.INFO,
             title="Trade Skipped",
             message=f"Reason: {reason}",
         )
+        return self._deliver(alert)
 
     @property
     def sent_count(self) -> int:

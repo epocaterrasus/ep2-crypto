@@ -549,11 +549,19 @@ class AdaptiveConformalPredictor:
     ) -> dict[str, float]:
         """Online alpha update after observing outcomes.
 
-        For each sample, checks coverage and adjusts alpha:
-        - Miscoverage (true label not in set): alpha += gamma * alpha
-        - Coverage (true label in set): alpha -= gamma * (1 - alpha)
+        For each sample, checks coverage and adjusts alpha using the ACI update
+        from Gibbs & Candes (2024):
 
-        This is the ACI update from Gibbs & Candes (2024).
+            alpha_{t+1} = clip(alpha_t + gamma * (alpha_target - err_t), min, max)
+
+        where err_t = 1 if the true label is NOT in the prediction set (miscoverage),
+        and err_t = 0 if it IS covered.
+
+        - Miscoverage (err_t=1): alpha decreases → lower quantile level → larger
+          threshold → wider sets → more coverage. Corrects under-coverage.
+        - Over-coverage (err_t=0): alpha increases → higher quantile level → smaller
+          threshold → tighter sets. Corrects over-coverage.
+
         Note: we process one sample at a time for online adaptation.
 
         Args:
@@ -573,9 +581,13 @@ class AdaptiveConformalPredictor:
             covered = y_encoded[i] in pred_sets[i]
             coverage_count += int(covered)
 
-            # ACI update: err_t = 1 if miscoverage, 0 if covered
+            # ACI update (Gibbs & Candes 2024):
+            #   alpha_{t+1} = alpha_t + gamma * (alpha_target - err_t)
+            # where err_t = 1 if miscoverage (true label NOT in set), 0 if covered.
+            # Miscoverage → alpha decreases → larger quantile threshold → wider sets → more coverage.
+            # Over-coverage → alpha increases → smaller threshold → tighter sets.
             err_t = 0.0 if covered else 1.0
-            new_alpha = self._current_alpha + self._config.gamma * (err_t - self._config.alpha)
+            new_alpha = self._current_alpha + self._config.gamma * (self._config.alpha - err_t)
             self._current_alpha = float(
                 np.clip(
                     new_alpha,
@@ -595,6 +607,23 @@ class AdaptiveConformalPredictor:
             "quantile_threshold": self._quantile_threshold,
             "n_updates": float(self._n_updates),
         }
+
+    def predict_sets(
+        self,
+        probas: NDArray[np.float64],
+    ) -> list[set[int]]:
+        """Construct ACI prediction sets for each sample.
+
+        Required to satisfy ConformalPredictorProtocol for use in gating.py.
+
+        Args:
+            probas: Probabilities (n_samples, 3) for [DOWN, FLAT, UP].
+
+        Returns:
+            List of prediction sets (each a set of class indices).
+        """
+        self._check_calibrated()
+        return self._build_prediction_sets(probas)
 
     def gate(
         self,

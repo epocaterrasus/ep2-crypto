@@ -1,13 +1,13 @@
 """Polymarket CLOB execution adapter.
 
 Implements the VenueAdapter ABC for Polymarket binary prediction markets.
-Uses py-clob-client for REST + WebSocket communication.
+Uses py-clob-client for REST communication.
 
 Key design points:
 - Private key loaded from env var only (never passed in code)
-- WebSocket heartbeat every 5s to keep connection alive
+- REST heartbeat every 5s to keep API connection alive
 - Deterministic slug-based market discovery for 5-min BTC markets
-- Resolution tracking via WebSocket events + REST polling fallback
+- Resolution tracking via REST polling
 """
 
 from __future__ import annotations
@@ -114,9 +114,7 @@ class PolymarketAdapter(VenueAdapter):
         self._config = config or PolymarketConfig()
         self._connected = False
         self._client: Any = None  # py_clob_client.ClobClient (lazy import)
-        self._ws_client: Any = None  # py_clob_client.WebSocketClient
         self._heartbeat_task: asyncio.Task[None] | None = None
-        self._ws_task: asyncio.Task[None] | None = None
         self._active_market: BinaryMarket | None = None
         self._pending_orders: dict[str, _PendingOrder] = {}
         self._resolution_callbacks: list[Any] = []
@@ -152,7 +150,7 @@ class PolymarketAdapter(VenueAdapter):
         try:
             self._client = self._build_client()
             # Verify auth by fetching API key
-            await asyncio.get_event_loop().run_in_executor(None, self._client.derive_api_key)
+            await asyncio.get_running_loop().run_in_executor(None, self._client.derive_api_key)
             self._connected = True
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             logger.info("polymarket_connected", host=self._config.host)
@@ -170,13 +168,7 @@ class PolymarketAdapter(VenueAdapter):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._heartbeat_task
 
-        if self._ws_task and not self._ws_task.done():
-            self._ws_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._ws_task
-
         self._heartbeat_task = None
-        self._ws_task = None
         self._client = None
         logger.info("polymarket_disconnected")
 
@@ -187,8 +179,8 @@ class PolymarketAdapter(VenueAdapter):
         the SDK installed (tests mock this method).
         """
         try:
-            from py_clob_client.client import ClobClient  # type: ignore[import]
-            from py_clob_client.clob_types import ApiCreds  # type: ignore[import]
+            from py_clob_client.client import ClobClient  # type: ignore[import-not-found]
+            from py_clob_client.clob_types import ApiCreds  # type: ignore[import-not-found]
         except ImportError as exc:
             raise ImportError(
                 "py-clob-client is required for Polymarket. Add it via: uv add py-clob-client"
@@ -212,25 +204,34 @@ class PolymarketAdapter(VenueAdapter):
     # ------------------------------------------------------------------
 
     async def _heartbeat_loop(self) -> None:
-        """Send a no-op ping every heartbeat_interval_s to keep WS alive."""
+        """Send a no-op ping every heartbeat_interval_s to keep the connection alive."""
         while self._connected:
             try:
                 await asyncio.sleep(self._config.heartbeat_interval_s)
                 if self._connected and self._client is not None:
-                    await asyncio.get_event_loop().run_in_executor(None, self._ping)
-                    logger.debug("polymarket_heartbeat_ok")
+                    ok = await asyncio.get_running_loop().run_in_executor(None, self._ping)
+                    if ok:
+                        logger.debug("polymarket_heartbeat_ok")
+                    else:
+                        logger.warning("polymarket_heartbeat_ping_failed")
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 logger.warning("polymarket_heartbeat_error", error=str(exc))
 
-    def _ping(self) -> None:
-        """Synchronous ping via client — called in executor."""
-        if self._client is not None:
-            try:
-                self._client.get_ok()
-            except Exception:  # noqa: S110
-                pass  # Heartbeat failures are logged in the main loop
+    def _ping(self) -> bool:
+        """Synchronous ping via client — called in executor.
+
+        Returns True if the ping succeeded, False otherwise.
+        """
+        if self._client is None:
+            return False
+        try:
+            self._client.get_ok()
+            return True
+        except Exception as exc:
+            logger.warning("polymarket_ping_error", error=str(exc))
+            return False
 
     # ------------------------------------------------------------------
     # Market discovery
@@ -266,10 +267,10 @@ class PolymarketAdapter(VenueAdapter):
     async def _fetch_gamma_markets(self, slug_fragment: str) -> list[BinaryMarket]:
         """Query Gamma API and parse matching markets."""
         try:
-            import aiohttp  # type: ignore[import]
+            import aiohttp
         except ImportError:
-            # Fallback: use executor with requests (always available via ccxt)
-            return await asyncio.get_event_loop().run_in_executor(
+            # Fallback: use executor with urllib (no extra deps required)
+            return await asyncio.get_running_loop().run_in_executor(
                 None, self._fetch_gamma_markets_sync, slug_fragment
             )
 
@@ -285,9 +286,14 @@ class PolymarketAdapter(VenueAdapter):
     def _fetch_gamma_markets_sync(self, slug_fragment: str) -> list[BinaryMarket]:
         """Synchronous fallback for Gamma API."""
         import json
+        import urllib.parse
         import urllib.request
 
-        url = f"{self._config.gamma_api_host}/markets?slug={slug_fragment}&active=true&closed=false"
+        # Properly encode query parameters to handle special characters in slug_fragment
+        query = urllib.parse.urlencode(
+            {"slug": slug_fragment, "active": "true", "closed": "false"}
+        )
+        url = f"{self._config.gamma_api_host}/markets?{query}"
         with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
             data = json.loads(resp.read())
 
@@ -352,15 +358,20 @@ class PolymarketAdapter(VenueAdapter):
         price = request.price if request.price is not None else self._mid_price(request.side)
 
         try:
-            order_args = self._build_order_args(
-                token_id=token_id,
-                side=request.side,
-                size=request.size,
-                price=price,
-                order_type=request.order_type,
-            )
-            raw_resp = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self._client.post_order(*order_args)
+            # _build_order_args calls client.create_order (blocking SDK call).
+            # Both create_order and post_order must run in the executor to avoid
+            # blocking the event loop.
+            raw_resp = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: self._client.post_order(
+                    *self._build_order_args(
+                        token_id=token_id,
+                        side=request.side,
+                        size=request.size,
+                        price=price,
+                        order_type=request.order_type,
+                    )
+                ),
             )
             order_id = raw_resp.get("orderID", raw_resp.get("order_id", ""))
             status = self._map_order_status(raw_resp.get("status", "OPEN"))
@@ -403,7 +414,10 @@ class PolymarketAdapter(VenueAdapter):
 
     def _resolve_token_id(self, request: OrderRequest) -> str:
         """Map OrderSide to YES/NO token ID on the active market."""
-        assert self._active_market is not None
+        if self._active_market is None:
+            raise RuntimeError(
+                "_resolve_token_id called with no active market — call set_active_market() first."
+            )
         if request.side == OrderSide.BUY:
             return self._active_market.yes_token_id  # Bet UP
         return self._active_market.no_token_id  # Bet DOWN
@@ -431,7 +445,10 @@ class PolymarketAdapter(VenueAdapter):
         where order is a dict or SignedOrder object.
         """
         try:
-            from py_clob_client.order_builder.constants import BUY, SELL  # type: ignore[import]
+            from py_clob_client.order_builder.constants import (  # type: ignore[import-not-found]
+                BUY,
+                SELL,
+            )
         except ImportError:
             BUY, SELL = "BUY", "SELL"
 
@@ -444,7 +461,11 @@ class PolymarketAdapter(VenueAdapter):
                 "side": clob_side,
             }
         )
-        clob_order_type = "GTC" if order_type != OrderType.LIMIT_POST_ONLY else "GTD"
+        # Polymarket CLOB order types: "GTC" (Good Till Cancelled) or "FOK" (Fill Or Kill).
+        # Post-only is not a separate order type on this CLOB — limit orders are already
+        # maker-only by default when priced away from the market. "GTD" (Good Till Date)
+        # would require an expiry timestamp which we don't have. Map LIMIT_POST_ONLY to "GTC".
+        clob_order_type = "GTC"
         return (order, clob_order_type)
 
     def _estimate_fee(self, size: float, price: float) -> float:
@@ -475,7 +496,7 @@ class PolymarketAdapter(VenueAdapter):
             return OrderResult(order_id=order_id, status=OrderStatus.REJECTED)
 
         try:
-            raw_resp = await asyncio.get_event_loop().run_in_executor(
+            raw_resp = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: self._client.cancel({"orderID": order_id})
             )
             status = self._map_order_status(raw_resp.get("status", "CANCELLED"))
@@ -501,7 +522,7 @@ class PolymarketAdapter(VenueAdapter):
             return OrderResult(order_id=order_id, status=OrderStatus.PENDING)
 
         try:
-            raw_resp = await asyncio.get_event_loop().run_in_executor(
+            raw_resp = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: self._client.get_order(order_id)
             )
             status = self._map_order_status(raw_resp.get("status", ""))
@@ -574,7 +595,7 @@ class PolymarketAdapter(VenueAdapter):
             )
 
         try:
-            raw = await asyncio.get_event_loop().run_in_executor(
+            raw = await asyncio.get_running_loop().run_in_executor(
                 None,
                 lambda: self._client.get_order_book(self._active_market.yes_token_id),  # type: ignore[union-attr]
             )
@@ -608,7 +629,7 @@ class PolymarketAdapter(VenueAdapter):
             return 0.0
 
         try:
-            raw = await asyncio.get_event_loop().run_in_executor(
+            raw = await asyncio.get_running_loop().run_in_executor(
                 None, self._client.get_balance_allowance
             )
             return float(raw.get("balance", 0.0))
@@ -621,7 +642,7 @@ class PolymarketAdapter(VenueAdapter):
         if self._client is None:
             return False
         try:
-            result = await asyncio.get_event_loop().run_in_executor(None, self._client.get_ok)
+            result = await asyncio.get_running_loop().run_in_executor(None, self._client.get_ok)
             healthy = result is not None
             logger.debug("polymarket_health_check", healthy=healthy)
             return healthy
@@ -656,7 +677,7 @@ class PolymarketAdapter(VenueAdapter):
             return None
 
         try:
-            raw = await asyncio.get_event_loop().run_in_executor(
+            raw = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: self._client.get_market(condition_id)
             )
             resolved = raw.get("closed", False) or raw.get("resolved", False)

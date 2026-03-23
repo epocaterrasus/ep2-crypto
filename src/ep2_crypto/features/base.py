@@ -6,6 +6,7 @@ for selecting features by name.
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -88,6 +89,38 @@ class FeatureComputer(ABC):
         return list(result.keys())
 
 
+# Module-level cache to avoid repeated introspection per class.
+_REGISTRY_KWARGS_CACHE: dict[type, tuple[set[str], bool]] = {}
+
+
+def _filter_kwargs_for(
+    computer: FeatureComputer,
+    kwargs: dict[str, np.ndarray | None],
+) -> dict[str, np.ndarray | None]:
+    """Return only the kwargs that computer.compute() will accept.
+
+    Computers that declare **kwargs receive all arguments unchanged.
+    Computers with explicit keyword-only params but no **kwargs receive
+    only the matching keys, preventing unexpected-keyword-argument errors.
+    """
+    cls = type(computer)
+    if cls not in _REGISTRY_KWARGS_CACHE:
+        sig = inspect.signature(computer.compute)
+        accepted: set[str] = set()
+        has_var_keyword = False
+        for name, param in sig.parameters.items():
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                has_var_keyword = True
+            elif param.kind == inspect.Parameter.KEYWORD_ONLY:
+                accepted.add(name)
+        _REGISTRY_KWARGS_CACHE[cls] = (accepted, has_var_keyword)
+
+    accepted, has_var_keyword = _REGISTRY_KWARGS_CACHE[cls]
+    if has_var_keyword:
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k in accepted}
+
+
 class FeatureRegistry:
     """Registry for feature computers. Allows selection by name."""
 
@@ -138,9 +171,15 @@ class FeatureRegistry:
         volumes: NDArray[np.float64],
         **kwargs: NDArray[np.float64] | None,
     ) -> dict[str, float]:
-        """Compute all registered features at the given index."""
+        """Compute all registered features at the given index.
+
+        Filters kwargs to only those accepted by each computer's compute method,
+        so computers that declare explicit keyword-only parameters without **kwargs
+        (e.g. TFIComputer) do not receive unexpected arguments.
+        """
         result: dict[str, float] = {}
         for computer in self._computers.values():
+            filtered = _filter_kwargs_for(computer, kwargs)
             features = computer.compute(
                 idx,
                 timestamps,
@@ -149,7 +188,7 @@ class FeatureRegistry:
                 lows,
                 closes,
                 volumes,
-                **kwargs,
+                **filtered,
             )
             result.update(features)
         return result

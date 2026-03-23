@@ -59,7 +59,7 @@ def polymarket_fee(
     """
     if price <= 0.0 or price >= 1.0:
         return 0.0
-    return fee_rate * (price * (1.0 - price)) ** exponent
+    return float(fee_rate * (price * (1.0 - price)) ** exponent)
 
 
 def binary_kelly(

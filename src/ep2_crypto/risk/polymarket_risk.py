@@ -83,6 +83,7 @@ class PolymarketRiskAdapter:
     ) -> None:
         self._config = config
         self._equity = initial_equity
+        self._initial_equity = initial_equity  # Fixed reference for kill switch fractions
         self._peak_equity = initial_equity
         self._daily_pnl: float = 0.0
         self._weekly_pnl: float = 0.0
@@ -280,19 +281,26 @@ class PolymarketRiskAdapter:
         self._kill_switches.reset(name, reason)
 
     def _check_kill_switches(self) -> None:
-        """Check all kill switch thresholds after a trade."""
-        ref = self._peak_equity if self._peak_equity > 0 else 1.0
+        """Check all kill switch thresholds after a trade.
 
-        # Daily loss as negative fraction
+        Uses initial_equity as the reference denominator for daily/weekly loss
+        fractions (matching RiskManager behaviour) so thresholds remain fixed
+        regardless of profits — peak_equity grows with wins and would otherwise
+        allow progressively larger absolute losses.
+        """
+        ref = self._initial_equity if self._initial_equity > 0 else 1.0
+
+        # Daily loss as negative fraction of initial capital
         daily_frac = self._daily_pnl / ref  # negative when losing
         self._kill_switches.check_daily_loss(daily_frac, equity=self._equity)
 
-        # Weekly loss
+        # Weekly loss as negative fraction of initial capital
         weekly_frac = self._weekly_pnl / ref
         self._kill_switches.check_weekly_loss(weekly_frac, equity=self._equity)
 
-        # Max drawdown (positive fraction)
-        dd = (self._peak_equity - self._equity) / ref if ref > 0 else 0.0
+        # Max drawdown (positive fraction from peak)
+        peak_ref = self._peak_equity if self._peak_equity > 0 else ref
+        dd = (peak_ref - self._equity) / peak_ref if peak_ref > 0 else 0.0
         self._kill_switches.check_max_drawdown(dd, equity=self._equity)
 
         # Consecutive losses
