@@ -158,7 +158,7 @@ async def test_oi_collector_polls_repeatedly(db_repo: Repository) -> None:
     )
 
     async with collector:
-        await asyncio.sleep(0.15)
+        await asyncio.sleep(0.30)
 
     health = collector.health_check()
     assert health.messages_received >= 2

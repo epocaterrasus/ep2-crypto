@@ -171,13 +171,20 @@ ep2-crypto/
 │       │   ├── metrics.py
 │       │   ├── statistics.py
 │       │   └── strategies.py
+│       ├── risk/                      # SPRINT 9 — THE MOST CRITICAL MODULE
+│       │   ├── config.py              # RiskConfig Pydantic model (all params)
+│       │   ├── position_tracker.py    # Position state, MTM, margin, liquidation, reconciliation
+│       │   ├── kill_switches.py       # 5 switches: daily/weekly/DD/consecutive/emergency (persist to disk)
+│       │   ├── drawdown_gate.py       # Convex reduction (k=1.5) + duration-based + graduated recovery
+│       │   ├── volatility_guard.py    # Min/max vol, trading hours, weekend, funding proximity
+│       │   ├── position_sizer.py      # Full chain: Kelly × cap × heat × budget × weekend × DD × regime
+│       │   └── risk_manager.py        # Orchestrator: approve_trade(), on_bar(), emergency, reset
 │       ├── events/
 │       │   ├── macro.py               # Event-driven macro module (CPI/FOMC)
 │       │   └── cascade.py             # Liquidation cascade detector (Hawkes)
 │       ├── monitoring/
 │       │   ├── alpha_decay.py         # CUSUM, rolling Sharpe, ADWIN
-│       │   ├── drift.py               # Feature drift detection (PSI)
-│       │   └── kill_switch.py         # Automated trading halts
+│       │   └── drift.py               # Feature drift detection (PSI)
 │       └── api/
 │           └── server.py              # FastAPI endpoints
 ├── scripts/
@@ -322,6 +329,11 @@ When implementing a module, consult the relevant research files in `research/`:
 | Break-even cost target | Strategy must survive > 15 bps round-trip |
 | Expected live Sharpe | 0.6-1.0 (after degradation) |
 | Round-trip cost assumption | 8-12 bps (conservative) |
+| **Max risk per trade** | **1% of equity (CRITICAL — Monte Carlo shows 5% risk → 66% DD)** |
+| Max position notional | 5% of equity (separate from risk cap) |
+| Max risk per trade at 0.5% | E[max_DD] = 9.6% over 1 year (safest) |
+| Max risk per trade at 1.0% | E[max_DD] = 18.4% over 1 year (default) |
+| Max risk per trade at 5.0% | E[max_DD] = 66.7% over 1 year (ACCOUNT DEATH) |
 
 ## Anti-Patterns to Avoid
 
@@ -335,6 +347,7 @@ When implementing a module, consult the relevant research files in `research/`:
 8. Never use expanding window for training - crypto non-stationarity makes old data harmful
 9. Never skip transaction costs in backtest evaluation
 10. Never commit without lint + typecheck + test passing
+11. **NEVER risk more than 1% of equity per trade** — Monte Carlo proves 5% risk leads to 66% drawdowns over 18K trades/year. The `max_risk_per_trade` parameter in PositionSizer enforces this.
 
 ## Research Reference
 
@@ -357,6 +370,16 @@ Files follow `RR-{category}-{topic}.md` naming. Key files per area:
 | Transaction costs | `RR-costs-transaction-cost-modeling.md` |
 | Paper trading | `RR-papertrade-system-architecture.md` |
 | Alpha decay monitoring | `RR-decay-edge-disappearance-detection.md` |
+| **Risk engine architecture** | **`RR-risk-engine-architecture.md`** + `RR-risk-implementation-guide.md` |
+| **Position sizing (Kelly, ATR)** | **`RR-risk-position-sizing-methods.md`** |
+| **Kill switches** | **`RR-risk-kill-switch-design.md`** |
+| **Drawdown management** | **`RR-risk-drawdown-management.md`** |
+| **Stop loss strategies** | **`RR-risk-stop-loss-strategies.md`** |
+| **Margin & liquidation** | **`RR-risk-margin-liquidation.md`** |
+| **Tail risk protection** | **`RR-risk-tail-risk-black-swan.md`** + `RR-risk-worst-case-scenarios.md` |
+| **Risk testing** | **`RR-risk-testing-framework.md`** |
+| **Risk monitoring dashboard** | **`RR-risk-monitoring-dashboard.md`** (49 Prometheus metrics, Grafana panels) |
+| **Money management** | **`RR-risk-money-management.md`** |
 
 ## Pre-Code Checklists
 

@@ -450,3 +450,314 @@ class KyleLambdaComputer(FeatureComputer):
 
     def output_names(self) -> list[str]:
         return ["kyle_lambda"]
+
+
+class OBILevel10Computer(FeatureComputer):
+    """Order Book Imbalance at 10-level depth.
+
+    Extends OBIComputer with level-10 depth for deeper book context.
+    OBI_l10 captures institutional liquidity positioning beyond the top 5 levels.
+    """
+
+    @property
+    def name(self) -> str:
+        return "obi_l10"
+
+    @property
+    def warmup_bars(self) -> int:
+        return 1
+
+    def compute(
+        self,
+        idx: int,
+        timestamps: NDArray[np.int64],
+        opens: NDArray[np.float64],
+        highs: NDArray[np.float64],
+        lows: NDArray[np.float64],
+        closes: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        *,
+        bid_sizes: NDArray[np.float64] | None = None,
+        ask_sizes: NDArray[np.float64] | None = None,
+        **kwargs: NDArray[np.float64] | None,
+    ) -> dict[str, float]:
+        nan_result = {"obi_l10": float("nan"), "obi_l10_weighted": float("nan")}
+
+        if idx < self.warmup_bars - 1:
+            return nan_result
+        if bid_sizes is None or ask_sizes is None:
+            return nan_result
+
+        bs = bid_sizes[idx]
+        as_ = ask_sizes[idx]
+        n_levels = min(len(bs), len(as_))
+        if n_levels < 1:
+            return nan_result
+
+        d = min(10, n_levels)
+        b_sum = float(np.sum(bs[:d]))
+        a_sum = float(np.sum(as_[:d]))
+        total = b_sum + a_sum
+        obi = (b_sum - a_sum) / total if total > 0 else 0.0
+
+        bids: NDArray[np.float64] | None = kwargs.get("bids")  # type: ignore[assignment]
+        asks: NDArray[np.float64] | None = kwargs.get("asks")  # type: ignore[assignment]
+        if bids is not None and asks is not None:
+            bp = bids[idx]
+            ap = asks[idx]
+            mid = (bp[0] + ap[0]) / 2.0 if bp[0] > 0 and ap[0] > 0 else 0.0
+            if mid > 0:
+                bid_dist = np.abs(bp[:d] - mid)
+                ask_dist = np.abs(ap[:d] - mid)
+                bid_w = np.where(bid_dist > 0, 1.0 / bid_dist, 1.0)
+                ask_w = np.where(ask_dist > 0, 1.0 / ask_dist, 1.0)
+                wb = float(np.sum(bs[:d] * bid_w))
+                wa = float(np.sum(as_[:d] * ask_w))
+                total_w = wb + wa
+                obi_w = (wb - wa) / total_w if total_w > 0 else 0.0
+            else:
+                obi_w = obi
+        else:
+            obi_w = obi
+
+        return {"obi_l10": obi, "obi_l10_weighted": obi_w}
+
+    def output_names(self) -> list[str]:
+        return ["obi_l10", "obi_l10_weighted"]
+
+
+class VPINComputer(FeatureComputer):
+    """Volume-Synchronized Probability of Informed Trading (VPIN).
+
+    Uses Bulk Volume Classification (BVC) to estimate buy/sell volume without
+    tick data. BVC assigns each bar's volume proportionally based on price
+    direction relative to prior bar.
+
+    VPIN = |V_buy - V_sell| / V_total over a rolling window of bars.
+
+    Interpretaton (Easley, Lopez de Prado & O'Hara 2012):
+    - VPIN 0.3-0.6: normal trading range (tradeable zone)
+    - VPIN > 0.7: high informed trading, adverse selection risk
+    - VPIN spike: often precedes volatility by 1-3 bars at 5-min
+
+    The 'bucket' approach groups by volume (not time), but we approximate
+    with fixed bar windows to maintain look-ahead safety.
+    """
+
+    def __init__(self, window: int = 50) -> None:
+        self._window = window
+
+    @property
+    def name(self) -> str:
+        return "vpin"
+
+    @property
+    def warmup_bars(self) -> int:
+        return self._window + 1
+
+    def compute(
+        self,
+        idx: int,
+        timestamps: NDArray[np.int64],
+        opens: NDArray[np.float64],
+        highs: NDArray[np.float64],
+        lows: NDArray[np.float64],
+        closes: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        **kwargs: NDArray[np.float64] | None,
+    ) -> dict[str, float]:
+        nan_result = {"vpin": float("nan"), "vpin_imbalance": float("nan")}
+
+        if idx < self.warmup_bars - 1:
+            return nan_result
+
+        start = idx - self._window + 1
+
+        # BVC: classify each bar's volume
+        # Buy volume fraction = Z(delta_price / sigma_price)
+        # Approximation: price_change > 0 → all buys, < 0 → all sells, = 0 → 50/50
+        price_changes = closes[start:idx + 1] - opens[start:idx + 1]
+        bar_volumes = volumes[start:idx + 1]
+
+        # Estimate sigma of price changes over window
+        sigma = float(np.std(price_changes))
+        if sigma <= 0:
+            return nan_result
+
+        # Probit-like BVC: fraction classified as buy = Phi(delta/sigma)
+        # We use normal CDF approximation
+        fracs = _standard_normal_cdf(price_changes / sigma)
+        buy_vols = fracs * bar_volumes
+        sell_vols = (1.0 - fracs) * bar_volumes
+
+        total_vol = float(np.sum(bar_volumes))
+        if total_vol <= 0:
+            return nan_result
+
+        net_buy = float(np.sum(buy_vols))
+        net_sell = float(np.sum(sell_vols))
+        vpin = abs(net_buy - net_sell) / total_vol
+        imbalance = (net_buy - net_sell) / total_vol  # signed version
+
+        return {"vpin": vpin, "vpin_imbalance": imbalance}
+
+    def output_names(self) -> list[str]:
+        return ["vpin", "vpin_imbalance"]
+
+
+def _standard_normal_cdf(x: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Vectorized standard normal CDF using error function approximation."""
+    return (1.0 + np.vectorize(lambda z: __import__("math").erf(z / 1.4142135623730951))(x)) / 2.0
+
+
+class BookPressureGradientComputer(FeatureComputer):
+    """Book pressure gradient: slope of net order book imbalance across levels.
+
+    Computes the slope of (bid_vol[i] - ask_vol[i]) regressed against
+    depth level index. A negative slope (more imbalance at top, fading
+    deeper) is a common institutional order placement pattern.
+
+    Separate slopes for bid-side and ask-side volume profiles.
+    """
+
+    @property
+    def name(self) -> str:
+        return "book_pressure"
+
+    @property
+    def warmup_bars(self) -> int:
+        return 1
+
+    def compute(
+        self,
+        idx: int,
+        timestamps: NDArray[np.int64],
+        opens: NDArray[np.float64],
+        highs: NDArray[np.float64],
+        lows: NDArray[np.float64],
+        closes: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        *,
+        bid_sizes: NDArray[np.float64] | None = None,
+        ask_sizes: NDArray[np.float64] | None = None,
+        **kwargs: NDArray[np.float64] | None,
+    ) -> dict[str, float]:
+        nan_result = {
+            "bid_pressure_gradient": float("nan"),
+            "ask_pressure_gradient": float("nan"),
+            "net_pressure_gradient": float("nan"),
+        }
+
+        if idx < self.warmup_bars - 1:
+            return nan_result
+        if bid_sizes is None or ask_sizes is None:
+            return nan_result
+
+        bs = bid_sizes[idx]
+        as_ = ask_sizes[idx]
+        n_levels = min(len(bs), len(as_), 10)
+        if n_levels < 3:
+            return nan_result
+
+        levels = np.arange(n_levels, dtype=np.float64)
+        bs_trunc = bs[:n_levels].astype(np.float64)
+        as_trunc = as_[:n_levels].astype(np.float64)
+
+        # Slope via linear regression coefficient
+        def _slope(y: NDArray[np.float64]) -> float:
+            x = levels
+            n = len(x)
+            x_mean = float(np.mean(x))
+            y_mean = float(np.mean(y))
+            cov = float(np.sum((x - x_mean) * (y - y_mean)))
+            var_x = float(np.sum((x - x_mean) ** 2))
+            return cov / var_x if var_x > 0 else 0.0
+
+        bid_grad = _slope(bs_trunc)
+        ask_grad = _slope(as_trunc)
+        net = np.array(bs_trunc - as_trunc)
+        net_grad = _slope(net)
+
+        return {
+            "bid_pressure_gradient": bid_grad,
+            "ask_pressure_gradient": ask_grad,
+            "net_pressure_gradient": net_grad,
+        }
+
+    def output_names(self) -> list[str]:
+        return ["bid_pressure_gradient", "ask_pressure_gradient", "net_pressure_gradient"]
+
+
+class DepthWithdrawalComputer(FeatureComputer):
+    """Depth withdrawal ratio: market maker pull-away signal.
+
+    Measures how much total book depth has changed over the past N bars:
+    withdrawal = (depth_N_bars_ago - current_depth) / depth_N_bars_ago
+
+    Positive values mean depth reduced (market makers pulling liquidity),
+    which often precedes large price moves (~58% accuracy at 1-min per research).
+
+    Also computes ask-side and bid-side withdrawal separately.
+    """
+
+    def __init__(self, lookback: int = 6) -> None:
+        self._lookback = lookback
+
+    @property
+    def name(self) -> str:
+        return "depth_withdrawal"
+
+    @property
+    def warmup_bars(self) -> int:
+        return self._lookback + 1
+
+    def compute(
+        self,
+        idx: int,
+        timestamps: NDArray[np.int64],
+        opens: NDArray[np.float64],
+        highs: NDArray[np.float64],
+        lows: NDArray[np.float64],
+        closes: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        *,
+        bid_sizes: NDArray[np.float64] | None = None,
+        ask_sizes: NDArray[np.float64] | None = None,
+        **kwargs: NDArray[np.float64] | None,
+    ) -> dict[str, float]:
+        nan_result = {
+            "depth_withdrawal": float("nan"),
+            "bid_withdrawal": float("nan"),
+            "ask_withdrawal": float("nan"),
+        }
+
+        if idx < self.warmup_bars - 1:
+            return nan_result
+        if bid_sizes is None or ask_sizes is None:
+            return nan_result
+
+        prev_idx = idx - self._lookback
+
+        # Use top 10 levels
+        depth_levels = 10
+
+        curr_bid = float(np.sum(bid_sizes[idx, :depth_levels]))
+        curr_ask = float(np.sum(ask_sizes[idx, :depth_levels]))
+        prev_bid = float(np.sum(bid_sizes[prev_idx, :depth_levels]))
+        prev_ask = float(np.sum(ask_sizes[prev_idx, :depth_levels]))
+
+        curr_total = curr_bid + curr_ask
+        prev_total = prev_bid + prev_ask
+
+        withdrawal = (prev_total - curr_total) / prev_total if prev_total > 0 else 0.0
+        bid_w = (prev_bid - curr_bid) / prev_bid if prev_bid > 0 else 0.0
+        ask_w = (prev_ask - curr_ask) / prev_ask if prev_ask > 0 else 0.0
+
+        return {
+            "depth_withdrawal": withdrawal,
+            "bid_withdrawal": bid_w,
+            "ask_withdrawal": ask_w,
+        }
+
+    def output_names(self) -> list[str]:
+        return ["depth_withdrawal", "bid_withdrawal", "ask_withdrawal"]

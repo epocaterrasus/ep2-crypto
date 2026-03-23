@@ -79,7 +79,7 @@ Sprint 1 (database, config, logging)
 
 ---
 
-## Sprint 3: Feature Engineering - Microstructure (3-4 days) [ ]
+## Sprint 3: Feature Engineering - Microstructure (3-4 days) [x]
 
 ### Objectives
 Implement the highest-priority features: order book imbalance, order flow imbalance, microprice, and trade flow features. These capture 60-80% of achievable 5-min signal.
@@ -147,7 +147,7 @@ Sprint 1, Sprint 3 (feature base interface)
 
 ---
 
-## Sprint 5: Feature Engineering - Cross-market, Regime, Temporal (2-3 days) [ ]
+## Sprint 5: Feature Engineering - Cross-market, Regime, Temporal (2-3 days) [x]
 
 ### Objectives
 Build context features: cross-market signals, temporal encoding, and regime-input features.
@@ -235,7 +235,7 @@ Sprint 1 (database), Sprint 4 (volatility features used as input)
 
 ---
 
-## Sprint 7: Models - LightGBM + CatBoost + GRU + Stacking (4-5 days) [ ]
+## Sprint 7: Models - LightGBM + CatBoost + GRU + Stacking (4-5 days) [x]
 
 ### Objectives
 Build the core prediction models and stacking ensemble.
@@ -533,7 +533,7 @@ Sprint 1 (database for state persistence), Sprint 4 (volatility features for vol
 
 ---
 
-## Sprint 10: Backtesting Framework (4-5 days) [ ]
+## Sprint 10: Backtesting Framework (4-5 days) [x]
 
 ### Objectives
 Build the complete backtesting infrastructure: walk-forward engine, execution simulator, statistical validation, and benchmarks.
@@ -591,7 +591,7 @@ Sprint 7 (models), Sprint 8 (confidence gating), **Sprint 9 (risk engine — bac
 
 ---
 
-## Sprint 11: Hyperparameter Tuning (2-3 days) [ ]
+## Sprint 11: Hyperparameter Tuning (2-3 days) [x]
 
 ### Objectives
 Optimize model and pipeline hyperparameters using Optuna with walk-forward Sharpe as objective.
@@ -629,7 +629,7 @@ Sprint 9 (backtest framework for Sharpe evaluation)
 
 ---
 
-## Sprint 12: Event-Driven Macro Module + Cascade Detector (3-4 days) [ ]
+## Sprint 12: Event-Driven Macro Module + Cascade Detector (3-4 days) [x]
 
 ### Objectives
 Build independent alpha sources: macro event trading (NQ lead-lag) and liquidation cascade detection.
@@ -765,7 +765,7 @@ Sprint 7-8 (models + gating), Sprint 9 (risk engine)
 
 ---
 
-## Sprint 14: Paper Trading (2-3 days setup + 14-30 days running) [ ]
+## Sprint 14: Paper Trading (2-3 days setup + 14-30 days running) [x]
 
 ### Objectives
 Deploy paper trading with real market data, simulated execution, and full monitoring.
@@ -801,7 +801,7 @@ Sprint 12 (live prediction system)
 
 ---
 
-## Sprint 15: Validation + Ablation Study (3-4 days) [ ]
+## Sprint 15: Validation + Ablation Study (3-4 days) [x]
 
 ### Objectives
 Final validation: ablation study proving each component adds value, stress testing, and documentation.
@@ -960,7 +960,7 @@ Sprint 15 (Validation — need baseline metrics to measure improvement against)
 
 ---
 
-## Sprint 17: Venue Abstraction + Polymarket Execution (3-4 days) [ ]
+## Sprint 17: Venue Abstraction + Polymarket Execution (3-4 days) [x]
 
 ### Objectives
 Build a venue-agnostic execution layer so the ML pipeline (features → models → gating → risk) can trade on **both** Binance perpetual futures and Polymarket's 5-minute BTC prediction markets. The core ML stack stays untouched — only the execution, position sizing, and backtest layers gain a new adapter.
@@ -1086,6 +1086,158 @@ Sprint 8 (confidence gating), Sprint 9 (risk engine)
 
 ---
 
+## Sprint 18: Historical Data Backfill (1-2 days) [~]
+
+### Objectives
+Collect all available historical data needed to train, validate, and backtest the full system. BTC data goes back to Binance Futures launch (Sep 2019) for maximum regime coverage. Polymarket data covers everything since 5-min markets launched (~Feb 2026), plus synthetic outcomes derived from BTC OHLCV for pre-Polymarket backtesting.
+
+### Why Full History
+- 2 years of data only covers 1-2 regimes. 6+ years covers COVID crash (Mar 2020), China ban (May 2021), FTX collapse (Nov 2022), 2024 ATH, and 2025-26 conditions.
+- More data = more walk-forward folds = higher confidence that the model generalizes.
+- Synthetic Polymarket outcomes from OHLCV let us estimate binary accuracy going back to 2019.
+
+### Deliverables
+
+#### T1: BTC Historical Data Backfill
+- [ ] `scripts/collect_history.py`:
+  - Binance Futures REST: 1m OHLCV klines BTCUSDT (Sep 2019 → now, ~3.1M candles)
+  - Binance Futures REST: funding rate history (every 8h)
+  - Bybit REST: open interest 5-min history
+  - yfinance: NQ, Gold, DXY, ETH daily OHLCV (full history)
+  - Storage: SQLite (dev) or TimescaleDB (prod) via `EP2_DB_URL` env var
+  - CLI: `--start 2019-09-01 --end today`, `--resume` flag to continue from last stored timestamp
+  - Rate limiting, exponential backoff, checkpoint every 10K rows
+  - Upsert (INSERT OR REPLACE) for idempotent re-runs
+  - Progress bar (tqdm) + summary at end
+- [ ] Tests for data integrity (no gaps > 5 min, correct OHLC ranges)
+
+#### T2: Polymarket Historical Data Backfill
+- [ ] `scripts/collect_polymarket_history.py`:
+  - Gamma API: all resolved 5-min BTC Up/Down markets (Feb 2026 → now, ~45 days)
+  - Store: window_ts, slug, outcome (up/down), yes/no prices, volume, condition_id
+  - `--derive-from-btc` flag: generate synthetic outcomes from ohlcv_1m for pre-Polymarket dates (2019-2026)
+  - CLI: `--start 2026-02-01`, `--resume`, `--derive-from-btc --start 2019-09-01`
+  - Rate limiting (Gamma API: 300 req/10s)
+- [ ] Tests for synthetic derivation correctness
+
+### Acceptance Criteria
+- OHLCV table: 3M+ rows covering Sep 2019 → present with no gaps > 10 minutes
+- Funding rate: 9K+ rows
+- Open interest: 600K+ rows
+- Cross-market: 4 symbols × 2400+ days
+- Polymarket real: all available resolved 5-min windows
+- Polymarket synthetic: 6+ years of derived outcomes matching BTC direction
+- `--resume` works correctly after interruption (verified by stopping mid-run and restarting)
+- Same scripts work against both SQLite (dev) and TimescaleDB (prod) via connection string
+
+### Dependencies
+Sprint 1 (database schema). No other dependencies — can run in parallel with everything.
+
+---
+
+## Sprint 19: Production Deployment (2-3 days) [ ]
+
+### Objectives
+Deploy the complete system to Hetzner VPS with Docker Compose, TimescaleDB, monitoring (Prometheus + Grafana), Telegram alerts, and Doppler secrets management. The system should run continuously, auto-restart on failure, and be deployable with a single command.
+
+### Infrastructure Architecture
+```
+Hetzner VPS
+├── Docker Compose
+│   ├── ep2-crypto (main service)
+│   │   ├── Live data collectors (Binance WS — public, no API key)
+│   │   ├── Feature pipeline (25-35 features)
+│   │   ├── Model inference (ONNX Runtime)
+│   │   ├── Confidence gating (7-gate pipeline)
+│   │   ├── Risk engine (PolymarketRiskAdapter)
+│   │   ├── Polymarket execution (py-clob-client)
+│   │   └── FastAPI (health, metrics, predictions)
+│   ├── TimescaleDB (replaces SQLite for production)
+│   ├── Prometheus (scrapes /metrics every 15s)
+│   └── Grafana (dashboards: PnL, accuracy, risk state, alpha decay)
+├── Doppler (prd config → secrets injected at runtime)
+└── Systemd (ensures docker-compose auto-starts on boot)
+```
+
+### Secrets (Doppler project: ep2-crypto, config: prd)
+- `EP2_POLYMARKET_PRIVATE_KEY` — wallet private key (already stored)
+- `EP2_POLYMARKET_WALLET_ADDRESS` — wallet address (already stored)
+- `TELEGRAM_BOT_TOKEN` — alert bot (already stored)
+- `TELEGRAM_CHAT_ID` — destination chat for alerts (to be configured)
+- `EP2_DB_URL` — TimescaleDB connection string
+- Future: `BINANCE_API_KEY`, `BYBIT_API_KEY` (if trading on Binance)
+
+### Deliverables
+
+#### T1: Docker containerization
+- [ ] `docker/Dockerfile`:
+  - Python 3.12-slim base, uv for deps
+  - `uv sync --frozen --extra polymarket`
+  - ONNX Runtime for inference
+  - Doppler CLI installed
+  - Healthcheck: `curl localhost:8000/health`
+  - CMD: `doppler run -- uv run python scripts/live.py --venue polymarket_binary`
+- [ ] `docker/.dockerignore`: exclude .venv, __pycache__, .git, data/, research/, *.db
+- [ ] `.env.example`: documents required DOPPLER_TOKEN
+
+#### T2: Docker Compose stack
+- [ ] `docker/docker-compose.yml`:
+  - ep2-crypto service (main app, port 8000)
+  - TimescaleDB (timescale/timescaledb:latest-pg16, port 5432 localhost only)
+  - Prometheus (port 9090 localhost only)
+  - Grafana (port 3000)
+  - Named volumes for persistence (pgdata, prometheus_data, grafana_data)
+  - Health checks on all services
+  - `restart: unless-stopped` on all services
+- [ ] `docker/prometheus.yml`: scrape config for ep2-crypto /metrics
+
+#### T3: Deploy script
+- [ ] `scripts/deploy.sh`:
+  - rsync code to Hetzner (exclude .venv, .git, data/)
+  - docker compose build + up -d
+  - Health check with 60s timeout
+  - Rollback on failure (show logs)
+  - Usage: `./scripts/deploy.sh`
+- [ ] `scripts/setup_server.sh`:
+  - One-time server setup: install Docker, Doppler CLI, create deploy user
+  - Systemd service to auto-start docker-compose on boot
+  - UFW firewall: allow 22, 8000, 3000
+
+#### T4: Telegram alert configuration
+- [ ] Configure `TELEGRAM_CHAT_ID` in Doppler
+- [ ] Verify alerts fire: test INFO (daily summary), WARNING (alpha decay), CRITICAL (kill switch)
+- [ ] Rate limiting: max 1 INFO/hour, 5 WARNING/hour, unlimited CRITICAL
+
+#### T5: Grafana dashboards
+- [ ] `docker/grafana/dashboards/`:
+  - Trading dashboard: PnL (daily, cumulative), trade count, win rate, Sharpe rolling 30d
+  - Risk dashboard: drawdown, kill switch status, daily loss budget, exposure
+  - Model dashboard: confidence distribution, feature drift PSI, prediction accuracy
+  - System dashboard: latency, memory, API response times
+
+#### T6: Data migration (SQLite → TimescaleDB)
+- [ ] Migration script: export SQLite historical data → import into TimescaleDB
+- [ ] Verify: `scripts/collect_history.py --resume` works against TimescaleDB
+- [ ] Create TimescaleDB hypertables with time-based partitioning on timestamp columns
+
+### Acceptance Criteria
+- `docker compose up -d` brings up all 4 services within 2 minutes
+- Health endpoint at :8000/health returns OK with all dependency checks passing
+- Prometheus scrapes metrics successfully (verify at :9090/targets)
+- Grafana dashboards load with real data (verify at :3000)
+- Telegram bot sends test alert within 30 seconds of trigger
+- System survives reboot (systemd restarts docker-compose)
+- `scripts/deploy.sh` deploys new version in < 5 minutes
+- No secrets in Docker images, compose files, or git history
+- ep2-crypto container restarts automatically after crash
+- TimescaleDB data survives container restart (persistent volume)
+- Backfill scripts work against TimescaleDB with same CLI interface
+
+### Dependencies
+Sprint 13 (API + monitoring), Sprint 17 (Polymarket execution), Sprint 18 (historical data)
+
+---
+
 ## Sprint Dependencies Graph
 
 ```
@@ -1106,12 +1258,12 @@ Sprint 1 (Foundation)
                               +----------------+----------------+
                               |                |                 |
                     Sprint 9 (Risk Mgmt)  Sprint 12 (Macro)  Sprint 17 (Polymarket)
-                              |
-                    Sprint 10 (Backtesting)
-                              |
-                    Sprint 11 (Tuning)
-                              |
-                    Sprint 13 (API + Live)
+                              |                                  |
+                    Sprint 10 (Backtesting)            Sprint 18 (Data Backfill) ←── parallelizable
+                              |                                  |
+                    Sprint 11 (Tuning)                 Sprint 19 (Deployment)
+                              |                                  |
+                    Sprint 13 (API + Live) ─────────────────────→+
                               |
                     Sprint 14 (Paper Trading)
                               |
