@@ -11,52 +11,74 @@
 - **Sprint 19** — Production Deployment (COMPLETE: T1-T6 done)
 - **Sprint 20** — Production Training Run (IN PROGRESS — training started 2026-03-23)
 
-## Session Handoff (2026-03-23 — Session 2)
+## Session Handoff (2026-03-23 — Session 3)
 
-### All bugs fixed this session (all committed to git):
-1. **PostgreSQL compatibility** — `db/connection.py` DBConnection wrapper, schema/repo/collect_history
-2. **Full production deployment** — Docker rebuilt, Doppler token, TimescaleDB tables, backfill (3.44M rows)
-3. **HMM UnboundLocalError** — Fixed `k` variable scope in `regime_features.py`
-4. **24/7 trading** — `EP2_RISK_ENFORCE_TRADING_HOURS=false` in Doppler prd
-5. **O(n²) → O(1) feature computation** — GARCH, EWMA, RSI, HMM all stateful incremental; 30min → 5min
-6. **LightGBM init_model bug** — `prev_lgbm_model._model` not wrapper object
-7. **CatBoost predict_proba (n,2) bug** — Always returns (n,3), pads missing class columns with zeros
-8. **LightGBM warm-start LabelEncoder conflict** — Skip init_model when class sets differ between folds
-9. **Stacking API mismatch** — Pass `list[NDArray]` not pre-hstacked array to `stacking.train()`
-10. **LightGBM FLAT class absent** — Inject zero-weight dummy rows so LabelEncoder always sees all 3 classes
-11. **CatBoost FLAT class absent** — Same fix: zero-weight dummy rows in Pool so all 3 classes always present
+### What was done this session:
 
-### Current server state (2026-03-23 ~22:00 UTC):
-- `train-full` container: RUNNING — training just restarted after CatBoost fix
-  - 687,528 5-min bars (Sep 2019 → Jan 2026), 2373 folds, ~1h total
-  - Features take ~5 min, then folds at ~1s each
-  - **ALL bugs fixed** — should complete without crashing now
-- `docker-ep2-crypto-1`: HEALTHY — live prediction loop 24/7
-- `timescaledb`: HEALTHY — 3.44M OHLCV rows
+**20-Agent Full Production Readiness Audit (committed to main):**
+1. `db/connection.py` — New `DatabaseConnection` class wrapping SQLite+PostgreSQL (Agent 1)
+2. `collect_history.py` — Full rewrite with `_DbAdapter`, 1m interval, --resume, SIGINT shutdown (Agent 2)
+3. `collect_polymarket_history.py` — Fixed wrong symbol, split PostgreSQL/SQLite paths (Agent 3)
+4. `scripts/train.py` — Fixed `EP2_DB_BACKEND` env vars, model save path (Agent 4)
+5. `Dockerfile` — `mkdir /app/models`, fixed extras (Agent 5)
+6. `confidence/conformal.py` — **CRITICAL**: ACI update rule was inverted; fixed `(alpha - err_t)` (Agent 8)
+7. `confidence/meta_labeling.py` — Fixed `is_fitted` check for LightGBM (Agent 8)
+8. `backtest/metrics.py` — **CRITICAL**: `lo_corrected_sharpe` had erroneous `/ sqrt(q)` cancelling annualization (Agent 13)
+9. `monitoring/retrain_trigger.py` — Fixed `_last_retrain_time` blocking all triggers for 30min at startup (Agents 12+15)
+10. `models/lgbm_direction.py` — Fixed `init_model` to accept wrapper and access `._model.booster_` (Agent 7)
+11. `models/gru_features.py` — Added `save()`/`load()` methods (Agent 7)
+12. `execution/polymarket.py` — Fixed `LIMIT_POST_ONLY` mapping and blocking SDK calls (Agent 10)
+13. `scripts/live.py` — **CRITICAL**: `RiskManager.approve_trade()` and `.on_bar()` were NEVER called (Agent 11)
+14. `monitoring/alerts.py` — Trade notifications bypass rate limit correctly (Agent 12)
+15. `monitoring/performance_logger.py` — SQL injection fixed (Agent 12)
+16. `docker/docker-compose.yml` — Added models volume, scripts hot-reload, removed hardcoded passwords (Agents 5+16+18)
+17. `pyproject.toml` — Added `joblib`, `aiohttp`, `psycopg2-binary`, `tqdm`; fixed extras (Agent 14)
+18. `.github/workflows/ci.yml + deploy.yml` — Fixed `--all-extras`, SSH secret name, mypy enforcement (Agent 15)
+19. `.env.example` — New file with 25+ env vars documented (Agent 16)
+20. `docker/grafana/dashboards/` — 4 new dashboards (Agent 18)
+21. `tests/test_integration/test_e2e_pipeline.py` — 31 end-to-end tests (Agent 20)
+22. **Additional fixes from walk-forward + labeling audit:**
+    - `backtest/walk_forward.py` — Fixed embargo enforcement between folds
+    - `models/labeling.py` — Added configurable FLAT threshold (prevents ternary→binary degradation)
+    - `scripts/live.py` — Added Telegram alerting, exception handling, startup/shutdown notifications
 
-### EXACT NEXT STEP — S20-T1: Verify training completes
+**Backtest pipeline fixed (session 3):**
+- Fixed `DatabaseConnection.fetchall/fetchone` to use `RealDictCursor` (dict access not tuples)
+- Fixed `load_model_signals` in `backtest.py`: correct path, instance method, base model chain
+- Fixed `StackingEnsemble.predict_proba` call: pass `[lgbm_proba, catboost_proba]` list, not pre-stacked
+- **End-to-end pipeline verified**: data loads from TimescaleDB, models load, inference runs correctly
+
+### Current server state (2026-03-23 ~22:15 UTC):
+- `train-full` container: RUNNING — at fold 315/2373 (~7.4h remaining, completes ~06:00 UTC Mar 24)
+  - Training rate: ~4.6 folds/min
+  - Models saved to `/opt/ep2-crypto/models/` (bind-mounted)
+- `docker-ep2-crypto-1`: HEALTHY — API serving on port 8000
+- `timescaledb`: HEALTHY — 3.44M OHLCV rows (Sep 2019 → Mar 2026)
+- Models in Docker named volume: Partial fold-264 models (NOT ready for meaningful backtest)
+
+### EXACT NEXT STEP — S20-T1: Verify training completes (~06:00 UTC)
 
 ```bash
-# Check if training finished
+# Check if training finished (look for training_complete log line)
 ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 \
-  "docker logs train-full 2>&1 | grep -E 'fold_complete|training_complete|Error|Traceback' | tail -20"
+  "docker logs train-full 2>&1 | tail -10"
 
-# If complete, verify models saved
+# Verify models saved
 ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 "ls -lh /opt/ep2-crypto/models/"
 ```
 
-Expected: 4 model files — `lgbm_direction.txt`, `catboost_direction.cbm`, `stacking_ensemble.joblib`, `calibrator.joblib`
+Expected 4 model files: `lgbm_direction.txt`, `catboost_direction.cbm`, `stacking_ensemble.joblib`, `calibrator.joblib`
 
-### After training completes — S20-T2: Rebuild Docker image
+### After training completes — S20-T2: Sync full codebase + rebuild Docker
 
-The current Docker image is missing all 11 bug fixes. Volume mounts are a workaround.
-Bake fixes into the image so future deploys are clean:
+There's a server/git divergence (server has local modifications). Full rsync + rebuild needed:
 
 ```bash
-# On local machine
-rsync -e "ssh -i ~/.ssh/hetzner_deploy_key" -av --exclude='.git' --exclude='.venv' \
+# On local machine - sync all code
+rsync -e "ssh -i ~/.ssh/hetzner_deploy_key" -av --exclude='.git' --exclude='.venv' --exclude='models' \
   . deploy@46.225.220.203:/opt/ep2-crypto/
 
+# Rebuild Docker image with all bug fixes baked in
 ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 "
   cd /opt/ep2-crypto/docker
   docker compose build ep2-crypto
@@ -64,17 +86,40 @@ ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 "
 "
 ```
 
-### After rebuild — S20-T3: Run backtest
+### After rebuild — S20-T3: Run backtest targeting Sharpe > 2.0
+
 ```bash
-ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 \
-  "docker run --rm --network docker_default \
-    -e EP2_DB_URL=postgresql://ep2:ep2_secret@timescaledb:5432/ep2_crypto \
-    -v /opt/ep2-crypto/models:/app/models \
-    docker-ep2-crypto:latest \
-    /app/.venv/bin/python scripts/backtest.py"
+ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 "
+  docker exec -e PYTHONPATH=/app/src docker-ep2-crypto-1 \
+  /app/.venv/bin/python scripts/backtest.py --source db \
+  --start 2024-09-01 --end 2025-03-01 \
+  --confidence-threshold 0.55 --cost-sensitivity 2>&1
+"
 ```
 
-Target: mean Sharpe > 2.0 across walk-forward folds
+Note: The backtest will automatically copy models from the named volume (already seeded in session 3).
+After training completes, reseed the named volume with full models:
+```bash
+docker run --rm -v /opt/ep2-crypto/models:/src:ro -v docker_models:/dst alpine sh -c 'cp -v /src/* /dst/'
+```
+
+Target: Lo-corrected Sharpe > 2.0. If < 1.5: check fold-level Sharpe distribution; consider lowering confidence threshold.
+
+## Model Improvement Roadmap (Sprints 21-25)
+
+Defined 2026-03-23. Run in order — each sprint builds on the previous.
+
+| Sprint | Focus | Expected Accuracy Gain | Status |
+|--------|-------|----------------------|--------|
+| S21 | Baseline evaluation + Telegram notifications | — (establish baseline) | [ ] |
+| S22 | FLAT label fix (0→0.3%) + OFI + Microprice features | +1.5-2% | [ ] |
+| S23 | Extend data to 2019 + Optuna tuning | +0.5-1.5% | [ ] |
+| S24 | GRU hidden state as 3rd stacking model | +1-2% | [ ] |
+| S25 | Regime-aware training + adaptive thresholds | +1-2% | [ ] |
+
+**Decision gate after S25:** if aggregate Sharpe > 2.0 → paper trading. If < 1.0 → consider 15-min timeframe.
+
+---
 
 ## Completed Sprints
 - **Sprint 9** (2026-03-23): Risk Management — 183 tests, 95.3% coverage
