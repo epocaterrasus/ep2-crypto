@@ -11,31 +11,70 @@
 - **Sprint 19** — Production Deployment (COMPLETE: T1-T6 done)
 - **Sprint 20** — Production Training Run (IN PROGRESS — training started 2026-03-23)
 
-## Session Handoff (2026-03-23)
+## Session Handoff (2026-03-23 — Session 2)
 
-### What was done this session:
-1. **PostgreSQL compatibility layer** — `db/connection.py` DBConnection wrapper, schema/repo/collect_history fixes
+### All bugs fixed this session (all committed to git):
+1. **PostgreSQL compatibility** — `db/connection.py` DBConnection wrapper, schema/repo/collect_history
 2. **Full production deployment** — Docker rebuilt, Doppler token, TimescaleDB tables, backfill (3.44M rows)
-3. **UnboundLocalError bug** — Fixed `k` variable scope in HMMFeatureComputer
-4. **24/7 trading hours** — `EP2_RISK_ENFORCE_TRADING_HOURS=false` added to Doppler prd, ep2-crypto restarted
-5. **O(n²) feature computation** — Fixed GARCH, EWMA, RSI, HMM to use O(1) stateful incremental updates; feature computation dropped from 30+ min to ~5 min for 687K bars
-6. **train.py init_model bug** — Fixed `init_model=prev_lgbm_model` → `init_model=prev_lgbm_model._model`
-7. **CatBoost predict_proba bug** — Fixed (n,2) output when flat class absent in training window → always returns (n,3)
+3. **HMM UnboundLocalError** — Fixed `k` variable scope in `regime_features.py`
+4. **24/7 trading** — `EP2_RISK_ENFORCE_TRADING_HOURS=false` in Doppler prd
+5. **O(n²) → O(1) feature computation** — GARCH, EWMA, RSI, HMM all stateful incremental; 30min → 5min
+6. **LightGBM init_model bug** — `prev_lgbm_model._model` not wrapper object
+7. **CatBoost predict_proba (n,2) bug** — Always returns (n,3), pads missing class columns with zeros
+8. **LightGBM warm-start LabelEncoder conflict** — Skip init_model when class sets differ between folds
+9. **Stacking API mismatch** — Pass `list[NDArray]` not pre-hstacked array to `stacking.train()`
+10. **LightGBM FLAT class absent** — Inject zero-weight dummy rows so LabelEncoder always sees all 3 classes
+11. **CatBoost FLAT class absent** — Same fix: zero-weight dummy rows in Pool so all 3 classes always present
 
-### Current server state (as of session end):
-- `model-training` container: RUNNING walk-forward training (started ~20:20 UTC)
-  - 687,528 5-min bars (Sep 2019 → Jan 2026)
-  - 2373 folds × ~3.5s/fold ≈ 2.3 hours to complete
-  - Features completed in ~4.5 min, folds running
-- `docker-ep2-crypto-1`: HEALTHY — live prediction loop running 24/7 (no trading hours restriction)
-- `backfill-2019`: EXITED 0 — completed successfully
+### Current server state (2026-03-23 ~22:00 UTC):
+- `train-full` container: RUNNING — training just restarted after CatBoost fix
+  - 687,528 5-min bars (Sep 2019 → Jan 2026), 2373 folds, ~1h total
+  - Features take ~5 min, then folds at ~1s each
+  - **ALL bugs fixed** — should complete without crashing now
+- `docker-ep2-crypto-1`: HEALTHY — live prediction loop 24/7
+- `timescaledb`: HEALTHY — 3.44M OHLCV rows
 
-### Next steps when training completes:
-1. Check training output: `docker logs model-training 2>&1 | tail -50`
-2. Verify models were saved: `ls /opt/ep2-crypto/models/`
-3. Run backtest to validate Sharpe: `docker exec docker-ep2-crypto-1 doppler run -- uv run python scripts/backtest.py`
-4. Check paper trading picks up new models (live loop auto-retrains every 4h, or restart container)
-5. Rebuild Docker image to bake in all the bug fixes (so next deploy doesn't need volume mounts)
+### EXACT NEXT STEP — S20-T1: Verify training completes
+
+```bash
+# Check if training finished
+ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 \
+  "docker logs train-full 2>&1 | grep -E 'fold_complete|training_complete|Error|Traceback' | tail -20"
+
+# If complete, verify models saved
+ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 "ls -lh /opt/ep2-crypto/models/"
+```
+
+Expected: 4 model files — `lgbm_direction.txt`, `catboost_direction.cbm`, `stacking_ensemble.joblib`, `calibrator.joblib`
+
+### After training completes — S20-T2: Rebuild Docker image
+
+The current Docker image is missing all 11 bug fixes. Volume mounts are a workaround.
+Bake fixes into the image so future deploys are clean:
+
+```bash
+# On local machine
+rsync -e "ssh -i ~/.ssh/hetzner_deploy_key" -av --exclude='.git' --exclude='.venv' \
+  . deploy@46.225.220.203:/opt/ep2-crypto/
+
+ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 "
+  cd /opt/ep2-crypto/docker
+  docker compose build ep2-crypto
+  docker compose up -d ep2-crypto
+"
+```
+
+### After rebuild — S20-T3: Run backtest
+```bash
+ssh -i ~/.ssh/hetzner_deploy_key deploy@46.225.220.203 \
+  "docker run --rm --network docker_default \
+    -e EP2_DB_URL=postgresql://ep2:ep2_secret@timescaledb:5432/ep2_crypto \
+    -v /opt/ep2-crypto/models:/app/models \
+    docker-ep2-crypto:latest \
+    /app/.venv/bin/python scripts/backtest.py"
+```
+
+Target: mean Sharpe > 2.0 across walk-forward folds
 
 ## Completed Sprints
 - **Sprint 9** (2026-03-23): Risk Management — 183 tests, 95.3% coverage
