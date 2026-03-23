@@ -30,6 +30,8 @@ import structlog
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+from ep2_crypto.monitoring.alerts import Alert, AlertManager, AlertTier, RateLimiter, TelegramSender
+
 logger = structlog.get_logger(__name__)
 
 # Bars per day for 5-min candles in 24/7 crypto
@@ -43,6 +45,26 @@ DEFAULT_MODEL_DIR = os.environ.get("EP2_MODEL_DIR", "/app/models" if os.path.isd
 # ---------------------------------------------------------------------------
 # Database connection
 # ---------------------------------------------------------------------------
+
+def _build_alert_manager() -> AlertManager:
+    """Build an AlertManager from env vars (gracefully disabled if not configured).
+
+    Uses unlimited rate limits — this is a training job with infrequent sends.
+    EP2_TELEGRAM_BOT_TOKEN and EP2_TELEGRAM_CHAT_ID must both be set to enable.
+    """
+    bot_token = os.environ.get("EP2_TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("EP2_TELEGRAM_CHAT_ID", "")
+    sender = TelegramSender(bot_token=bot_token, chat_id=chat_id)
+    unlimited = RateLimiter(
+        limits={t: 0 for t in AlertTier}  # 0 = unlimited for all tiers
+    )
+    mgr = AlertManager(senders=[sender], rate_limiter=unlimited)
+    if sender.enabled:
+        logger.info("telegram_alerts_enabled")
+    else:
+        logger.info("telegram_alerts_disabled", hint="Set EP2_TELEGRAM_BOT_TOKEN + EP2_TELEGRAM_CHAT_ID to enable")
+    return mgr
+
 
 def get_db_connection() -> Any:
     """Connect to the database using DatabaseConfig env-var settings.
@@ -381,6 +403,7 @@ def train_walk_forward(
     feature_names: list[str],
     output_dir: Path,
     skip_gru: bool = False,
+    alert_manager: AlertManager | None = None,
 ) -> dict[str, Any]:
     """Run walk-forward training of all models.
 
@@ -403,6 +426,13 @@ def train_walk_forward(
     folds = validator.folds()
 
     logger.info("walk_forward_start", n_folds=len(folds), n_bars=n_bars)
+
+    if alert_manager is not None:
+        alert_manager.send(Alert(
+            tier=AlertTier.INFO,
+            title="Training started",
+            message=f"Walk-forward: {len(folds)} folds, {n_bars:,} bars",
+        ))
 
     # Collect OOF predictions for stacking
     oof_lgbm = np.zeros((n_bars, 3), dtype=np.float64)
@@ -473,20 +503,42 @@ def train_walk_forward(
             time_s=round(fold_time, 1),
         )
 
+        # Telegram notification every 50 folds (and on the final fold)
+        if alert_manager is not None:
+            is_final = fold.fold_idx == folds[-1].fold_idx
+            if fold.fold_idx % 50 == 0 or is_final:
+                mean_so_far = float(np.mean(fold_sharpes))
+                alert_manager.send(Alert(
+                    tier=AlertTier.INFO,
+                    title=f"Fold {fold.fold_idx}/{len(folds)} complete",
+                    message=(
+                        f"acc={accuracy:.4f}  sharpe={fold_sharpe:.2f}\n"
+                        f"mean_sharpe_so_far={mean_so_far:.2f}  ({fold.fold_idx}/{len(folds)} folds)"
+                    ),
+                ))
+
     # --- Stacking Ensemble ---
     logger.info("training_stacking_ensemble")
     mask = oof_mask
-    base_probas = np.hstack([oof_lgbm[mask], oof_catboost[mask]])
+    # Pass a list of per-model OOF arrays (not pre-hstacked) so stacking.train()
+    # can call np.hstack() internally and correctly set _n_base_models=2.
+    base_probas_list = [oof_lgbm[mask], oof_catboost[mask]]
     y_oof = y[mask]
 
-    # Bug fix (bc894ae): base_model_names kwarg matches updated StackingEnsemble API
     stacking = StackingEnsemble()
-    stacking_metrics = stacking.train(base_probas, y_oof, base_model_names=["lgbm", "catboost"])
+    stacking_metrics = stacking.train(base_probas_list, y_oof, base_model_names=["lgbm", "catboost"])
     logger.info("stacking_trained", metrics=stacking_metrics)
+
+    if alert_manager is not None:
+        alert_manager.send(Alert(
+            tier=AlertTier.INFO,
+            title="Stacking ensemble trained",
+            message=f"meta_train_acc={stacking_metrics.get('meta_train_accuracy', 0):.4f}  n_base_models={int(stacking_metrics.get('n_base_models', 0))}",
+        ))
 
     # --- Calibration ---
     logger.info("training_calibrator")
-    stacking_probas = stacking.predict_proba(base_probas)
+    stacking_probas = stacking.predict_proba(base_probas_list)
     calibrator = IsotonicCalibrator()
     cal_metrics = calibrator.fit(stacking_probas, y_oof)
     logger.info("calibrator_trained", metrics=cal_metrics)
@@ -528,6 +580,17 @@ def train_walk_forward(
         cv_sharpe=round(cv_sharpe, 2),
         stable=cv_sharpe < 0.5,
     )
+
+    if alert_manager is not None:
+        alert_manager.send(Alert(
+            tier=AlertTier.INFO,
+            title="Training complete",
+            message=(
+                f"n_folds={len(folds)}\n"
+                f"mean_sharpe={mean_sharpe:.2f}  std={std_sharpe:.2f}\n"
+                f"cv_sharpe={cv_sharpe:.2f}  stable={cv_sharpe < 0.5}"
+            ),
+        ))
 
     return {
         "lgbm": last_lgbm,
@@ -620,8 +683,9 @@ def main() -> None:
     logger.info("data_aligned", start=start, end=end, X_shape=X.shape, y_shape=y.shape)
 
     # 6. Walk-forward training
+    alert_manager = _build_alert_manager()
     pipeline_start = time.time()
-    results = train_walk_forward(X, y, feature_names, output_dir, skip_gru=args.skip_gru)
+    results = train_walk_forward(X, y, feature_names, output_dir, skip_gru=args.skip_gru, alert_manager=alert_manager)
     pipeline_time = time.time() - pipeline_start
 
     # 7. Final report — use structlog, never print()
