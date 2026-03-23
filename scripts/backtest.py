@@ -102,39 +102,52 @@ def load_real_data(
     """
     repo = Repository(conn)
 
-    ohlcv_rows = repo.query_ohlcv(symbol, interval, start_ms, end_ms)
+    # Data is stored as 1-minute bars; query and aggregate to 5-minute.
+    # Extend range backward to ensure we have enough 1m bars to form complete 5m bars.
+    ohlcv_rows = repo.query_ohlcv(symbol, "1m", start_ms, end_ms)
     if not ohlcv_rows:
         msg = (
-            f"No OHLCV data found for symbol={symbol!r} interval={interval!r} "
+            f"No OHLCV data found for symbol={symbol!r} interval='1m' "
             f"between {start_ms} and {end_ms}. "
             "Run scripts/collect_history.py to backfill data."
         )
         raise ValueError(msg)
 
-    n = len(ohlcv_rows)
-    timestamps = np.empty(n, dtype=np.int64)
-    opens = np.empty(n, dtype=np.float64)
-    highs = np.empty(n, dtype=np.float64)
-    lows = np.empty(n, dtype=np.float64)
-    closes = np.empty(n, dtype=np.float64)
-    volumes = np.empty(n, dtype=np.float64)
+    n1 = len(ohlcv_rows)
+    ts1 = np.empty(n1, dtype=np.int64)
+    o1 = np.empty(n1, dtype=np.float64)
+    h1 = np.empty(n1, dtype=np.float64)
+    l1 = np.empty(n1, dtype=np.float64)
+    c1 = np.empty(n1, dtype=np.float64)
+    v1 = np.empty(n1, dtype=np.float64)
 
     for i, row in enumerate(ohlcv_rows):
-        timestamps[i] = row["timestamp_ms"]
-        opens[i] = row["open"]
-        highs[i] = row["high"]
-        lows[i] = row["low"]
-        closes[i] = row["close"]
-        volumes[i] = row["volume"]
+        ts1[i] = row["timestamp_ms"]
+        o1[i] = row["open"]
+        h1[i] = row["high"]
+        l1[i] = row["low"]
+        c1[i] = row["close"]
+        v1[i] = row["volume"]
+
+    # Aggregate 1m → 5m
+    n5 = (n1 // 5) * 5
+    timestamps = ts1[:n5].reshape(-1, 5)[:, 0]
+    opens = o1[:n5].reshape(-1, 5)[:, 0]
+    highs = h1[:n5].reshape(-1, 5).max(axis=1)
+    lows = l1[:n5].reshape(-1, 5).min(axis=1)
+    closes = c1[:n5].reshape(-1, 5)[:, -1]
+    volumes = v1[:n5].reshape(-1, 5).sum(axis=1)
+    n = len(timestamps)
 
     logger.info(
         "ohlcv_loaded",
-        rows=n,
+        rows_1m=n1,
+        rows_5m=n,
         days=round(n / BARS_PER_DAY, 1),
         start_ms=int(timestamps[0]),
         end_ms=int(timestamps[-1]),
         symbol=symbol,
-        interval=interval,
+        interval="5m",
     )
 
     # Load funding rates — forward-fill gaps (funding settles every 8h)
