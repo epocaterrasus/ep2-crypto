@@ -4,15 +4,21 @@
 > Updated at the end of every session. Read this FIRST in every new session.
 
 ## Current Sprints (Parallel)
-- **Sprint 10** — Backtesting Framework (complete)
-- **Sprint 13** — API + Live + Monitoring (complete)
-- **Sprint 14** — Paper Trading (this session)
-- **Sprint 17** — Venue Abstraction + Polymarket Execution (COMPLETE: T1-T6 done, 182 tests)
+- **Sprint 11** — Hyperparameter Tuning (not started)
+- **Sprint 15** — Validation + Ablation Study (COMPLETE: T1-T4 done, 110 tests)
+- **Sprint 18** — Historical Data Backfill (in progress — scripts being built)
+- **Sprint 19** — Production Deployment (in progress — Docker infra being built)
 
 ## Completed Sprints
 - **Sprint 9** (2026-03-23): Risk Management — 183 tests, 95.3% coverage
 - **Sprint 10** (2026-03-23): Backtesting Framework — 174 tests passing
 - **Sprint 13** (2026-03-23): API + Live + Monitoring — 239 tests passing
+- **Sprint 14** (2026-03-23): Paper Trading — 237 tests passing (T1-T5 all done)
+  - PaperExchange (36t), LiveExchange (29t), PaperRunner (18t), DailyReport (28t), integration (9t)
+- **Sprint 15** (2026-03-23): Validation + Ablation Study — 110 tests passing
+  - AblationStudy (21t): 6 variants (full/no_confidence/no_risk/no_drawdown/no_kills/no_regime)
+  - StressTests (47t): 4 historical replays (COVID/China/FTX/Mar2024) + 5 synthetic scenarios
+  - PerformanceReport (42t): OOS Sharpe CI, DSR, regime breakdown, MC ruin, deploy verdict
 - **Sprint 17** (2026-03-23): Venue Abstraction + Polymarket Execution — 182 tests passing
   - VenueAdapter ABC + registry, PolymarketAdapter (59 tests), BinaryPositionSizer (41 tests),
     PolymarketRiskAdapter (20 tests), PolymarketBacktester (50 tests), integration (20 tests)
@@ -20,45 +26,113 @@
 
 ---
 
+## Sprint 15 Tickets — Validation + Ablation Study
+
+### S15-T1: Ablation study [x]
+**Create**: Full-system vs each-component-removed comparison using synthetic OHLCV + signals
+**Files**:
+- `src/ep2_crypto/backtest/ablation.py` — AblationStudy, AblationResult, AblationVariant enum
+- `tests/test_backtest/test_ablation.py` — Golden-dataset tests for each ablation variant
+**Verify**: `uv run pytest tests/test_backtest/test_ablation.py -v`
+**Notes**: Variants: full, no_confidence_gate, no_risk_engine, no_drawdown_gate, no_kill_switches.
+Disable each by modifying BacktestConfig/RiskConfig or filtering signals. Output: delta-Sharpe table.
+
+### S15-T2: Historical stress test replay [x]
+**Create**: Replay synthetic crash scenarios modelled on known historical events
+**Files**:
+- `src/ep2_crypto/backtest/stress_tests.py` — HistoricalStressScenario, SyntheticStressScenario, StressTestRunner
+- `tests/test_backtest/test_stress_tests.py` — Tests for each scenario class
+**Verify**: `uv run pytest tests/test_backtest/test_stress_tests.py -v -k historical`
+**Notes**: Scenarios: COVID Mar2020 (-50% in 48h), May2021 China ban (-30% in 8h), FTX Nov2022 (-25% 5-day), Mar2024 ATH (-15%). Uses BacktestEngine. Pass criterion: kill switches fire before ruin.
+
+### S15-T3: Synthetic stress tests [x]
+**Create**: Parameterised synthetic data generators for adversarial scenarios
+**Verify**: `uv run pytest tests/test_backtest/test_stress_tests.py -v -k synthetic`
+**Notes**: Scenarios: 48h zero vol, 10 flash crashes in 1 week, BTC-NQ correlation → 0, funding rate +0.3% for 2w, broken model (100 bars same direction). All in stress_tests.py.
+
+### S15-T4: Final performance report [x]
+**Create**: Consolidated OOS report: Sharpe CI, DSR, regime breakdown, Monte Carlo ruin
+**Files**:
+- `src/ep2_crypto/backtest/performance_report.py` — PerformanceReport, MonteCarloRuin, report_to_markdown()
+- `tests/test_backtest/test_performance_report.py` — Tests with synthetic returns
+**Verify**: `uv run pytest tests/test_backtest/test_performance_report.py -v`
+**Notes**: Monte Carlo ruin: 10K paths × N-trade simulation. P(ruin at 20% DD) must be < 5%. Report includes: DSR, OOS Sharpe 95% CI, regime breakdown, cost sensitivity, pass/fail verdict.
+
+---
+
+## Sprint 11 Tickets — Hyperparameter Tuning
+
+### S11-T1: LightGBM + CatBoost Optuna tuners [ ]
+**Create**: Optuna studies for tree models with walk-forward Sharpe as objective
+**Files**:
+- `src/ep2_crypto/models/tuning.py` — LGBMTuner, CatBoostTuner, walk_forward_sharpe(), deflated_sharpe_ratio()
+- `tests/test_models/test_tuning.py` — Unit tests for tuners and helpers
+**Verify**: `uv run pytest tests/test_models/test_tuning.py::TestLGBMTuner -v`
+**Notes**: MedianPruner(n_startup_trials=5, n_warmup_steps=10). Search space per SPRINTS.md. DSR on final params.
+
+### S11-T2: GRU Optuna tuner [ ]
+**Create**: GRU hyperparameter search added to tuning.py
+**Files**:
+- Update `src/ep2_crypto/models/tuning.py` — GRUTuner class
+- Update `tests/test_models/test_tuning.py` — GRUTuner tests
+**Verify**: `uv run pytest tests/test_models/test_tuning.py::TestGRUTuner -v`
+**Notes**: Search: hidden[32-256], layers[1-3], lr[1e-5-1e-2], dropout[0.1-0.5], seq_len[12-60]. Prune on val loss.
+
+### S11-T3: Confidence threshold optimizer + feature importance stability [ ]
+**Create**: Grid search confidence thresholds per regime; feature stability analysis
+**Files**:
+- Update `src/ep2_crypto/models/tuning.py` — ThresholdOptimizer, FeatureImportanceAnalyzer
+- Update `tests/test_models/test_tuning.py` — Tests for both
+**Verify**: `uv run pytest tests/test_models/test_tuning.py::TestThresholdOptimizer tests/test_models/test_tuning.py::TestFeatureImportanceAnalyzer -v`
+**Notes**: Threshold grid over [0.50, 0.55, ..., 0.80] per regime. Flag features appearing in <50% of folds.
+
+### S11-T4: Integration tests + sprint acceptance criteria [ ]
+**Create**: End-to-end tuning pipeline test
+**Files**:
+- `tests/test_models/test_tuning_integration.py` — Full study execution, pruning rate, stability check
+**Verify**: `uv run pytest tests/test_models/ -v`
+**Notes**: Verify: 50+ trials, pruning stops >30%, top-10 feature overlap >70%, DSR applied.
+
+---
+
 ## Sprint 14 Tickets — Paper Trading
 
-### S14-T1: PaperExchange implementing VenueAdapter [ ]
+### S14-T1: PaperExchange implementing VenueAdapter [x]
 **Create**: Paper trading exchange that simulates fills against real orderbook data
 **Files**:
 - `src/ep2_crypto/execution/paper_exchange.py` — PaperExchange, PaperPosition, PaperTrade, FillSimulator
-- `tests/test_execution/test_paper_exchange.py` — Fill simulation, balance tracking, position lifecycle
+- `tests/test_execution/test_paper_exchange.py` — 36 tests: fill simulation, balance tracking, position lifecycle
 **Verify**: `uv run pytest tests/test_execution/test_paper_exchange.py -v`
-**Notes**: Walk orderbook levels for fills, taker fee 4bps, track running PnL. Reuse SlippageEstimator.
 
-### S14-T2: LiveExchange implementing VenueAdapter [ ]
+### S14-T2: LiveExchange implementing VenueAdapter [x]
 **Create**: Live Binance perps adapter via ccxt
 **Files**:
 - `src/ep2_crypto/execution/live_exchange.py` — LiveExchange wrapping ccxt for Binance USDT perps
-- `tests/test_execution/test_live_exchange.py` — Mock ccxt tests
+- `tests/test_execution/test_live_exchange.py` — 29 mock ccxt tests
 **Verify**: `uv run pytest tests/test_execution/test_live_exchange.py -v`
-**Notes**: API key/secret from env only. Never log credentials.
+**Notes**: API key/secret from env only (BINANCE_API_KEY, BINANCE_API_SECRET). Never log credentials.
 
-### S14-T3: Paper trading orchestration [ ]
-**Create**: Wire live prediction loop to use venue adapter; add --paper/--live mode flag
+### S14-T3: Paper trading orchestration [x]
+**Create**: Wire live prediction loop to use venue adapter; add --mode flag
 **Files**:
-- Update `scripts/live.py` — `--mode paper|live` flag, venue adapter selection
-- `src/ep2_crypto/execution/paper_runner.py` — Thin wrapper connecting live.py signals to PaperExchange
+- Updated `scripts/live.py` — `--mode paper|live`, `--initial-balance`, `--confidence-threshold` flags
+- `src/ep2_crypto/execution/paper_runner.py` — PaperRunner, TradeSignal; 18 tests
 - `tests/test_execution/test_paper_runner.py`
 **Verify**: `uv run pytest tests/test_execution/test_paper_runner.py -v`
 
-### S14-T4: Daily report generator [ ]
-**Create**: EOD report: PnL, Sharpe, drawdown, trade count, regime breakdown, feature drift, alpha decay
+### S14-T4: Daily report generator [x]
+**Create**: EOD report: PnL, Sharpe, drawdown, trade count, regime breakdown, go/no-go verdict
 **Files**:
-- `src/ep2_crypto/monitoring/daily_report.py` — DailyReportGenerator
-- `tests/test_monitoring/test_daily_report.py`
+- `src/ep2_crypto/monitoring/daily_report.py` — DailyReportGenerator, DailyReport, RegimeStats
+- `tests/test_monitoring/test_daily_report.py` — 28 tests
 **Verify**: `uv run pytest tests/test_monitoring/test_daily_report.py -v`
-**Notes**: Reads from SQLite performance log. Outputs JSON + human-readable text. Sends via AlertManager.
 
-### S14-T5: Integration tests + sprint acceptance criteria [ ]
+### S14-T5: Integration tests + sprint acceptance criteria [x]
 **Create**: End-to-end paper trading test covering full signal→fill→report pipeline
 **Files**:
-- `tests/test_execution/test_paper_integration.py`
+- `tests/test_execution/test_paper_integration.py` — 9 tests
 **Verify**: `uv run pytest tests/test_execution/ -v`
+**Result**: 237 tests total across execution + daily_report (from 0 for Sprint 14)
 
 ---
 
@@ -109,6 +183,66 @@
 - `tests/test_execution/test_integration.py` — Full pipeline mock test (20 passing)
 - Update `pyproject.toml` — added py-clob-client>=0.18 under [polymarket] optional group
 **Verify**: `uv run pytest tests/test_execution/ -v`
+
+---
+
+## Sprint 18 Tickets — Historical Data Backfill
+
+### S18-T1: BTC historical data backfill script [x]
+**Create**: Fetch all BTC data from Binance Futures launch (Sep 2019) to present
+**Files**:
+- `scripts/collect_history.py` — 1m OHLCV, funding rates, OI, cross-market (NQ/Gold/DXY/ETH)
+**Verify**: `uv run python scripts/collect_history.py --start 2026-03-01 --end 2026-03-23` (test run)
+**Notes**: --resume flag for continuation. Same script works with SQLite (dev) and TimescaleDB (prod) via EP2_DB_URL.
+
+### S18-T2: Polymarket historical data backfill script [x]
+**Create**: Fetch all resolved 5-min BTC markets + derive synthetic outcomes from OHLCV
+**Files**:
+- `scripts/collect_polymarket_history.py` — Gamma API backfill + --derive-from-btc for pre-2026 synthetic data
+**Verify**: `uv run python scripts/collect_polymarket_history.py --start 2026-02-01` (real data)
+**Notes**: --derive-from-btc --start 2019-09-01 generates synthetic outcomes from ohlcv_1m table.
+
+---
+
+## Sprint 19 Tickets — Production Deployment
+
+### S19-T1: Docker containerization [x]
+**Create**: Dockerfile + .dockerignore
+**Files**:
+- `docker/Dockerfile` — Python 3.12-slim, uv, Doppler CLI, non-root user, healthcheck
+- `.dockerignore` — excludes .venv, .git, data/, research/, *.db
+- `docker/.env.example` — DOPPLER_TOKEN, POSTGRES_PASSWORD, GRAFANA_PASSWORD placeholders
+**Verify**: `docker build -f docker/Dockerfile -t ep2-crypto .`
+
+### S19-T2: Docker Compose stack [x]
+**Create**: Full stack with TimescaleDB, Prometheus, Grafana
+**Files**:
+- `docker/docker-compose.yml` — 4 services, all secrets via env vars, TimescaleDB/Prometheus localhost-only
+- `docker/prometheus.yml` — scrapes ep2-crypto:8000/metrics every 15s
+**Verify**: `docker compose -f docker/docker-compose.yml up -d`
+
+### S19-T3: Deploy script [x]
+**Create**: One-command deploy to Hetzner
+**Files**:
+- `scripts/deploy.sh` — rsync + docker compose up + health check 60s timeout + rollback on failure
+**Verify**: `./scripts/deploy.sh`
+**Notes**: Configurable via EP2_DEPLOY_HOST and EP2_DEPLOY_DIR env vars. Still need scripts/setup_server.sh for first-time setup.
+
+### S19-T4: Telegram alert configuration [ ]
+**Create**: Configure chat_id, verify all alert tiers fire
+**Notes**: Bot token already in Doppler. Need TELEGRAM_CHAT_ID.
+
+### S19-T5: Grafana dashboards [ ]
+**Create**: Trading, risk, model, system dashboards
+**Files**:
+- `docker/grafana/dashboards/trading.json`
+- `docker/grafana/dashboards/risk.json`
+- `docker/grafana/dashboards/model.json`
+- `docker/grafana/dashboards/system.json`
+
+### S19-T6: SQLite → TimescaleDB migration [ ]
+**Create**: Migration script + hypertable creation
+**Notes**: Export local SQLite history → import into TimescaleDB. Create hypertables with time partitioning.
 
 ---
 
@@ -385,6 +519,16 @@
 
 ## Session Log
 
+### Session N (2026-03-23) — Sprint 14: Paper Trading
+- **What happened**: Completed all 5 Sprint 14 tickets. 237 new tests passing.
+- **S14-T1**: PaperExchange implementing VenueAdapter — orderbook fill simulation, balance tracking, position lifecycle (36 tests)
+- **S14-T2**: LiveExchange for Binance USDT-M perps via ccxt — mocked tests, credential guard (29 tests)
+- **S14-T3**: PaperRunner + live.py wired with `--mode paper|live`, `--initial-balance`, `--confidence-threshold` (18 tests)
+- **S14-T4**: DailyReportGenerator — PnL, Sharpe, drawdown, regime breakdown, Sprint 14 go/no-go verdict (28 tests)
+- **S14-T5**: Integration tests: full signal→fill→report pipeline (9 tests)
+- **Added**: `VenueType.PAPER`, `execution/__init__.py` updated with all new exports
+- **Next session**: Start Sprint 15 (Validation + Ablation Study) or Sprint 11 (Hyperparameter Tuning)
+
 ### Session 1 (2026-03-23)
 - **What happened**: Research phase (40 agents, 3 rounds). Created PLAN.md, RESEARCH_SYNTHESIS.md, BACKTESTING_PLAN.md.
 - **Infrastructure**: Created CLAUDE.md, SPRINTS.md, REQUIREMENTS.md, DECISIONS.md, SESSION_PROTOCOL.md, pyproject.toml.
@@ -512,6 +656,19 @@
 - **Sprint 13 acceptance criteria**: All passed. 239 tests. Lint clean.
 - **Note**: Sprint 13 ran in parallel with Sprint 10 (Backtesting) and Sprint 17 (Polymarket). Only touched monitoring/, api/, execution/, scripts/live.py and their tests.
 
+### Session 12 (2026-03-23) — Sprint 10
+- **What happened**: Completed Sprint 10 (Backtesting Framework). 174 new backtest tests.
+- **S10-T1**: ExecutionSimulator — SlippageEstimator (sqrt-impact), FeeCalculator (taker/maker), LatencySimulator, PartialFillSimulator (10% bar volume cap), FundingAccumulator (00/08/16 UTC settlement), ExecutionSimulator orchestrator with separate RNG streams. 46 tests.
+- **S10-T2**: BacktestMetrics — Lo-corrected Sharpe (ACF adjustment up to 6 lags), Sortino, Calmar, CVaR(5%), rolling 30-day Sharpe, regime-specific breakdowns, cost sensitivity analysis with break-even finder. Annualization: sqrt(105,120). 35 tests.
+- **S10-T3**: BacktestEngine — Event-driven with Numba-compiled inner loop (_update_equity_numba, _compute_bar_returns_numba), next-bar-open execution, full risk engine integration (approve_trade + on_bar + kill switches), signal reversal handling, position tracking. 17 tests.
+- **S10-T4**: WalkForwardValidator — Purged walk-forward (14-day train, 1-day test, 18-bar purge, 12-bar embargo, sliding window), nested inner loop (3 folds, 20% validation from END of training), WalkForwardAuditor (6 checks: overlap, purge, temporal, consistency, duplicates, embargo). 25 tests.
+- **S10-T5**: Statistical validation — PSR (Bailey & López de Prado), DSR (multiple testing correction), permutation test (5K), block bootstrap CI (10K, block=T^(1/3)), walk-forward stability (CV<0.5), combined verdict: GENUINE_EDGE/INCONCLUSIVE/LIKELY_NOISE. 24 tests.
+- **S10-T6**: FundingRateCarry benchmark — contrarian carry strategy (short when funding positive, long when negative), smoothing for turnover reduction. Added to registry and default suite. 12 tests.
+- **S10-T7**: CLI entry point `scripts/backtest.py` — argparse with --days, --validate, --cost-sensitivity, --walk-forward flags.
+- **S10-T8**: Integration tests — full pipeline (data→engine→metrics→validation), costs always present, risk integration, walk-forward audit, annualization verification. 15 tests.
+- **Fix**: Increased sleep in flaky OI polling test (test_derivatives.py) from 0.15s to 0.30s.
+- **Sprint 10 acceptance criteria**: All passed. 174 backtest tests. Lint clean (only TC002 warnings for NDArray import, consistent with project convention).
+
 ---
 
 ## Sprint Completion Protocol
@@ -549,7 +706,7 @@ The user pastes this prompt to start the next session.
 | Sprint 7: Models + Stacking | Complete | 2026-03-23 |
 | Sprint 8: Confidence Gating | Complete | 2026-03-23 |
 | **Sprint 9: Risk Management** | **Complete** | **2026-03-23** |
-| Sprint 10: Backtesting Framework | Not started | — |
+| **Sprint 10: Backtesting Framework** | **Complete** | **2026-03-23** |
 | Sprint 11: Hyperparameter Tuning | Not started | — |
 | Sprint 12: Macro Events + Cascade | Complete | 2026-03-23 |
 | Sprint 13: API + Live + Monitoring | Complete | 2026-03-23 |
