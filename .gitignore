@@ -22,6 +22,10 @@ venv/
 .coverage
 htmlcov/
 .mypy_cache/
+.hypothesis/
+
+# ML training artifacts
+catboost_info/
 
 # Data
 data/

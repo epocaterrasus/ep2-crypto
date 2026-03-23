@@ -3,9 +3,9 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 7 — Models + Stacking
+## Current Sprint: Sprint 8 — Confidence Gating
 **Started**: Not yet
-**Target**: LightGBM + CatBoost + GRU + Stacking ensemble
+**Target**: Meta-labeling, conformal prediction, gating pipeline, position sizing
 
 ---
 
@@ -207,6 +207,44 @@
 - **Sprint 6 acceptance criteria**: All passed. Ready to commit.
 - **Next session**: Start Sprint 7 (Models — LightGBM + CatBoost + GRU + Stacking)
 
+### Session 8 (2026-03-23) — Sprint 12 (parallel)
+- **What happened**: Completed Sprint 12 (Event-Driven Macro + Cascade Detector). 68 new tests.
+- **S12-T1/T2**: MacroEventMonitor — economic calendar (CPI/FOMC/NFP/PPI/GDP/PCE), NQ lead-lag trade logic (T+2min signal delay, T+10min expiry), VIX gate (>35 blocks), EWMA BTC-NQ correlation (6h trailing), multi-factor confidence scoring. 25 tests.
+- **S12-T3/T4**: CascadeDetector — Hawkes process with exponential kernel (recursive O(1) intensity), branching ratio estimation (method of moments), multi-factor cascade scoring (OI percentile, funding z-score, liquidation burst rate, book depth ratio, price velocity), sigmoid probability mapping, 4-level alert system with position size multiplier. 33 tests.
+- **S12-T5/T6/T7**: Integration tests validating all acceptance criteria: macro fires on CPI/FOMC dates, VIX gate suppresses correctly, cascade escalation monotonic, modules operate independently, both can run concurrently. 10 integration tests.
+- **Sprint 12 acceptance criteria**: All passed. Lint clean.
+- **Note**: Sprint 12 runs in parallel with Sprint 7 (Models) and Sprint 9 (Risk) in separate sessions. Only touched src/ep2_crypto/events/ and tests/test_events/.
+
+### Session 9 (2026-03-23) — Sprint 9 (parallel)
+- **What happened**: Completed Sprint 9 (Risk Management Engine). 183 risk tests, 95.3% coverage.
+- **S9-T1**: RiskConfig — Pydantic model in `risk/config.py` with env var loading (EP2_RISK_ prefix), field-level validation (gt/le/ge constraints), model_validator for vol range cross-check. Replaces previous dataclass.
+- **S9-T2**: PositionTracker — single BTC/USDT position with SQLite persistence, MTM, MAE/MFE, bars_held, thread-safe via RLock. 21 tests.
+- **S9-T3**: KillSwitchManager — 5 switches (daily_loss/weekly_loss/max_drawdown/consecutive_loss/emergency), state machine ARMED→TRIGGERED→RESET, SQLite persistence with audit log, requires explicit reset with reason string. 35 tests.
+- **S9-T4**: DrawdownGate — **convex formula k=1.5** (`max(0, (1-dd/max_dd)^1.5)`), duration-based reduction (3d→80%, 7d→40%, 14d→halt), graduated 5-phase re-entry (10%→25%→50%→75%→100%), cooldown per phase. 24 tests.
+- **S9-T5**: VolatilityGuard — rolling vol (sqrt(105120) annualization), min/max vol gating, trading hours, weekend reduction, funding proximity. 16 tests.
+- **S9-T6**: PositionSizer — quarter-Kelly with confidence scaling, ATR stops (3 ATR), risk-per-trade cap (1% of equity), max position cap (5%), exchange min size. 25 tests.
+- **S9-T7**: RiskManager orchestrator — approve_trade (7-step pipeline), on_bar (MTM+stop+holding+kill), on_trade_opened/closed, day/week reset, emergency trigger. 22 tests.
+- **S9-T8**: Golden dataset — 24 parameterized cases (convex formula at 8 DD levels, Kelly at 6 WR/payoff combos, kill switch boundary ±epsilon, position cap).
+- **S9-T9**: Property-based tests (Hypothesis) — 5 properties with 500+ random inputs each (size cap, kill switch blocking, DD multiplier bounds, Kelly non-negative, risk-per-trade cap).
+- **S9-T10**: File-backed persistence — kill switches, position tracker, drawdown gate all survive file close/reopen (tempfile SQLite).
+- **S9-T11**: Stress scenarios — COVID crash (stop fires), flash crash (1-bar stop), 10 consecutive losses (kill switch triggers), slow bleed (drawdown gate reduces), rapid cycling (no exceptions), extreme vol (no exceptions).
+- **Sprint 9 acceptance criteria**: All passed. 95.3% coverage. 183 tests. 792 total project tests.
+- **Note**: Sprint 9 ran in parallel with Sprint 7 (Models) and Sprint 12 (Macro+Cascade). Only touched src/ep2_crypto/risk/ and tests/test_risk/.
+
+### Session 10 (2026-03-23) — Sprint 7
+- **What happened**: Completed ALL 8 Sprint 7 tickets. 113 new tests (851 total).
+- **S7-T1**: TripleBarrierLabeler — ATR-based barriers, vertical/upper/lower, adaptive thresholds, fixed-threshold baseline, class weights. 25 tests.
+- **S7-T2**: LGBMDirectionModel — ternary multiclass (softmax), warm-start via init_model, early stopping, SHAP feature importance, save/load round-trip. 18 tests.
+- **S7-T3**: CatBoostDirectionModel — ordered boosting (Bayesian bootstrap) for diversity, same interface as LightGBM for stacking. 11 tests.
+- **S7-T4**: GRUFeatureExtractor — 2-layer GRU, hidden state extraction as features for trees, AdamW + cosine annealing + gradient clip=1.0, ONNX export. DataLoader never shuffles. 14 tests.
+- **S7-T5**: QuantileModel — 5 LightGBM quantile regressors (10/25/50/75/90), prediction intervals, interval width for risk, quantile crossing detection. 12 tests.
+- **S7-T6**: StackingEnsemble — logistic regression meta-learner on OOF class probabilities, simple/weighted average baselines, scipy weight optimization, handles missing classes gracefully. 12 tests.
+- **S7-T7**: IsotonicCalibrator — per-class isotonic regression, ECE computation, reliability diagram data, save/load. 13 tests.
+- **S7-T8**: Integration tests — full pipeline (label → train → predict → stack → calibrate), all acceptance criteria validated. 8 tests.
+- **Dependency**: Added onnxscript, sklearn/joblib to mypy ignore list.
+- **Sprint 7 acceptance criteria**: All passed. 851 tests total.
+- **Next session**: Start Sprint 8 (Confidence Gating Pipeline)
+
 ---
 
 ## Sprint Completion Protocol
@@ -241,12 +279,12 @@ The user pastes this prompt to start the next session.
 | Sprint 4: Features - Vol/Momentum | Complete | 2026-03-23 |
 | Sprint 5: Features - Cross-market | Complete | 2026-03-23 |
 | Sprint 6: Regime Detection | Complete | 2026-03-23 |
-| Sprint 7: Models + Stacking | Not started | — |
+| Sprint 7: Models + Stacking | Complete | 2026-03-23 |
 | Sprint 8: Confidence Gating | Not started | — |
-| **Sprint 9: Risk Management** | **Not started** | — |
+| **Sprint 9: Risk Management** | **Complete** | **2026-03-23** |
 | Sprint 10: Backtesting Framework | Not started | — |
 | Sprint 11: Hyperparameter Tuning | Not started | — |
-| Sprint 12: Macro Events + Cascade | Not started | — |
+| Sprint 12: Macro Events + Cascade | Complete | 2026-03-23 |
 | Sprint 13: API + Live + Monitoring | Not started | — |
 | Sprint 14: Paper Trading | Not started | — |
 | Sprint 15: Validation + Ablation | Not started | — |
@@ -403,7 +441,165 @@ The user pastes this prompt to start the next session.
 
 ---
 
+## Sprint 7 Tickets
+
+### S7-T1: Triple barrier labeling module [x]
+**Create**: Target labeling for ternary classification (up/flat/down) via triple barrier method
+**Files**:
+- `src/ep2_crypto/models/labeling.py` — TripleBarrierLabeler with vertical/upper/lower barriers, adaptive threshold per regime
+- `tests/test_models/test_labeling.py` — Golden dataset tests, barrier touch order, regime-adaptive thresholds
+**Verify**: `uv run pytest tests/test_models/test_labeling.py -v`
+**Research**: ADR-008 (triple barrier over fixed threshold)
+**Notes**: Label = which barrier touched first. Vertical = max holding period (12 bars = 1h). Upper/lower = ATR-based or percentile-based. Ternary: up(+1), flat(0), down(-1). Must be vectorized for batch labeling of training windows.
+
+### S7-T2: LightGBM ternary classifier [x]
+**Create**: LightGBM direction model with warm-start, early stopping, SHAP tracking
+**Files**:
+- `src/ep2_crypto/models/lgbm_direction.py` — LGBMDirectionModel (train, predict, predict_proba, save, load, feature_importance)
+- `tests/test_models/test_lgbm_direction.py` — Train/predict cycle, save/load round-trip, SHAP tracking
+**Verify**: `uv run pytest tests/test_models/test_lgbm_direction.py -v`
+**Research**: `RR-lightgbm-crypto-tuning.md`
+**Notes**: num_leaves=31, max_depth=5, lr=0.05, min_child_samples=50. Warm-start via init_model. Early stopping on purged validation set. SHAP for feature importance. Ternary multiclass (softmax).
+
+### S7-T3: CatBoost ternary classifier [x]
+**Create**: CatBoost direction model with ordered boosting for diversity
+**Files**:
+- `src/ep2_crypto/models/catboost_direction.py` — CatBoostDirectionModel (same interface as LightGBM)
+- `tests/test_models/test_catboost_direction.py` — Train/predict cycle, save/load round-trip
+**Verify**: `uv run pytest tests/test_models/test_catboost_direction.py -v`
+**Notes**: Ordered boosting prevents target leakage. Same ternary target. depth=5, lr=0.05, l2_leaf_reg=3. Provides diversity for stacking.
+
+### S7-T4: GRU hidden state extractor [x]
+**Create**: GRU model that extracts hidden states as features for tree models
+**Files**:
+- `src/ep2_crypto/models/gru_features.py` — GRUFeatureExtractor (train, extract_hidden, save, load, export_onnx)
+- `tests/test_models/test_gru_features.py` — Training, hidden state shape, ONNX export, DataLoader ordering
+**Verify**: `uv run pytest tests/test_models/test_gru_features.py -v`
+**Research**: `RR-gru-tcn-training-architecture.md`
+**Notes**: GRU(input=N, hidden=64, layers=2, dropout=0.3). seq_len=24 bars. AdamW + cosine annealing + gradient clip=1.0. DataLoader NEVER shuffles (time series). Hidden state → features for stacking. ONNX export for inference.
+
+### S7-T5: LightGBM quantile regression [x]
+**Create**: Quantile regression for prediction intervals and risk assessment
+**Files**:
+- `src/ep2_crypto/models/quantile.py` — QuantileModel (train, predict quantiles, prediction interval width)
+- `tests/test_models/test_quantile.py` — Quantile ordering, coverage, interval width
+**Verify**: `uv run pytest tests/test_models/test_quantile.py -v`
+**Notes**: 5 quantiles (10th, 25th, 50th, 75th, 90th). Each is a separate LightGBM regressor with quantile objective. Prediction interval width = risk signal for confidence gating.
+
+### S7-T6: Stacking ensemble meta-learner [x]
+**Create**: Logistic regression meta-learner on OOF predictions from base models
+**Files**:
+- `src/ep2_crypto/models/stacking.py` — StackingEnsemble (generate_oof, train_meta, predict, optimize_weights)
+- `tests/test_models/test_stacking.py` — OOF generation, meta-learner training, improvement over best single
+**Verify**: `uv run pytest tests/test_models/test_stacking.py -v`
+**Notes**: OOF from inner walk-forward (never in-sample). Meta-learner: logistic regression on class probabilities from LightGBM + CatBoost + GRU predictions. Ensemble weights via scipy.optimize (Sharpe objective).
+
+### S7-T7: Isotonic calibration [x]
+**Create**: Probability calibration via isotonic regression
+**Files**:
+- `src/ep2_crypto/models/calibration.py` — IsotonicCalibrator (fit, calibrate, reliability_curve)
+- `tests/test_models/test_calibration.py` — Calibration improvement, reliability diagram data, per-class calibration
+**Verify**: `uv run pytest tests/test_models/test_calibration.py -v`
+**Notes**: Isotonic regression on held-out set. Per-class calibration (one-vs-rest). Reliability curve for evaluation. Must improve ECE (expected calibration error).
+
+### S7-T8: Sprint 7 integration tests + acceptance criteria [x]
+**Create**: End-to-end model pipeline test on synthetic data
+**Files**:
+- `tests/test_models/test_model_integration.py` — Full pipeline: label → train → predict → stack → calibrate
+**Verify**: `uv run pytest tests/test_models/ -v`
+**Notes**: Acceptance criteria from SPRINTS.md: each model trains on 14-day window, >52% accuracy above random, stacking improves over best single, feature importance tracked, GRU DataLoader never shuffles, all models serializable, calibration improves reliability.
+
+---
+
+## Sprint 12 Tickets
+
+### S12-T1: Economic calendar + macro event data model [x]
+**Create**: MacroEventType enum, MacroEvent dataclass, MacroSignal dataclass, pre-scheduled 2025 calendar
+**Files**:
+- `src/ep2_crypto/events/macro.py` — Data model + calendar
+**Verify**: `uv run pytest tests/test_events/test_macro.py -v -k TestMacroEvent`
+
+### S12-T2: Macro event monitor with NQ lead-lag [x]
+**Create**: MacroEventMonitor (VIX gate, correlation gate, signal delay/expiry), EWMACorrelation tracker
+**Files**:
+- `src/ep2_crypto/events/macro.py` — MacroEventMonitor, EWMACorrelation
+**Verify**: `uv run pytest tests/test_events/test_macro.py -v -k TestMacroEventMonitor`
+
+### S12-T3: Hawkes process liquidation intensity model [x]
+**Create**: HawkesProcess with exponential kernel, recursive intensity, branching ratio estimation
+**Files**:
+- `src/ep2_crypto/events/cascade.py` — HawkesProcess
+**Verify**: `uv run pytest tests/test_events/test_cascade.py -v -k TestHawkesProcess`
+
+### S12-T4: Multi-factor cascade detector [x]
+**Create**: CascadeDetector combining Hawkes with OI, funding, depth, velocity into cascade probability
+**Files**:
+- `src/ep2_crypto/events/cascade.py` — CascadeDetector, CascadeState
+**Verify**: `uv run pytest tests/test_events/test_cascade.py -v -k TestCascadeDetector`
+
+### S12-T5: Macro module tests [x]
+**Files**: `tests/test_events/test_macro.py` — 25 tests
+**Verify**: `uv run pytest tests/test_events/test_macro.py -v`
+
+### S12-T6: Cascade detector tests [x]
+**Files**: `tests/test_events/test_cascade.py` — 33 tests
+**Verify**: `uv run pytest tests/test_events/test_cascade.py -v`
+
+### S12-T7: Integration tests + acceptance criteria [x]
+**Files**: `tests/test_events/test_events_integration.py` — 10 tests
+**Verify**: `uv run pytest tests/test_events/ -v`
+
+---
+
+## Sprint 9 Tickets
+
+### S9-T1: RiskConfig Pydantic model [x]
+**Files**: `src/ep2_crypto/risk/config.py`
+**Verify**: `uv run pytest tests/test_risk/test_risk_manager.py::TestConfigValidation -v`
+
+### S9-T2: PositionTracker [x]
+**Files**: `src/ep2_crypto/risk/position_tracker.py`, `tests/test_risk/test_position_tracker.py`
+**Verify**: `uv run pytest tests/test_risk/test_position_tracker.py -v`
+
+### S9-T3: KillSwitchManager [x]
+**Files**: `src/ep2_crypto/risk/kill_switches.py`, `tests/test_risk/test_kill_switches.py`
+**Verify**: `uv run pytest tests/test_risk/test_kill_switches.py -v`
+
+### S9-T4: DrawdownGate (k=1.5 convex + duration + recovery) [x]
+**Files**: `src/ep2_crypto/risk/drawdown_gate.py`, `tests/test_risk/test_drawdown_gate.py`
+**Verify**: `uv run pytest tests/test_risk/test_drawdown_gate.py -v`
+
+### S9-T5: VolatilityGuard [x]
+**Files**: `src/ep2_crypto/risk/volatility_guard.py`, `tests/test_risk/test_volatility_guard.py`
+**Verify**: `uv run pytest tests/test_risk/test_volatility_guard.py -v`
+
+### S9-T6: PositionSizer (quarter-Kelly + ATR stops) [x]
+**Files**: `src/ep2_crypto/risk/position_sizer.py`, `tests/test_risk/test_position_sizer.py`
+**Verify**: `uv run pytest tests/test_risk/test_position_sizer.py -v`
+
+### S9-T7: RiskManager orchestrator [x]
+**Files**: `src/ep2_crypto/risk/risk_manager.py`, `tests/test_risk/test_risk_manager.py`
+**Verify**: `uv run pytest tests/test_risk/test_risk_manager.py -v`
+
+### S9-T8: Golden dataset tests (24 parameterized) [x]
+**Files**: `tests/test_risk/test_risk_golden.py`
+**Verify**: `uv run pytest tests/test_risk/test_risk_golden.py -v`
+
+### S9-T9: Property-based tests (Hypothesis, 500+ inputs) [x]
+**Files**: `tests/test_risk/test_risk_properties.py`
+**Verify**: `uv run pytest tests/test_risk/test_risk_properties.py -v`
+
+### S9-T10: File-backed persistence tests [x]
+**Files**: `tests/test_risk/test_risk_persistence.py`
+**Verify**: `uv run pytest tests/test_risk/test_risk_persistence.py -v`
+
+### S9-T11: Stress scenario tests [x]
+**Files**: `tests/test_risk/test_risk_stress.py`
+**Verify**: `uv run pytest tests/test_risk/test_risk_stress.py -v`
+
+---
+
 ## Future Sprint Ticket Decomposition
 
-Sprints 7-14 will be decomposed into tickets when they become the current sprint.
+Sprints 8-14 (excluding 9 and 12, now complete) will be decomposed into tickets when they become the current sprint.
 See SPRINTS.md for high-level sprint definitions.
