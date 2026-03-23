@@ -8,7 +8,7 @@
 - **Sprint 15** — Validation + Ablation Study (COMPLETE: T1-T4 done, 110 tests)
 - **Sprint 16** — Alpha Enhancement (COMPLETE: T1-T8 done)
 - **Sprint 18** — Historical Data Backfill (in progress — scripts being built)
-- **Sprint 19** — Production Deployment (in progress — Docker infra being built)
+- **Sprint 19** — Production Deployment (COMPLETE: T1-T6 done)
 
 ## Completed Sprints
 - **Sprint 9** (2026-03-23): Risk Management — 183 tests, 95.3% coverage
@@ -301,11 +301,11 @@ Disable each by modifying BacktestConfig/RiskConfig or filtering signals. Output
 **Verify**: `./scripts/deploy.sh`
 **Notes**: Configurable via EP2_DEPLOY_HOST and EP2_DEPLOY_DIR env vars. Still need scripts/setup_server.sh for first-time setup.
 
-### S19-T4: Telegram alert configuration [ ]
+### S19-T4: Telegram alert configuration [x]
 **Create**: Configure chat_id, verify all alert tiers fire
-**Notes**: Bot token already in Doppler. Need TELEGRAM_CHAT_ID.
+**Notes**: Bot token + TELEGRAM_CHAT_ID configured in Doppler. TelegramSender code in alerts.py.
 
-### S19-T5: Grafana dashboards [ ]
+### S19-T5: Grafana dashboards [x]
 **Create**: Trading, risk, model, system dashboards
 **Files**:
 - `docker/grafana/dashboards/trading.json`
@@ -313,9 +313,11 @@ Disable each by modifying BacktestConfig/RiskConfig or filtering signals. Output
 - `docker/grafana/dashboards/model.json`
 - `docker/grafana/dashboards/system.json`
 
-### S19-T6: SQLite → TimescaleDB migration [ ]
+### S19-T6: SQLite → TimescaleDB migration [x]
 **Create**: Migration script + hypertable creation
-**Notes**: Export local SQLite history → import into TimescaleDB. Create hypertables with time partitioning.
+**Files**:
+- `scripts/migrate_to_timescale.py` — creates hypertables + migrates all 11 tables, --dry-run, --schema-only, --tables flags
+**Notes**: `uv run python scripts/migrate_to_timescale.py --dry-run` to preview. Converts timestamp_ms → TIMESTAMPTZ. Batch inserts with ON CONFLICT DO NOTHING for idempotency.
 
 ---
 
