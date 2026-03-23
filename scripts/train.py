@@ -252,7 +252,8 @@ def train_walk_forward(
 
         # --- LightGBM ---
         lgbm = LGBMDirectionModel()
-        lgbm.train(X_tr, y_tr, X_val, y_val, feature_names=feature_names, init_model=prev_lgbm_model)
+        lgbm_init = prev_lgbm_model._model if prev_lgbm_model is not None else None
+        lgbm.train(X_tr, y_tr, X_val, y_val, feature_names=feature_names, init_model=lgbm_init)
         lgbm_proba = lgbm.predict_proba(X_test)
         oof_lgbm[test_idx] = lgbm_proba
         prev_lgbm_model = lgbm

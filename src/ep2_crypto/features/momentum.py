@@ -78,6 +78,10 @@ class RSIComputer(FeatureComputer):
 
     def __init__(self, window: int = 14) -> None:
         self._window = window
+        # State for O(1) incremental updates
+        self._avg_gain: float | None = None
+        self._avg_loss: float | None = None
+        self._last_idx: int = -1
 
     @property
     def name(self) -> str:
@@ -101,22 +105,29 @@ class RSIComputer(FeatureComputer):
         if idx < self.warmup_bars - 1:
             return {"rsi": float("nan")}
 
-        # Compute price changes from start
-        changes = np.diff(closes[: idx + 1])
-
-        # Wilder's smoothing: initialize with SMA, then EMA
-        gains = np.where(changes > 0, changes, 0.0)
-        losses = np.where(changes < 0, -changes, 0.0)
-
-        # Initial average (SMA of first window)
-        avg_gain = float(np.mean(gains[: self._window]))
-        avg_loss = float(np.mean(losses[: self._window]))
-
-        # Wilder's EMA for subsequent values
         alpha = 1.0 / self._window
-        for i in range(self._window, len(gains)):
-            avg_gain = avg_gain * (1 - alpha) + gains[i] * alpha
-            avg_loss = avg_loss * (1 - alpha) + losses[i] * alpha
+
+        if self._avg_gain is not None and self._avg_loss is not None and self._last_idx == idx - 1:
+            # Incremental O(1) update: one new bar
+            change = float(closes[idx]) - float(closes[idx - 1])
+            gain = change if change > 0 else 0.0
+            loss = -change if change < 0 else 0.0
+            avg_gain = self._avg_gain * (1.0 - alpha) + gain * alpha
+            avg_loss = self._avg_loss * (1.0 - alpha) + loss * alpha
+        else:
+            # Full recomputation: initialization or non-sequential call
+            changes = np.diff(closes[: idx + 1])
+            gains = np.where(changes > 0, changes, 0.0)
+            losses = np.where(changes < 0, -changes, 0.0)
+            avg_gain = float(np.mean(gains[: self._window]))
+            avg_loss = float(np.mean(losses[: self._window]))
+            for i in range(self._window, len(gains)):
+                avg_gain = avg_gain * (1.0 - alpha) + gains[i] * alpha
+                avg_loss = avg_loss * (1.0 - alpha) + losses[i] * alpha
+
+        self._avg_gain = avg_gain
+        self._avg_loss = avg_loss
+        self._last_idx = idx
 
         if avg_loss == 0:
             rsi = 100.0 if avg_gain > 0 else 50.0

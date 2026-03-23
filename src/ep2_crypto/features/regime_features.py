@@ -101,6 +101,9 @@ class GARCHFeatureComputer(FeatureComputer):
         self._alpha = alpha
         self._beta = beta
         self._omega = omega
+        # State for O(1) incremental updates (reset on non-sequential calls)
+        self._sigma2: float | None = None
+        self._last_idx: int = -1
 
     @property
     def name(self) -> str:
@@ -129,28 +132,38 @@ class GARCHFeatureComputer(FeatureComputer):
         if idx < self.warmup_bars - 1:
             return nan_result
 
-        # Compute log returns from start
-        log_prices = np.log(closes[: idx + 1])
-        returns = np.diff(log_prices)
+        if self._sigma2 is not None and self._last_idx == idx - 1:
+            # Incremental O(1) update: one new return added since last call.
+            # The GARCH loop uses r_{i-1} at step i, so the new step added
+            # when idx increases by 1 uses r = log(closes[idx]) - log(closes[idx-1]).
+            r = math.log(closes[idx]) - math.log(closes[idx - 1])
+            sigma2 = self._omega + self._alpha * r * r + self._beta * self._sigma2
+        else:
+            # Full recomputation: initialization or non-sequential call.
+            log_prices = np.log(closes[: idx + 1])
+            returns = np.diff(log_prices)
 
-        if len(returns) < 2:
-            return nan_result
+            if len(returns) < 2:
+                return nan_result
 
-        # Initialize conditional variance with sample variance
-        sigma2 = float(np.var(returns[: self.warmup_bars]))
-        if sigma2 <= 0:
-            sigma2 = 1e-8
+            sigma2 = float(np.var(returns[: self.warmup_bars]))
+            if sigma2 <= 0:
+                sigma2 = 1e-8
 
-        # Recursive GARCH update
-        for i in range(1, len(returns)):
-            r2 = returns[i - 1] ** 2
-            sigma2 = self._omega + self._alpha * r2 + self._beta * sigma2
+            for i in range(1, len(returns)):
+                r2 = returns[i - 1] ** 2
+                sigma2 = self._omega + self._alpha * r2 + self._beta * sigma2
+
+        self._sigma2 = sigma2
+        self._last_idx = idx
 
         garch_vol = math.sqrt(max(sigma2, 0.0))
 
-        # Ratio: current GARCH vol vs recent realized vol
-        recent_returns = returns[-min(20, len(returns)) :]
-        realized_vol = float(np.std(recent_returns))
+        # Ratio: current GARCH vol vs recent realized vol (O(1) window slice)
+        start = max(0, idx - 20)
+        recent_log = np.log(closes[start : idx + 1])
+        recent_returns = np.diff(recent_log)
+        realized_vol = float(np.std(recent_returns)) if len(recent_returns) > 1 else 1e-15
         vol_ratio = garch_vol / realized_vol if realized_vol > 1e-15 else 1.0
 
         return {
@@ -175,6 +188,10 @@ class HMMFeatureComputer(FeatureComputer):
     def __init__(self, vol_window: int = 20, smooth_window: int = 10) -> None:
         self._vol_window = vol_window
         self._smooth_window = smooth_window
+        # State for O(1) incremental updates: ring buffer of rolling vols
+        self._vol_series: np.ndarray | None = None
+        self._prev_prob: float = 0.5
+        self._last_idx: int = -1
 
     @property
     def name(self) -> str:
@@ -203,52 +220,62 @@ class HMMFeatureComputer(FeatureComputer):
         if idx < self.warmup_bars - 1:
             return nan_result
 
-        # Compute rolling realized vol for the smoothing window
-        log_prices = np.log(closes[: idx + 1])
-        returns = np.diff(log_prices)
+        k = 5.0
 
-        if len(returns) < self._vol_window + self._smooth_window:
-            return nan_result
+        if self._vol_series is not None and self._last_idx == idx - 1:
+            # Incremental O(1) update: compute one new rolling vol, shift buffer.
+            # New vol = std of the most recent vol_window returns.
+            # log return requires two close prices, so returns end at closes[idx],
+            # which means the last return index in the diff array is idx-1.
+            start = idx - self._vol_window
+            new_vol = float(np.std(np.diff(np.log(closes[start : idx + 1]))))
+            # Shift left and append new vol (ring buffer)
+            self._vol_series[:-1] = self._vol_series[1:]
+            self._vol_series[-1] = new_vol
+        else:
+            # Full recomputation: initialization or non-sequential call
+            returns = np.diff(np.log(closes[: idx + 1]))
+            if len(returns) < self._vol_window + self._smooth_window:
+                return nan_result
+            vol_series = np.zeros(self._smooth_window)
+            for i in range(self._smooth_window):
+                end = len(returns) - (self._smooth_window - 1 - i)
+                start = end - self._vol_window
+                vol_series[i] = float(np.std(returns[start:end]))
+            self._vol_series = vol_series
+            # For prev_prob on full recompute, approximate with one-bar-back series
+            prev_vol_series = np.zeros(self._smooth_window)
+            for i in range(self._smooth_window):
+                end = len(returns) - 1 - (self._smooth_window - 1 - i)
+                start_p = end - self._vol_window
+                if start_p >= 0 and end > start_p:
+                    prev_vol_series[i] = float(np.std(returns[start_p:end]))
 
-        # Get rolling volatilities
-        vol_series = np.zeros(self._smooth_window)
-        for i in range(self._smooth_window):
-            end = len(returns) - (self._smooth_window - 1 - i)
-            start = end - self._vol_window
-            vol_series[i] = float(np.std(returns[start:end]))
-
-        current_vol = vol_series[-1]
+        vol_series = self._vol_series
+        current_vol = float(vol_series[-1])
         median_vol = float(np.median(vol_series))
 
-        # Smooth probability: sigmoid-like mapping of current vs median
-        k = 5.0  # logistic steepness — used in both prob and prev_prob calculations
         if median_vol > 1e-15:
             ratio = current_vol / median_vol
-            # Map ratio to probability: ratio > 1 -> high vol regime
-            # Using logistic: p = 1 / (1 + exp(-k*(ratio - 1)))
             prob = 1.0 / (1.0 + math.exp(-k * (ratio - 1.0)))
         else:
             prob = 0.5
 
-        # Regime change: absolute difference in prob vs previous bar
-        if idx >= self.warmup_bars:
-            # Approximate previous prob by checking vol one bar earlier
-            prev_vol_series = np.zeros(self._smooth_window)
-            for i in range(self._smooth_window):
-                end = len(returns) - 1 - (self._smooth_window - 1 - i)
-                start = end - self._vol_window
-                if start >= 0 and end > start:
-                    prev_vol_series[i] = float(np.std(returns[start:end]))
-            prev_vol = prev_vol_series[-1]
+        # prev_prob: stored from previous bar (incremental) or computed above (full)
+        if self._last_idx == idx - 1:
+            prev_prob = self._prev_prob
+        else:
             prev_median = float(np.median(prev_vol_series))
             if prev_median > 1e-15:
-                prev_ratio = prev_vol / prev_median
+                prev_ratio = float(prev_vol_series[-1]) / prev_median
                 prev_prob = 1.0 / (1.0 + math.exp(-k * (prev_ratio - 1.0)))
             else:
                 prev_prob = 0.5
-            regime_change = abs(prob - prev_prob)
-        else:
-            regime_change = 0.0
+
+        regime_change = abs(prob - prev_prob) if idx >= self.warmup_bars else 0.0
+
+        self._prev_prob = prob
+        self._last_idx = idx
 
         return {
             "hmm_high_vol_prob": prob,

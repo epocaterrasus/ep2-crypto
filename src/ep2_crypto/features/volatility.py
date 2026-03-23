@@ -143,6 +143,9 @@ class EWMAVolComputer(FeatureComputer):
 
     def __init__(self, decay: float = 0.94) -> None:
         self._decay = decay
+        # State for O(1) incremental updates
+        self._var: float | None = None
+        self._last_idx: int = -1
 
     @property
     def name(self) -> str:
@@ -166,18 +169,22 @@ class EWMAVolComputer(FeatureComputer):
         if idx < self.warmup_bars - 1:
             return {"ewma_vol": float("nan")}
 
-        # Compute log returns from start to idx
-        log_returns = np.log(closes[1 : idx + 1] / closes[:idx])
-
-        # Initialize variance with first return squared
-        var = float(log_returns[0] ** 2)
-
-        # EWMA iteration
         lam = self._decay
-        for i in range(1, len(log_returns)):
-            var = lam * var + (1.0 - lam) * float(log_returns[i] ** 2)
 
-        return {"ewma_vol": math.sqrt(max(var, 0.0))}
+        if self._var is not None and self._last_idx == idx - 1:
+            # Incremental O(1) update: one new return
+            r = math.log(closes[idx] / closes[idx - 1])
+            self._var = lam * self._var + (1.0 - lam) * r * r
+        else:
+            # Full recomputation: initialization or non-sequential call
+            log_returns = np.log(closes[1 : idx + 1] / closes[:idx])
+            var = float(log_returns[0] ** 2)
+            for i in range(1, len(log_returns)):
+                var = lam * var + (1.0 - lam) * float(log_returns[i] ** 2)
+            self._var = var
+
+        self._last_idx = idx
+        return {"ewma_vol": math.sqrt(max(self._var, 0.0))}
 
     def output_names(self) -> list[str]:
         return ["ewma_vol"]
