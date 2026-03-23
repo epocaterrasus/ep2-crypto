@@ -3,10 +3,9 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 4 — Feature Engineering (Volume, Volatility, Momentum)
+## Current Sprint: Sprint 5 — Feature Engineering (Cross-market, Regime, Temporal)
 **Started**: Not yet
-**Target**: Volume delta, VWAP deviation, realized/Parkinson volatility, momentum features
-**Target**: Core microstructure features (OBI, OFI, microprice, TFI) that capture 60-80% of 5-min signal
+**Target**: Cross-market signals, temporal encoding, regime features, normalization pipeline, unified feature pipeline
 
 ---
 
@@ -175,6 +174,16 @@
 - **Sprint 3 acceptance criteria**: All passed. Committed.
 - **Next session**: Start Sprint 4 (Volume, Volatility, Momentum features)
 
+### Session 5 (2026-03-23)
+- **What happened**: Completed ALL 5 Sprint 4 tickets. 77 new tests (285 total).
+- **S4-T1**: VolumeDeltaComputer (1-bar/5-bar normalized + raw), VWAPComputer (rolling typical price), VolumeROCComputer (1/3/6 bar). 23 tests.
+- **S4-T2**: RealizedVolComputer (6/12-bar log return std), ParkinsonVolComputer (high-low range), EWMAVolComputer (decay=0.94), VolOfVolComputer (rolling std of realized vol). 25 tests.
+- **S4-T3**: ROCComputer (1/3/6/12 bars), RSIComputer (Wilder's smoothing, bounded [0,100]), LinRegSlopeComputer (normalized by price), QuantileRankComputer (rolling rank [0,1]). 29 tests.
+- **S4-T4**: Extended look-ahead bias tests to cover all 16 feature computers (truncation + shuffle + no-future-correlation). 3 tests.
+- **S4-T5**: Updated integration test: 36 total features, all value range checks, <1ms/bar compute time. 5 tests.
+- **Sprint 4 acceptance criteria**: All passed. Committed.
+- **Next session**: Start Sprint 5 (Cross-market, Regime, Temporal features)
+
 ---
 
 ## Sprint Completion Protocol
@@ -206,13 +215,24 @@ The user pastes this prompt to start the next session.
 | Sprint 1: Foundation | Complete | 2026-03-23 |
 | Sprint 2: Data Ingestion | Complete | 2026-03-23 |
 | Sprint 3: Feature Engineering (Microstructure) | Complete | 2026-03-23 |
-| Sprint 4-14 | Not started | — |
+| Sprint 4: Features - Vol/Momentum | Complete | 2026-03-23 |
+| Sprint 5: Features - Cross-market | Not started | — |
+| Sprint 6: Regime Detection | Not started | — |
+| Sprint 7: Models + Stacking | Not started | — |
+| Sprint 8: Confidence Gating | Not started | — |
+| **Sprint 9: Risk Management** | **Not started** | — |
+| Sprint 10: Backtesting Framework | Not started | — |
+| Sprint 11: Hyperparameter Tuning | Not started | — |
+| Sprint 12: Macro Events + Cascade | Not started | — |
+| Sprint 13: API + Live + Monitoring | Not started | — |
+| Sprint 14: Paper Trading | Not started | — |
+| Sprint 15: Validation + Ablation | Not started | — |
 
 ---
 
 ## Sprint 4 Tickets
 
-### S4-T1: Volume features (delta, VWAP, rate of change) [ ]
+### S4-T1: Volume features (delta, VWAP, rate of change) [x]
 **Create**: Volume delta, VWAP deviation, volume rate of change
 **Files**:
 - `src/ep2_crypto/features/volume.py` — VolumeDeltaComputer, VWAPComputer, VolumeROCComputer
@@ -220,7 +240,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_volume.py -v`
 **Notes**: Volume delta = buy_vol - sell_vol (from trade_sides). VWAP deviation = (close - vwap) / vwap. Volume ROC at 1, 3, 6 bars.
 
-### S4-T2: Volatility features (realized, Parkinson, EWMA, vol-of-vol) [ ]
+### S4-T2: Volatility features (realized, Parkinson, EWMA, vol-of-vol) [x]
 **Create**: Multiple volatility estimators
 **Files**:
 - `src/ep2_crypto/features/volatility.py` — RealizedVolComputer, ParkinsonVolComputer, EWMAVolComputer
@@ -228,7 +248,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_volatility.py -v`
 **Notes**: Parkinson uses high-low range. EWMA with configurable decay (0.94 default). Vol-of-vol = rolling std of volatility.
 
-### S4-T3: Momentum features (ROC, RSI, linreg slope, quantile rank) [ ]
+### S4-T3: Momentum features (ROC, RSI, linreg slope, quantile rank) [x]
 **Create**: Momentum and mean-reversion indicators
 **Files**:
 - `src/ep2_crypto/features/momentum.py` — ROCComputer, RSIComputer, LinRegSlopeComputer, QuantileRankComputer
@@ -236,14 +256,14 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_momentum.py -v`
 **Notes**: ROC at 1/3/6/12 bars. RSI(14) bounded [0,100]. LinReg slope over 20 bars. Quantile rank over 60 bars.
 
-### S4-T4: Look-ahead bias tests for Sprint 4 features [ ]
+### S4-T4: Look-ahead bias tests for Sprint 4 features [x]
 **Create**: Truncation + shuffle tests for volume, volatility, momentum
 **Files**:
 - Update `tests/test_features/test_lookahead.py` — Add Sprint 4 features to bias detection
 **Verify**: `uv run pytest tests/test_features/test_lookahead.py -v`
 **Notes**: Extend existing bias test infrastructure to cover new feature computers.
 
-### S4-T5: Sprint 4 integration test [ ]
+### S4-T5: Sprint 4 integration test [x]
 **Create**: Combined Sprint 3+4 feature pipeline test
 **Files**:
 - Update `tests/test_features/test_feature_integration.py` — Add Sprint 4 features
@@ -252,7 +272,59 @@ The user pastes this prompt to start the next session.
 
 ---
 
+## Sprint 5 Tickets
+
+### S5-T1: Cross-market features (NQ, ETH, lead-lag) [ ]
+**Create**: Cross-market signal features
+**Files**:
+- `src/ep2_crypto/features/cross_market.py` — NQReturnComputer, ETHRatioComputer, LeadLagComputer, DivergenceComputer
+- `tests/test_features/test_cross_market.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_cross_market.py -v`
+**Notes**: NQ 5-min returns lagged 1-3 bars (US hours only). ETH/BTC ratio momentum. Rolling lead-lag correlation. Divergence signals.
+
+### S5-T2: Temporal features (cyclical encoding, session, funding) [ ]
+**Create**: Time-based features
+**Files**:
+- `src/ep2_crypto/features/temporal.py` — CyclicalTimeComputer, SessionComputer, FundingTimeComputer
+- `tests/test_features/test_temporal.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_temporal.py -v`
+**Notes**: Sin/cos for minute, hour, day-of-week. Session indicator (Asia/Europe/US). Time-to-funding in minutes.
+
+### S5-T3: Regime features (ER, GARCH vol, HMM probs as inputs) [ ]
+**Create**: Regime context features for model input
+**Files**:
+- `src/ep2_crypto/features/regime_features.py` — ERFeatureComputer, GARCHFeatureComputer, HMMFeatureComputer
+- `tests/test_features/test_regime_features.py` — Golden dataset tests
+**Verify**: `uv run pytest tests/test_features/test_regime_features.py -v`
+**Notes**: Efficiency Ratio (Kaufman) as feature. GARCH conditional vol. HMM probabilities.
+
+### S5-T4: Normalization pipeline (dual: raw for trees, robust for neural) [ ]
+**Create**: Feature normalization with per-fold fitting
+**Files**:
+- `src/ep2_crypto/features/normalization.py` — RawPassthrough, RobustScaler, RankGaussianTransformer
+- `tests/test_features/test_normalization.py` — Tests for per-fold fitting
+**Verify**: `uv run pytest tests/test_features/test_normalization.py -v`
+**Notes**: Raw pass-through for tree models. Robust scaling + rank-to-gaussian for neural. Per-fold fitting only.
+
+### S5-T5: Feature pipeline (combine all modules) [ ]
+**Create**: Unified feature pipeline
+**Files**:
+- `src/ep2_crypto/features/pipeline.py` — FeaturePipeline combining all modules
+- `tests/test_features/test_pipeline.py` — End-to-end pipeline tests
+**Verify**: `uv run pytest tests/test_features/test_pipeline.py -v`
+**Notes**: Handle NaN filling. Configurable feature selection. Consistent output shape.
+
+### S5-T6: Look-ahead + integration tests for Sprint 5 [ ]
+**Create**: Bias detection and integration for all Sprint 5 features
+**Files**:
+- Update `tests/test_features/test_lookahead.py` — Add Sprint 5 features
+- Update `tests/test_features/test_feature_integration.py` — Full pipeline test
+**Verify**: `uv run pytest tests/test_features/ -v`
+**Notes**: Total feature count 40-50. Pipeline produces consistent output.
+
+---
+
 ## Future Sprint Ticket Decomposition
 
-Sprints 5-14 will be decomposed into tickets when they become the current sprint.
+Sprints 6-14 will be decomposed into tickets when they become the current sprint.
 See SPRINTS.md for high-level sprint definitions.

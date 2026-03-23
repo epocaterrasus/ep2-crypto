@@ -112,7 +112,7 @@ Sprint 1 (database), Sprint 2 (data available for testing)
 
 ---
 
-## Sprint 4: Feature Engineering - Volume, Volatility, Momentum (2-3 days) [ ]
+## Sprint 4: Feature Engineering - Volume, Volatility, Momentum (2-3 days) [x]
 
 ### Objectives
 Build Tier 1 and Tier 2 features for volume, volatility, and momentum.
@@ -470,7 +470,7 @@ Build the complete backtesting infrastructure: walk-forward engine, execution si
 - `research/transaction_cost_modeling.md`
 
 ### Dependencies
-Sprint 7 (models), Sprint 8 (confidence gating)
+Sprint 7 (models), Sprint 8 (confidence gating), **Sprint 9 (risk engine — backtests MUST include risk constraints)**
 
 ---
 

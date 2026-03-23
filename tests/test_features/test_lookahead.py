@@ -1,4 +1,4 @@
-"""Look-ahead bias detection tests for all microstructure features.
+"""Look-ahead bias detection tests for all feature computers.
 
 Two tests per feature:
 1. Truncation test: compute(data[:150]) == compute(data[:200]) at index 150
@@ -17,6 +17,23 @@ from ep2_crypto.features.microstructure import (
     OBIComputer,
     OFIComputer,
     TFIComputer,
+)
+from ep2_crypto.features.momentum import (
+    LinRegSlopeComputer,
+    QuantileRankComputer,
+    ROCComputer,
+    RSIComputer,
+)
+from ep2_crypto.features.volatility import (
+    EWMAVolComputer,
+    ParkinsonVolComputer,
+    RealizedVolComputer,
+    VolOfVolComputer,
+)
+from ep2_crypto.features.volume import (
+    VolumeDeltaComputer,
+    VolumeROCComputer,
+    VWAPComputer,
 )
 
 
@@ -76,12 +93,28 @@ def _truncate(data: dict[str, np.ndarray], n: int) -> dict[str, np.ndarray]:
 
 
 def _build_registry() -> FeatureRegistry:
+    """Build registry with all Sprint 3 + Sprint 4 features."""
     reg = FeatureRegistry()
+    # Sprint 3: Microstructure
     reg.register(OBIComputer())
     reg.register(OFIComputer())
     reg.register(MicropriceComputer())
     reg.register(TFIComputer())
     reg.register(KyleLambdaComputer(window=20))
+    # Sprint 4: Volume
+    reg.register(VolumeDeltaComputer())
+    reg.register(VWAPComputer(window=12))
+    reg.register(VolumeROCComputer())
+    # Sprint 4: Volatility
+    reg.register(RealizedVolComputer(short_window=6, long_window=12))
+    reg.register(ParkinsonVolComputer(short_window=6, long_window=12))
+    reg.register(EWMAVolComputer(decay=0.94))
+    reg.register(VolOfVolComputer(inner_window=6, outer_window=12))
+    # Sprint 4: Momentum
+    reg.register(ROCComputer())
+    reg.register(RSIComputer(window=14))
+    reg.register(LinRegSlopeComputer(window=20))
+    reg.register(QuantileRankComputer(window=60))
     return reg
 
 
@@ -96,8 +129,8 @@ class TestTruncationBias:
         data_full = _make_large_data(200)
         reg = _build_registry()
 
-        # Test at several indices after warmup
-        test_indices = [25, 50, 100, 149]
+        # Test at several indices after max warmup (QuantileRank=60)
+        test_indices = [65, 80, 100, 149]
 
         for test_idx in test_indices:
             # Compute on full data
@@ -146,7 +179,7 @@ class TestShuffleBias:
         data = _make_large_data(100)
         rng = np.random.default_rng(99)
 
-        test_idx = 50
+        test_idx = 70
         reg = _build_registry()
 
         # Compute on original data
@@ -188,9 +221,14 @@ class TestShuffleBias:
                     f"Point-in-time feature '{key}' changed on shuffle (unexpected)"
                 )
 
-        # Windowed features (OFI, TFI 6-bar, Kyle's lambda) SHOULD change
-        # because they depend on the temporal sequence before idx
-        windowed_features = ["ofi_l1", "ofi_l3", "tfi_6bar", "kyle_lambda"]
+        # Windowed features SHOULD change because they depend on temporal sequence
+        windowed_features = [
+            "ofi_l1", "ofi_l3", "tfi_6bar", "kyle_lambda",
+            # Sprint 4 windowed features
+            "vol_delta_5bar", "vwap_deviation", "vol_roc_3",
+            "realized_vol_short", "ewma_vol", "rsi", "linreg_slope",
+            "quantile_rank",
+        ]
         changed_count = 0
         for key in windowed_features:
             if (

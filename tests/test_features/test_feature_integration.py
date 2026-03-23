@@ -21,6 +21,23 @@ from ep2_crypto.features.microstructure import (
     OFIComputer,
     TFIComputer,
 )
+from ep2_crypto.features.momentum import (
+    LinRegSlopeComputer,
+    QuantileRankComputer,
+    ROCComputer,
+    RSIComputer,
+)
+from ep2_crypto.features.volatility import (
+    EWMAVolComputer,
+    ParkinsonVolComputer,
+    RealizedVolComputer,
+    VolOfVolComputer,
+)
+from ep2_crypto.features.volume import (
+    VolumeDeltaComputer,
+    VolumeROCComputer,
+    VWAPComputer,
+)
 
 
 def _make_realistic_data(n: int = 500, n_levels: int = 5) -> dict[str, np.ndarray]:
@@ -72,12 +89,28 @@ def _make_realistic_data(n: int = 500, n_levels: int = 5) -> dict[str, np.ndarra
 
 
 def _build_full_registry() -> FeatureRegistry:
+    """Build registry with all Sprint 3 + Sprint 4 features."""
     reg = FeatureRegistry()
+    # Sprint 3: Microstructure
     reg.register(OBIComputer())
     reg.register(OFIComputer())
     reg.register(MicropriceComputer())
     reg.register(TFIComputer())
     reg.register(KyleLambdaComputer(window=20))
+    # Sprint 4: Volume
+    reg.register(VolumeDeltaComputer())
+    reg.register(VWAPComputer(window=12))
+    reg.register(VolumeROCComputer())
+    # Sprint 4: Volatility
+    reg.register(RealizedVolComputer(short_window=6, long_window=12))
+    reg.register(ParkinsonVolComputer(short_window=6, long_window=12))
+    reg.register(EWMAVolComputer(decay=0.94))
+    reg.register(VolOfVolComputer(inner_window=6, outer_window=12))
+    # Sprint 4: Momentum
+    reg.register(ROCComputer())
+    reg.register(RSIComputer(window=14))
+    reg.register(LinRegSlopeComputer(window=20))
+    reg.register(QuantileRankComputer(window=60))
     return reg
 
 
@@ -150,18 +183,18 @@ class TestFeatureIntegration:
         )
 
     def test_expected_feature_count(self) -> None:
-        """Total microstructure feature count should be 14."""
+        """Total feature count: 14 microstructure + 9 volume + 6 volatility + 7 momentum = 36."""
         reg = _build_full_registry()
-        data = _make_realistic_data(30)
+        data = _make_realistic_data(100)
         result = reg.compute_all(
-            25,
+            80,
             data["timestamps"], data["opens"], data["highs"],
             data["lows"], data["closes"], data["volumes"],
             bids=data["bids"], asks=data["asks"],
             bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
             trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
         )
-        assert len(result) == 14
+        assert len(result) == 36
 
     def test_feature_values_are_reasonable(self) -> None:
         """Sanity check feature value ranges on realistic data."""
@@ -193,3 +226,24 @@ class TestFeatureIntegration:
             # Microprice should be close to mid
             mid = (data["bids"][i, 0] + data["asks"][i, 0]) / 2.0
             assert abs(result["microprice"] - mid) / mid < 0.001  # < 10 bps from mid
+
+            # Sprint 4: Volume delta in [-1, 1]
+            assert -1.0 <= result["vol_delta_1bar"] <= 1.0
+            assert -1.0 <= result["vol_delta_5bar"] <= 1.0
+
+            # Sprint 4: VWAP should be positive
+            assert result["vwap"] > 0
+
+            # Sprint 4: Volatility measures strictly positive
+            assert result["realized_vol_short"] >= 0
+            assert result["realized_vol_long"] >= 0
+            assert result["parkinson_vol_short"] > 0
+            assert result["parkinson_vol_long"] > 0
+            assert result["ewma_vol"] > 0
+            assert result["vol_of_vol"] >= 0
+
+            # Sprint 4: RSI in [0, 100]
+            assert 0.0 <= result["rsi"] <= 100.0
+
+            # Sprint 4: Quantile rank in [0, 1]
+            assert 0.0 <= result["quantile_rank"] <= 1.0
