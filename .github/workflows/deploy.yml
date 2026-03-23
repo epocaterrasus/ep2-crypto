@@ -24,7 +24,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --frozen --extra polymarket
+        run: uv sync --frozen --extra all
 
       - name: Lint
         run: uv run ruff check src/ tests/
