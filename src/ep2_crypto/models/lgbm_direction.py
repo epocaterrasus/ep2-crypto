@@ -113,6 +113,14 @@ class LGBMDirectionModel:
                 weights[i] = self._config.class_weight[direction]
         return weights
 
+    def _with_feature_names(self, x: NDArray[np.float64]) -> Any:
+        """Wrap numpy array with feature names if available (avoids LightGBM warning)."""
+        if self._feature_names is None:
+            return x
+        import pandas as pd
+
+        return pd.DataFrame(x, columns=self._feature_names)
+
     def train(
         self,
         x_train: NDArray[np.float64],
@@ -138,6 +146,20 @@ class LGBMDirectionModel:
         y_encoded = self._encode_labels(y_train)
         self._feature_names = feature_names
 
+        # LightGBM's sklearn wrapper fits an internal LabelEncoder on y_train.
+        # If a class is absent from the training window (flat labels are ~0.009%
+        # of bars, so most 4032-bar windows have zero), the encoder only knows
+        # the seen classes and crashes when the eval_set contains the missing
+        # class. Fix: inject one zero-weight dummy row per missing class so the
+        # encoder always sees all 3 classes without affecting training.
+        missing = set([0, 1, 2]) - set(int(c) for c in np.unique(y_encoded))
+        if missing:
+            n_missing = len(missing)
+            dummy_x = np.zeros((n_missing, x_train.shape[1]), dtype=np.float64)
+            dummy_y = np.array(sorted(missing), dtype=np.int32)
+            x_train = np.vstack([x_train, dummy_x])
+            y_encoded = np.append(y_encoded, dummy_y)
+
         cfg = self._config
         model = lgb.LGBMClassifier(
             objective="multiclass",
@@ -157,6 +179,12 @@ class LGBMDirectionModel:
         )
 
         sample_weight = self._build_sample_weights(y_encoded)
+        # Zero-weight the dummy rows so they don't influence training
+        if missing:
+            n_missing = len(missing)
+            if sample_weight is None:
+                sample_weight = np.ones(len(y_encoded), dtype=np.float64)
+            sample_weight[-n_missing:] = 0.0
 
         fit_kwargs: dict[str, Any] = {
             "X": x_train,
@@ -211,7 +239,7 @@ class LGBMDirectionModel:
 
         # Compute training metrics via predict_proba + argmax to avoid LabelEncoder
         # conflicts when some classes are absent from the training window.
-        train_proba = model.predict_proba(x_train)
+        train_proba = model.predict_proba(self._with_feature_names(x_train))
         train_pred = np.argmax(train_proba, axis=1).astype(np.int32)
         # Remap internal indices back through the fitted LabelEncoder
         trained_classes = list(model.classes_)
@@ -224,7 +252,7 @@ class LGBMDirectionModel:
         }
 
         if x_val is not None and y_val is not None:
-            val_proba = model.predict_proba(x_val)
+            val_proba = model.predict_proba(self._with_feature_names(x_val))
             val_pred = np.argmax(val_proba, axis=1).astype(np.int32)
             val_pred_mapped = np.array([trained_classes[i] for i in val_pred], dtype=np.int32)
             val_acc = float(np.mean(val_pred_mapped == y_val_encoded))
@@ -244,7 +272,7 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        classes = self._model.predict(x).astype(np.int32)
+        classes = self._model.predict(self._with_feature_names(x)).astype(np.int32)
         return self._decode_labels(classes)
 
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -259,7 +287,7 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        result: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
+        result: NDArray[np.float64] = self._model.predict_proba(self._with_feature_names(x)).astype(np.float64)
         return result
 
     def _update_feature_importance(self) -> None:
