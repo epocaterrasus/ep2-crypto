@@ -4,8 +4,9 @@
 > Updated at the end of every session. Read this FIRST in every new session.
 
 ## Current Sprints (Parallel)
-- **Sprint 11** — Hyperparameter Tuning (not started)
+- **Sprint 11** — Hyperparameter Tuning (COMPLETE: T1-T4 done, 78 tests)
 - **Sprint 15** — Validation + Ablation Study (COMPLETE: T1-T4 done, 110 tests)
+- **Sprint 16** — Alpha Enhancement (in progress)
 - **Sprint 18** — Historical Data Backfill (in progress — scripts being built)
 - **Sprint 19** — Production Deployment (in progress — Docker infra being built)
 
@@ -23,6 +24,81 @@
   - VenueAdapter ABC + registry, PolymarketAdapter (59 tests), BinaryPositionSizer (41 tests),
     PolymarketRiskAdapter (20 tests), PolymarketBacktester (50 tests), integration (20 tests)
   - py-clob-client added as optional dependency (install: uv sync --extra polymarket)
+- **Sprint 11** (2026-03-23): Hyperparameter Tuning — 78 tests passing
+  - LGBMTuner (Optuna + MedianPruner + DSR), CatBoostTuner, GRUTuner (val_loss objective)
+  - ThresholdOptimizer (per-regime grid search), FeatureImportanceAnalyzer (fold stability)
+  - walk_forward_sharpe(), deflated_sharpe_ratio() helpers
+  - 58 unit tests + 20 integration tests = 78 total
+
+---
+
+## Sprint 16 Tickets — Alpha Enhancement
+
+### S16-T1: Advanced Order Flow Features [ ]
+**Extend**: Multi-level OBI (l10), VPIN via BVC, book pressure gradient, depth withdrawal ratio
+**Files**:
+- `src/ep2_crypto/features/microstructure.py` — OBI l10, VPINComputer, BookPressureGradientComputer, DepthWithdrawalComputer
+- `tests/test_features/test_microstructure_advanced.py` — Golden dataset + look-ahead bias tests
+**Verify**: `uv run pytest tests/test_features/test_microstructure_advanced.py -v`
+**Notes**: VPIN = |V_buy - V_sell| / V_total over bucket window (BVC: sign(Δprice)*vol). Book pressure gradient = slope of (bid_vol-ask_vol) across levels. Depth withdrawal = (depth_5b_ago - current) / depth_5b_ago.
+
+### S16-T2: Cross-Exchange Signals [ ]
+**Create**: Coinbase premium z-score, ETH net taker volume, Binance Long/Short ratio, cross-exchange OFI divergence
+**Files**:
+- `src/ep2_crypto/features/cross_market.py` — CoinbasePremiumComputer, ETHOrderFlowComputer, LongShortRatioComputer, CrossExchangeOFIComputer
+- `tests/test_features/test_cross_exchange.py` — Tests with synthetic prices from 2 exchanges
+**Verify**: `uv run pytest tests/test_features/test_cross_exchange.py -v`
+**Notes**: Coinbase premium IC 0.03-0.07 (Augustin 2022). ETH leads BTC by 1-5 min (54-57% acc). L/S ratio contrarian at extremes (>2.5 or <0.5).
+
+### S16-T3: Twelve Data ingest for NQ/DXY [ ]
+**Create**: Twelve Data REST collector replacing yfinance for 1-min NQ/DXY data
+**Files**:
+- `src/ep2_crypto/ingest/cross_market.py` — TwelveDataCollector, YFinanceFallbackCollector
+- `tests/test_ingest/test_cross_market.py` — Mocked HTTP tests for both collectors
+**Verify**: `uv run pytest tests/test_ingest/test_cross_market.py -v`
+**Notes**: Twelve Data $29/mo plan gives 1-min delay. API key via TWELVE_DATA_API_KEY env. Fall back to yfinance if key absent. Store to cross_market_prices table.
+
+### S16-T4: HAR-RV Multi-Scale Volatility [ ]
+**Extend**: HAR-RV components at 1h (12 bars), 4h (48 bars), 1d (288 bars) + ratio features
+**Files**:
+- `src/ep2_crypto/features/volatility.py` — HARRVComputer
+- `tests/test_features/test_har_rv.py` — Golden dataset vs hand-computed values
+**Verify**: `uv run pytest tests/test_features/test_har_rv.py -v`
+**Notes**: HAR-RV = a + b*RV_1h + c*RV_4h + d*RV_1d. Ratio features: RV_1h/RV_1d, RV_4h/RV_1d. Outperforms GARCH by 5-10% RMSE per Corsi (2009).
+
+### S16-T5: Adaptive Conformal Inference + CQR [ ]
+**Extend**: ACI (Gibbs & Candes 2024) + Conformalized Quantile Regression
+**Files**:
+- `src/ep2_crypto/confidence/conformal.py` — AdaptiveConformalPredictor, CQRConformalPredictor
+- `tests/test_confidence/test_conformal_advanced.py` — Coverage guarantee tests + width reduction tests
+**Verify**: `uv run pytest tests/test_confidence/test_conformal_advanced.py -v`
+**Notes**: ACI tracks coverage gap and adjusts alpha online (gamma=0.005). CQR uses quantile regression residuals. 20-30% tighter intervals vs fixed conformal while maintaining coverage.
+
+### S16-T6: Multi-Task GRU [ ]
+**Extend**: Add volatility + volume auxiliary heads to GRU for richer hidden states
+**Files**:
+- `src/ep2_crypto/models/gru_features.py` — MultiTaskGRUNet, MultiTaskGRUConfig, MultiTaskGRUFeatureExtractor
+- `tests/test_models/test_gru_multitask.py` — Forward pass, auxiliary loss, hidden state extraction
+**Verify**: `uv run pytest tests/test_models/test_gru_multitask.py -v`
+**Notes**: 3 heads: classification (direction), regression (RV), regression (volume). Loss = L_cls + 0.1*L_rv + 0.1*L_vol. Same architecture + heads, no bidirectionality.
+
+### S16-T7: Enhanced Liquidation Cascade Detection [ ]
+**Extend**: Online Hawkes MLE + state-dependent cascade amplifier
+**Files**:
+- `src/ep2_crypto/events/cascade.py` — OnlineHawkesEstimator, StateDependentAmplifier
+- `tests/test_events/test_cascade_enhanced.py` — Estimator convergence, amplifier scaling tests
+**Verify**: `uv run pytest tests/test_events/test_cascade_enhanced.py -v`
+**Notes**: Online MLE uses stochastic gradient on log-likelihood. Amplifier: cascade_prob *= (1 + regime_stress_factor). Stress factor from OI percentile + funding z-score combo.
+
+### S16-T8: Deribit Options Data [ ]
+**Create**: Deribit WebSocket collector + IV surface / risk reversal / max pain features
+**Files**:
+- `src/ep2_crypto/ingest/deribit.py` — DeribitCollector (IV surface, 25-delta RR, ATM IV)
+- `src/ep2_crypto/features/options.py` — OptionsFeatureComputer (ATM IV ROC, risk reversal ROC, max pain distance)
+- `tests/test_ingest/test_deribit.py` — Mocked WS subscription tests
+- `tests/test_features/test_options.py` — Feature computation tests
+**Verify**: `uv run pytest tests/test_ingest/test_deribit.py tests/test_features/test_options.py -v`
+**Notes**: 25-delta RR = IV_call25d - IV_put25d (negative = put skew = fear). ATM IV ROC as regime early warning. Max pain = strike with max total OI (calendar feature, not directional).
 
 ---
 
@@ -62,36 +138,33 @@ Disable each by modifying BacktestConfig/RiskConfig or filtering signals. Output
 
 ## Sprint 11 Tickets — Hyperparameter Tuning
 
-### S11-T1: LightGBM + CatBoost Optuna tuners [ ]
+### S11-T1: LightGBM + CatBoost Optuna tuners [x]
 **Create**: Optuna studies for tree models with walk-forward Sharpe as objective
 **Files**:
 - `src/ep2_crypto/models/tuning.py` — LGBMTuner, CatBoostTuner, walk_forward_sharpe(), deflated_sharpe_ratio()
 - `tests/test_models/test_tuning.py` — Unit tests for tuners and helpers
 **Verify**: `uv run pytest tests/test_models/test_tuning.py::TestLGBMTuner -v`
-**Notes**: MedianPruner(n_startup_trials=5, n_warmup_steps=10). Search space per SPRINTS.md. DSR on final params.
 
-### S11-T2: GRU Optuna tuner [ ]
+### S11-T2: GRU Optuna tuner [x]
 **Create**: GRU hyperparameter search added to tuning.py
 **Files**:
-- Update `src/ep2_crypto/models/tuning.py` — GRUTuner class
-- Update `tests/test_models/test_tuning.py` — GRUTuner tests
+- `src/ep2_crypto/models/tuning.py` — GRUTuner class (minimize val_loss, DSR via proxy)
+- `tests/test_models/test_tuning.py` — GRUTuner tests (5 tests)
 **Verify**: `uv run pytest tests/test_models/test_tuning.py::TestGRUTuner -v`
-**Notes**: Search: hidden[32-256], layers[1-3], lr[1e-5-1e-2], dropout[0.1-0.5], seq_len[12-60]. Prune on val loss.
 
-### S11-T3: Confidence threshold optimizer + feature importance stability [ ]
+### S11-T3: Confidence threshold optimizer + feature importance stability [x]
 **Create**: Grid search confidence thresholds per regime; feature stability analysis
 **Files**:
-- Update `src/ep2_crypto/models/tuning.py` — ThresholdOptimizer, FeatureImportanceAnalyzer
-- Update `tests/test_models/test_tuning.py` — Tests for both
+- `src/ep2_crypto/models/tuning.py` — ThresholdOptimizer, FeatureImportanceAnalyzer, TuningResult, StabilityResult
+- `tests/test_models/test_tuning.py` — 8 threshold tests + 13 stability tests
 **Verify**: `uv run pytest tests/test_models/test_tuning.py::TestThresholdOptimizer tests/test_models/test_tuning.py::TestFeatureImportanceAnalyzer -v`
-**Notes**: Threshold grid over [0.50, 0.55, ..., 0.80] per regime. Flag features appearing in <50% of folds.
 
-### S11-T4: Integration tests + sprint acceptance criteria [ ]
-**Create**: End-to-end tuning pipeline test
+### S11-T4: Integration tests + sprint acceptance criteria [x]
+**Create**: End-to-end tuning pipeline test (20 tests across 5 acceptance criterion classes)
 **Files**:
-- `tests/test_models/test_tuning_integration.py` — Full study execution, pruning rate, stability check
+- `tests/test_models/test_tuning_integration.py` — 20 tests: result structure, pruning, DSR, stability, full pipeline
 **Verify**: `uv run pytest tests/test_models/ -v`
-**Notes**: Verify: 50+ trials, pruning stops >30%, top-10 feature overlap >70%, DSR applied.
+**Result**: 191 test_models tests passing (78 new Sprint 11 + 113 existing)
 
 ---
 
@@ -707,7 +780,7 @@ The user pastes this prompt to start the next session.
 | Sprint 8: Confidence Gating | Complete | 2026-03-23 |
 | **Sprint 9: Risk Management** | **Complete** | **2026-03-23** |
 | **Sprint 10: Backtesting Framework** | **Complete** | **2026-03-23** |
-| Sprint 11: Hyperparameter Tuning | Not started | — |
+| Sprint 11: Hyperparameter Tuning | Complete | 78 tests (LGBMTuner, CatBoostTuner, GRUTuner, ThresholdOptimizer, FeatureImportanceAnalyzer) |
 | Sprint 12: Macro Events + Cascade | Complete | 2026-03-23 |
 | Sprint 13: API + Live + Monitoring | Complete | 2026-03-23 |
 | Sprint 14: Paper Trading | Not started | — |
