@@ -256,18 +256,25 @@ def load_polymarket(
         logger.info("polymarket_no_data")
         return nan_arrays
 
-    # Build lookup: ts_ms (aligned to 5-min boundary) -> (yes_price, volume, resolved)
-    poly_map: dict[int, tuple[float, float, float]] = {}
+    # Build sorted list of (ts_ms, yes_price, volume, resolved) for binary-search alignment.
+    # Data may be a mix of 5-min and hourly granularity (5-min from Gamma API,
+    # hourly from HuggingFace). Forward-fill ensures hourly data covers all
+    # 5-min bars within the hour.
+    poly_sorted: list[tuple[int, float, float, float]] = []
     for row in rows:
         ts_ms = int(row[0])
-        # Align to nearest 5-min bar (same alignment as OHLCV aggregation)
         bar_ms = (ts_ms // 300_000) * 300_000
         yes_p = float(row[1]) if row[1] is not None else float("nan")
         vol = float(row[2]) if row[2] is not None else float("nan")
         resolved = 1.0 if row[3] else 0.0
-        poly_map[bar_ms] = (yes_p, vol, resolved)
+        poly_sorted.append((bar_ms, yes_p, vol, resolved))
+    poly_sorted.sort(key=lambda x: x[0])
 
-    # Align to OHLCV timestamps
+    poly_ts_arr = np.array([p[0] for p in poly_sorted], dtype=np.int64)
+
+    # Align to OHLCV timestamps using searchsorted for O(log n) per bar.
+    # For each OHLCV bar, take the most recent Polymarket entry that ended
+    # BEFORE this bar (lag-1 in feature computation handles bar T → T+1 pred).
     yes_prices = np.full(n, np.nan, dtype=np.float64)
     volumes = np.full(n, np.nan, dtype=np.float64)
     resolved_arr = np.full(n, np.nan, dtype=np.float64)
@@ -275,9 +282,13 @@ def load_polymarket(
     matched = 0
     for i, ts_ms in enumerate(timestamps_ms):
         bar_ms = int((ts_ms // 300_000) * 300_000)
-        if bar_ms in poly_map:
-            yes_prices[i], volumes[i], resolved_arr[i] = poly_map[bar_ms]
-            matched += 1
+        # Find the rightmost poly entry whose ts <= bar_ms
+        idx = int(np.searchsorted(poly_ts_arr, bar_ms, side="right")) - 1
+        if idx >= 0:
+            _, yes_p, vol, res = poly_sorted[idx]
+            if np.isfinite(yes_p):
+                yes_prices[i], volumes[i], resolved_arr[i] = yes_p, vol, res
+                matched += 1
 
     logger.info(
         "polymarket_loaded",

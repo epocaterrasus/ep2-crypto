@@ -27,10 +27,8 @@ sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 logger = structlog.get_logger(__name__)
 
 # BTC 5-min market name patterns (Polymarket uses various slugs)
-BTC_5MIN_KEYWORDS = [
-    "btc-up", "btc-down", "bitcoin-up", "bitcoin-down",
-    "will-btc", "will-bitcoin", "btc-usd", "bitcoin-usd",
-]
+# BTC hourly up/down markets (HF dataset has hourly, not 5-min markets)
+BTC_UPDOWN_KEYWORDS = ["bitcoin-up-or-down", "btc-up-or-down", "bitcoin up or down", "btc up or down"]
 
 WINDOW_SECONDS = 300
 
@@ -84,21 +82,24 @@ def _ensure_table(conn: Any, is_postgres: bool) -> None:
     conn.commit()
 
 
-def _is_btc_5min_market(row: dict[str, Any]) -> bool:
-    """Return True if this market looks like a BTC 5-min up/down market."""
-    slug = str(row.get("slug", "") or row.get("market_slug", "") or "").lower()
-    question = str(row.get("question", "") or row.get("title", "") or "").lower()
-
-    # Must mention BTC or bitcoin
-    if not any(k in slug or k in question for k in ["btc", "bitcoin"]):
-        return False
-
-    # Must be a short-window (5 min) market — slug usually contains time info
-    # or market title mentions "5 minutes" / "5-minute"
+def _is_btc_updown_market(row: dict[str, Any]) -> bool:
+    """Return True if this is a Bitcoin Up or Down direction market."""
+    slug = str(row.get("slug", "") or "").lower()
+    question = str(row.get("question", "") or "").lower()
     text = slug + " " + question
-    is_short = any(k in text for k in ["5-min", "5min", "5 min", "300s", "up-or-down"])
+    return any(k in text for k in BTC_UPDOWN_KEYWORDS)
 
-    return is_short
+
+def _parse_outcome_prices(outcome_prices_str: str) -> tuple[float | None, float | None]:
+    """Parse outcome_prices string like \"['0.48', '0.52']\" into (yes, no) floats."""
+    try:
+        import ast
+        prices = ast.literal_eval(str(outcome_prices_str))
+        yes_p = float(prices[0]) if prices else None
+        no_p = float(prices[1]) if len(prices) > 1 else None
+        return yes_p, no_p
+    except Exception:
+        return None, None
 
 
 def _upsert_row(conn: Any, row: dict[str, Any], is_postgres: bool) -> None:
@@ -169,7 +170,6 @@ def download_btc_markets(dry_run: bool = False) -> dict[str, int]:
             "SII-WANGZJ/Polymarket_data",
             split="train",
             streaming=True,
-            trust_remote_code=True,
         )
     except Exception as exc:
         logger.error("hf_dataset_load_failed", error=str(exc))
@@ -211,43 +211,52 @@ def download_btc_markets(dry_run: bool = False) -> dict[str, int]:
                     inserted=inserted,
                 )
 
-            if not _is_btc_5min_market(record):
+            if not _is_btc_updown_market(record):
                 continue
 
             btc_found += 1
 
-            # Extract the close time as the window_ts
-            close_time = record.get("end_date_iso") or record.get("close_time") or record.get("end_time")
-            if close_time is None:
+            # Extract the market end time as window_ts
+            end_date = record.get("end_date") or record.get("end_date_iso") or record.get("close_time")
+            if end_date is None:
                 continue
 
             try:
-                if isinstance(close_time, (int, float)):
-                    window_ts = int(close_time)
+                from datetime import datetime, UTC
+                if isinstance(end_date, (int, float)):
+                    window_ts = int(end_date)
                 else:
-                    from datetime import datetime, UTC
-                    dt = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
+                    dt = datetime.fromisoformat(str(end_date).replace("Z", "+00:00"))
                     window_ts = int(dt.timestamp())
-                # Align to 5-min boundary
+                # Align to nearest 5-min boundary
                 window_ts = (window_ts // WINDOW_SECONDS) * WINDOW_SECONDS
             except (ValueError, TypeError):
                 continue
 
-            yes_price = record.get("yes_price") or record.get("yes_close_price")
-            no_price = record.get("no_price") or record.get("no_close_price")
-            volume = record.get("volume") or record.get("volume_usd")
-            outcome = record.get("outcome") or record.get("resolution")
-            condition_id = record.get("condition_id") or record.get("conditionId", "")
-            slug = record.get("slug") or record.get("market_slug", f"hf-btc-{window_ts}")
+            # outcome_prices is a string like "['0.48', '0.52']"
+            yes_price, no_price = _parse_outcome_prices(record.get("outcome_prices", ""))
+
+            # Determine outcome from prices: yes_price=1.0 → Up won, yes_price=0.0 → Down won
+            outcome: str | None = None
+            resolved = str(record.get("closed", "0")) == "1"
+            if resolved and yes_price is not None:
+                if yes_price >= 0.99:
+                    outcome = "up"
+                elif yes_price <= 0.01:
+                    outcome = "down"
+
+            volume = record.get("volume")
+            condition_id = record.get("condition_id", "")
+            slug = record.get("slug", f"hf-btc-{window_ts}")
 
             row: dict[str, Any] = {
                 "window_ts": window_ts,
                 "slug": slug,
-                "outcome": str(outcome).lower() if outcome else None,
-                "yes_close_price": float(yes_price) if yes_price is not None else None,
-                "no_close_price": float(no_price) if no_price is not None else None,
+                "outcome": outcome,
+                "yes_close_price": yes_price,
+                "no_close_price": no_price,
                 "volume": float(volume) if volume is not None else None,
-                "resolved": outcome is not None,
+                "resolved": resolved,
                 "condition_id": str(condition_id),
             }
 
