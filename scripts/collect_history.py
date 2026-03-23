@@ -10,6 +10,10 @@ Usage:
   uv run python scripts/collect_history.py --start 2019-09-01 --end today
   uv run python scripts/collect_history.py --start 2024-01-01 --end today
   uv run python scripts/collect_history.py --resume
+
+Environment:
+  EP2_DB_URL  SQLite path (default: data/history.db) OR PostgreSQL DSN
+              postgresql://user:pass@host:5432/dbname
 """
 
 from __future__ import annotations
@@ -17,7 +21,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import sqlite3  # noqa: TC003
 import sys
 import time
 from datetime import UTC, datetime
@@ -34,7 +37,8 @@ from tqdm import tqdm
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
-from ep2_crypto.db.schema import create_tables  # noqa: E402
+from ep2_crypto.db.connection import DBConnection, _is_postgres_url  # noqa: E402
+from ep2_crypto.db.schema import create_postgres_tables, create_tables  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -79,18 +83,30 @@ def _ms_to_dt(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=UTC)
 
 
-def _get_db_path(args_db: str | None) -> Path:
-    path_str = args_db or os.environ.get("EP2_DB_URL", DEFAULT_DB)
-    path = Path(path_str)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+def _resolve_db_url(args_db: str | None) -> str:
+    """Resolve the database URL from args or environment.
+
+    Returns a PostgreSQL DSN or a SQLite file path string.
+    """
+    url = args_db or os.environ.get("EP2_DB_URL", DEFAULT_DB)
+    if not _is_postgres_url(url):
+        # Treat as a file path — ensure parent directory exists
+        path = Path(url)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
+    return url
 
 
-def _get_connection(db_path: Path) -> sqlite3.Connection:
-    return create_tables(db_path)
+def _get_connection(db_url: str) -> DBConnection:
+    """Open database connection, creating schema if needed."""
+    if _is_postgres_url(db_url):
+        create_postgres_tables(db_url)
+    else:
+        create_tables(db_url)  # SQLite — creates file + schema
+    return DBConnection(db_url)
 
 
-def _last_timestamp(conn: sqlite3.Connection, table: str, symbol: str) -> int | None:
+def _last_timestamp(conn: DBConnection, table: str, symbol: str) -> int | None:
     """Get the last timestamp_ms for a symbol in a table (validated name)."""
     allowed = {"ohlcv", "funding_rate", "open_interest", "cross_market"}
     if table not in allowed:
@@ -149,7 +165,7 @@ async def _fetch_json(
 # 1. Binance Futures: 1m OHLCV klines
 # ---------------------------------------------------------------------------
 async def collect_ohlcv(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     client: httpx.AsyncClient,
     start_ms: int,
     end_ms: int,
@@ -232,7 +248,7 @@ async def collect_ohlcv(
 # 2. Binance Futures: Funding rate history
 # ---------------------------------------------------------------------------
 async def collect_funding(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     client: httpx.AsyncClient,
     start_ms: int,
     end_ms: int,
@@ -306,7 +322,7 @@ async def collect_funding(
 # 3. Bybit REST: Open interest history
 # ---------------------------------------------------------------------------
 async def collect_open_interest(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     client: httpx.AsyncClient,
     start_ms: int,
     end_ms: int,
@@ -388,7 +404,7 @@ async def collect_open_interest(
 # 4. yfinance: Cross-market daily data
 # ---------------------------------------------------------------------------
 def collect_cross_market(
-    conn: sqlite3.Connection,
+    conn: DBConnection,
     start_date: str,
     end_date: str,
 ) -> int:
@@ -442,7 +458,7 @@ def collect_cross_market(
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-def print_summary(conn: sqlite3.Connection) -> None:
+def print_summary(conn: DBConnection) -> None:
     """Log a summary of all collected data."""
     tables = {
         "ohlcv": SYMBOL,
@@ -477,10 +493,10 @@ def print_summary(conn: sqlite3.Connection) -> None:
             logger.info("table_summary", table=table, rows=0, range="N/A")
 
     # Cross-market: per symbol
-    cm_symbols = conn.execute(
+    cm_rows = conn.execute(
         "SELECT symbol, COUNT(*) FROM cross_market GROUP BY symbol"
     ).fetchall()
-    for row in cm_symbols:
+    for row in cm_rows:
         logger.info(
             "table_summary",
             table="cross_market",
@@ -488,13 +504,13 @@ def print_summary(conn: sqlite3.Connection) -> None:
             rows=f"{row[1]:,}",
         )
 
-    total = sum(
+    total_count = sum(
         conn.execute(
             f"SELECT COUNT(*) FROM {t}"  # noqa: S608
         ).fetchone()[0]
         for t in ["ohlcv", "funding_rate", "open_interest", "cross_market"]
     )
-    logger.info("total_rows", total=f"{total:,}")
+    logger.info("total_rows", total=f"{total_count:,}")
 
 
 # ---------------------------------------------------------------------------
@@ -502,9 +518,9 @@ def print_summary(conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 async def async_main(args: argparse.Namespace) -> None:
     """Run all collectors."""
-    db_path = _get_db_path(args.db)
-    conn = _get_connection(db_path)
-    logger.info("database_ready", path=str(db_path))
+    db_url = _resolve_db_url(args.db)
+    conn = _get_connection(db_url)
+    logger.info("database_ready", url=db_url if not _is_postgres_url(db_url) else "postgresql://***")
 
     # Determine date range
     if args.resume:
@@ -588,7 +604,7 @@ def main() -> None:
     parser.add_argument(
         "--db",
         default=None,
-        help=f"Override DB path (default: {DEFAULT_DB} or EP2_DB_URL env)",
+        help=f"Override DB path/URL (default: {DEFAULT_DB} or EP2_DB_URL env)",
     )
     args = parser.parse_args()
     asyncio.run(async_main(args))

@@ -12,15 +12,20 @@ from __future__ import annotations
 import argparse
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+# Ensure src/ is importable when running as a script
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
 logger = structlog.get_logger(__name__)
 
@@ -29,25 +34,25 @@ BARS_PER_DAY = 288
 MS_PER_BAR = 5 * 60 * 1000  # 5 minutes in milliseconds
 
 
-def get_db_connection() -> sqlite3.Connection:
-    """Connect to the database (SQLite or PostgreSQL via env var)."""
+def get_db_connection() -> Any:
+    """Connect to the database (SQLite or PostgreSQL via env var).
+
+    Returns a sqlite3.Connection for SQLite or a psycopg2 connection for PostgreSQL.
+    Both support .cursor() with .execute() / .fetchall().
+    """
     db_url = os.environ.get("EP2_DB_URL", "data/history.db")
 
-    if "postgresql" in db_url:
-        # For TimescaleDB/Postgres, use psycopg2 with sqlite3-compatible interface
-        try:
-            import psycopg2
-            import psycopg2.extras
+    if "postgresql" in db_url or db_url.startswith("postgres://"):
+        import psycopg2  # type: ignore[import-untyped]
 
-            conn = psycopg2.connect(db_url)
-            conn.autocommit = False
-            return conn  # type: ignore[return-value]
-        except ImportError:
-            logger.error("psycopg2_not_installed", hint="pip install psycopg2-binary")
-            raise
+        conn = psycopg2.connect(db_url)
+        conn.autocommit = False
+        logger.info("db_connected", backend="postgresql")
+        return conn
     else:
         conn = sqlite3.connect(db_url)
         conn.row_factory = sqlite3.Row
+        logger.info("db_connected", backend="sqlite", path=db_url)
         return conn
 
 

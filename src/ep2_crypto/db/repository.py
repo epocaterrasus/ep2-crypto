@@ -1,28 +1,38 @@
 """Parameterized query repository for all database operations.
 
 All SQL uses ? placeholders — never string interpolation.
+Accepts both sqlite3.Connection (dev) and DBConnection (which handles ? → %s translation).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import sqlite3
+from typing import TYPE_CHECKING, Any, Union
 
 import structlog
 
 if TYPE_CHECKING:
-    import sqlite3
+    from ep2_crypto.db.connection import DBConnection
 
 logger = structlog.get_logger(__name__)
 
+# Type alias for anything we accept as a connection
+_AnyConn = Union[sqlite3.Connection, "DBConnection"]
+
 
 class Repository:
-    """Database repository with parameterized queries for all tables."""
+    """Database repository with parameterized queries for all tables.
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    Accepts either a sqlite3.Connection (for dev/tests) or a DBConnection
+    wrapper (for prod PostgreSQL).  SQL is always written with ? placeholders;
+    DBConnection handles translation to %s for PostgreSQL automatically.
+    """
+
+    def __init__(self, conn: _AnyConn) -> None:
         self._conn = conn
 
     @property
-    def connection(self) -> sqlite3.Connection:
+    def connection(self) -> _AnyConn:
         return self._conn
 
     # -- OHLCV ----------------------------------------------------------------
@@ -71,14 +81,14 @@ class Repository:
         interval: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM ohlcv WHERE symbol = ? AND interval = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
             (symbol, interval, start_ms, end_ms),
         ).fetchall()
 
-    def query_latest_ohlcv(self, symbol: str, interval: str, limit: int = 1) -> list[sqlite3.Row]:
+    def query_latest_ohlcv(self, symbol: str, interval: str, limit: int = 1) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM ohlcv WHERE symbol = ? AND interval = ? "
             "ORDER BY timestamp_ms DESC LIMIT ?",
@@ -109,7 +119,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM orderbook_snapshot WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -146,7 +156,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM agg_trades WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -174,7 +184,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM funding_rate WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -201,7 +211,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM open_interest WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -229,7 +239,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM liquidation WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -257,7 +267,7 @@ class Repository:
         source: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM cross_market WHERE symbol = ? AND source = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -290,7 +300,7 @@ class Repository:
         self,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM onchain_whale WHERE timestamp_ms >= ? AND timestamp_ms < ? "
             "ORDER BY timestamp_ms",
@@ -330,7 +340,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM regime_label WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -372,7 +382,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM prediction WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
@@ -398,7 +408,7 @@ class Repository:
         symbol: str,
         start_ms: int,
         end_ms: int,
-    ) -> list[sqlite3.Row]:
+    ) -> list[Any]:
         return self._conn.execute(
             "SELECT * FROM feature_snapshot WHERE symbol = ? "
             "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
