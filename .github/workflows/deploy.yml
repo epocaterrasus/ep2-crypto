@@ -1,0 +1,98 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false  # Never cancel a running deploy
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra polymarket
+
+      - name: Lint
+        run: uv run ruff check src/ tests/
+
+      - name: Type check
+        run: uv run mypy src/ep2_crypto/ --ignore-missing-imports
+
+      - name: Test
+        run: uv run pytest tests/ -x --tb=short -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Hetzner
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR="/opt/ep2-crypto"
+
+            # Pull latest code
+            cd $DEPLOY_DIR
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Build and restart
+            docker compose -f docker/docker-compose.yml up -d --build
+
+            # Health check (wait up to 90s)
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "Deploy successful - health check passed"
+                exit 0
+              fi
+              echo "Waiting for health check... ($i/18)"
+              sleep 5
+            done
+
+            echo "DEPLOY FAILED - health check timeout"
+            docker compose -f docker/docker-compose.yml logs --tail 50 ep2-crypto
+            exit 1
+
+      - name: Notify Telegram on success
+        if: success()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ✅ ep2-crypto deployed successfully
+            Commit: ${{ github.sha }}
+            By: ${{ github.actor }}
+
+      - name: Notify Telegram on failure
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🔴 ep2-crypto deploy FAILED
+            Commit: ${{ github.sha }}
+            Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
