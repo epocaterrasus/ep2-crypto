@@ -1,6 +1,6 @@
 # Research Index
 
-> 48 research reports + 1 Python test suite for the ep2-crypto project.
+> 50 research reports + 1 Python test suite for the ep2-crypto project.
 > Naming convention: `RR-{category}-{topic}.md`
 
 ---
@@ -51,6 +51,7 @@
 |------|-------|
 | RR-backtest-framework-design.md | Production-grade backtesting framework (event-driven vs vectorized) |
 | RR-backtest-pitfalls-best-practices.md | Backtesting pitfalls and best practices for crypto |
+| RR-backtest-production-parity.md | Backtest-to-production parity: Sharpe degradation, fills, latency, impact, look-ahead, funding, event replay, paper trading |
 | RR-overfitting-prevention-validation.md | Overfitting prevention and robust validation |
 | RR-walkforward-validation-methods.md | Walk-forward optimization and validation |
 | RR-montecarlo-bootstrap-validation.md | Monte Carlo bootstrap resampling for strategy validation |
@@ -59,6 +60,7 @@
 | RR-stats-validation-tests.py | Python test suite for statistical validation |
 | RR-costs-transaction-cost-modeling.md | Transaction cost modeling for backtesting |
 | RR-costs-modeling-guide.md | Transaction cost modeling guide (fees, slippage, impact) |
+| RR-funding-rate-risk-analysis.md | Funding rate mechanics, risk analysis, signal features, backtest simulation |
 | RR-benchmarks-null-hypothesis-strategies.md | Benchmark strategies as null hypotheses |
 | RR-metrics-risk-adjusted-performance.md | Risk-adjusted performance metrics beyond Sharpe |
 | RR-attribution-pnl-decomposition.md | PnL decomposition and signal attribution |
@@ -74,7 +76,10 @@
 | RR-retrain-live-retraining-guide.md | Live retraining guide for LightGBM + CatBoost + GRU |
 | RR-decay-edge-disappearance-detection.md | Edge decay detection (CUSUM test) |
 | RR-stress-scenario-design.md | Stress test scenario design (historical replays) |
+| RR-regime-adaptive-risk-management.md | Regime-adaptive risk management: position sizing, stops, leverage, vol targeting |
 | RR-stress-testing-framework.md | Stress testing framework with CI/CD automation |
+| RR-worst-case-scenario-analysis.md | Complete worst-case analysis: risk matrix, death hierarchy, reverse stress tests, position sizing |
+| RR-tailrisk-blackswan-protection.md | Tail risk and black swan protection (fat tails, hedging, anti-fragile design) |
 
 ---
 
@@ -111,6 +116,7 @@
 |------|-------------|--------|
 | RR-backtest-framework-design.md | Event-driven vs vectorized backtesting framework design for 5-min BTC | 4 |
 | RR-backtest-pitfalls-best-practices.md | Slippage modeling, look-ahead bias, survivorship bias, and other pitfalls | 4 |
+| RR-backtest-production-parity.md | Backtest-to-production parity: Sharpe degradation, fill simulation, latency, market impact, look-ahead checklist, funding costs, event replay, paper trading calibration | 4 |
 
 ### benchmarks
 | File | Description | Sprint |
@@ -133,6 +139,11 @@
 |------|-------------|--------|
 | RR-costs-transaction-cost-modeling.md | Binance/Bybit fee models, slippage, and market impact modeling | 4 |
 | RR-costs-modeling-guide.md | Comprehensive transaction cost modeling guide for crypto backtesting | 4 |
+
+### funding
+| File | Description | Sprint |
+|------|-------------|--------|
+| RR-funding-rate-risk-analysis.md | Funding rate mechanics, historical analysis, signal value, risk limits, backtest simulation | 4 |
 
 ### crossmarket
 | File | Description | Sprint |
@@ -239,6 +250,7 @@
 | File | Description | Sprint |
 |------|-------------|--------|
 | RR-regime-detection-methods.md | HMM and alternative approaches for crypto market regime detection | 3 |
+| RR-regime-adaptive-risk-management.md | Regime-adaptive risk management: position sizing, stops, confidence, leverage, vol targeting, adaptation speed | 5 |
 
 ### retrain
 | File | Description | Sprint |
@@ -262,6 +274,12 @@
 |------|-------------|--------|
 | RR-stress-scenario-design.md | Historical stress scenarios for replay testing | 5 |
 | RR-stress-testing-framework.md | Stress testing framework with scenario catalog and CI/CD automation | 5 |
+| RR-worst-case-scenario-analysis.md | Complete worst-case analysis: risk matrix, death hierarchy, reverse stress tests, survive-everything position sizing | 5 |
+
+### tailrisk
+| File | Description | Sprint |
+|------|-------------|--------|
+| RR-tailrisk-blackswan-protection.md | Tail risk catalog, fat-tail analysis, anti-fragile design, scenario limits, survivability | 5 |
 
 ### walkforward
 | File | Description | Sprint |
@@ -272,3 +290,49 @@
 | File | Description | Sprint |
 |------|-------------|--------|
 | RR-whale-large-transaction-detection.md | Detecting and using whale/large transaction activity for BTC prediction | 2 |
+
+---
+
+## Mega-Research: 20-Agent Consolidated Investigation (2026-03-23)
+
+| File | Description |
+|------|-------------|
+| RR-mega-research-20-agents-consolidated.md | 20 parallel agents investigating correlations, data sources, ML techniques for 5-min BTC. Covers: advanced order flow (VPIN, multi-level OBI), cross-exchange signals (Coinbase premium), regime detection (HAR-RV), ensemble methods (ACI+CQR), liquidation cascades (Hawkes), transformers vs trees, RL, GNNs, prediction markets, alt data, news NLP, macro correlations, and more |
+
+## Hedge Fund Infrastructure: 20-Agent Investigation (2026-03-23)
+
+| File | Description |
+|------|-------------|
+| RR-hedge-fund-infrastructure-20-agents.md | 20 agents on infra, ops, legal, business: low-latency (AWS $62/mo), exchange connectivity (fee tiers, multi-exchange), TimescaleDB (schema, 42MB/yr), monitoring (Prometheus+Grafana $55/mo), DR (hot standby $105/mo), Python perf (Numba 10-50x, ONNX 3-5x), security (API keys, hardening), CI/CD (10-gate pipeline), MLOps (MLflow, 6-stage validation), execution algos (TWAP, slippage, TCA), OMS (state machine, reconciliation), capital allocation ($3-5M ceiling), fund structure (Cayman $150-300K), regulatory, tax, fundraising (24-36mo timeline), team building |
+| RR-backtest-production-parity.md | 10 friction sources causing 50-70% Sharpe degradation, realistic fill simulation (5 levels), latency chain (30-365ms), Almgren-Chriss for crypto, 25-point look-ahead bias checklist, funding rate simulation, event replay architecture, paper trading bridge (3 phases), 6-test statistical battery, calibration techniques |
+| RR-risk-institutional-practices-comprehensive.md | 3LOD for small fund, 10 pre-trade checks, GARCH-EVT-CVaR pipeline, counterparty risk post-FTX, operational risk taxonomy, 15 stress scenarios, LP reporting template, liquidity risk metrics, regulatory risk (MiCA/Basel/SEC) |
+
+---
+
+## Risk Management (Sprint 9) — 21 Research Reports
+
+| File | Description |
+|------|-------------|
+| RR-risk-position-sizing-methods.md | Kelly, optimal f, fixed fractional, vol-adjusted, Bayesian Kelly, compounding |
+| RR-risk-kill-switch-design.md | All switch types, thresholds, recovery, flash crash protection, exchange risks |
+| RR-risk-drawdown-management.md | Progressive reduction, duration rules, recovery, decomposition, historical analysis |
+| RR-risk-stop-loss-strategies.md | Fixed vs time vs trailing, confidence-weighted, volatility-adjusted, multi-level |
+| RR-risk-margin-liquidation.md | Cross vs isolated margin, leverage optimization, ADL, funding rate, extreme scenarios |
+| RR-risk-adjusted-return-optimization.md | Multi-objective Sharpe vs DD, CVaR, risk budgeting, capital allocation, ruin |
+| RR-risk-tail-risk-black-swan.md | Crypto tail risks, fat tail analysis, tail hedging, anti-fragile design |
+| RR-risk-portfolio-heat-exposure.md | Gross/net exposure, daily risk budget, time-in-market, weekend risk |
+| RR-risk-hedge-fund-practices.md | Renaissance/Two Sigma methods, Alameda/3AC failures, three lines of defense |
+| RR-risk-funding-rate.md | Mechanics, historical analysis, cost modeling, arbitrage, settlement dynamics |
+| RR-risk-engine-architecture.md | Separate process, pre/post-trade checks, fail-safe, state management, API |
+| RR-risk-backtesting-integration.md | Why backtests without risk lie, simulating kill switches/DD gates/stops/funding |
+| RR-risk-exchange-operational.md | Counterparty risk, API failures, maintenance, reconciliation, key security |
+| RR-risk-parity-multi-signal.md | Allocation across ML/macro/cascade, correlation, dynamic allocation |
+| RR-risk-money-management.md | 1% vs 2% rule, account stages, monthly limits, profit-taking, minimum capital |
+| RR-risk-monitoring-dashboard.md | Real-time metrics, Prometheus/Grafana, alerting hierarchy, mobile |
+| RR-risk-testing-framework.md | Unit tests, property-based, boundary, chaos engineering, stress scenarios |
+| RR-risk-capital-preservation-math.md | Ruin probability, geometric growth, expected max DD, recovery math |
+| RR-risk-regime-conditional.md | Position sizing by regime, stop distance by regime, vol targeting |
+| RR-risk-worst-case-scenarios.md | Full risk catalog, reverse stress testing, nightmare scenarios |
+| RR-risk-implementation-guide.md | Complete Sprint 9 blueprint: class hierarchy, code, config, integration |
+| RR-risk-institutional-deep-research.md | Institutional risk management: RenTech/Citadel/Two Sigma practices, crypto blowup analysis, 3LOD, VaR/CVaR, stress testing, operational risk, psychology |
+| RR-risk-institutional-practices-comprehensive.md | Comprehensive institutional framework: 3LOD adapted for small fund, 10 pre-trade checks, margin monitoring, counterparty risk post-FTX, operational risk taxonomy, stress testing catalog, LP reporting templates, GARCH-EVT VaR/CVaR, liquidity risk metrics, regulatory risk (MiCA/Basel/SEC) |
