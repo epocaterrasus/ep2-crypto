@@ -44,7 +44,7 @@ None (first sprint)
 
 ---
 
-## Sprint 2: Data Ingestion - Exchange & Derivatives (3-4 days) [ ]
+## Sprint 2: Data Ingestion - Exchange & Derivatives (3-4 days) [x]
 
 ### Objectives
 Build WebSocket and REST collectors for Binance and Bybit exchange data.
