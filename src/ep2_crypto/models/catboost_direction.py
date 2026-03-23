@@ -105,6 +105,23 @@ class CatBoostDirectionModel:
         y_encoded = self._encode_labels(y_train)
         self._feature_names = feature_names
 
+        # CatBoost crashes if eval_set contains a class absent from training.
+        # With only ~62 flat bars across 687K total, most training windows have
+        # no flat samples. Fix: inject one zero-weight dummy row per missing class.
+        missing = set([0, 1, 2]) - set(int(c) for c in np.unique(y_encoded))
+        if missing:
+            n_missing = len(missing)
+            dummy_x = np.zeros((n_missing, x_train.shape[1]), dtype=np.float64)
+            dummy_y = np.array(sorted(missing), dtype=np.int32)
+            x_train = np.vstack([x_train, dummy_x])
+            y_encoded = np.append(y_encoded, dummy_y)
+            dummy_weights = np.append(
+                np.ones(len(y_encoded) - n_missing, dtype=np.float64),
+                np.zeros(n_missing, dtype=np.float64),
+            )
+        else:
+            dummy_weights = None
+
         cfg = self._config
 
         # Convert class weights from label space to CatBoost class index space
@@ -130,6 +147,7 @@ class CatBoostDirectionModel:
             x_train,
             y_encoded,
             feature_names=feature_names,
+            weight=dummy_weights,
         )
 
         eval_pool = None
