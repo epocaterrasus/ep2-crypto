@@ -48,15 +48,35 @@
 - Fixed `StackingEnsemble.predict_proba` call: pass `[lgbm_proba, catboost_proba]` list, not pre-stacked
 - **End-to-end pipeline verified**: data loads from TimescaleDB, models load, inference runs correctly
 
-### Current server state (2026-03-23 ~22:15 UTC):
-- `train-full` container: RUNNING — at fold 315/2373 (~7.4h remaining, completes ~06:00 UTC Mar 24)
-  - Training rate: ~4.6 folds/min
-  - Models saved to `/opt/ep2-crypto/models/` (bind-mounted)
-- `docker-ep2-crypto-1`: HEALTHY — API serving on port 8000
-- `timescaledb`: HEALTHY — 3.44M OHLCV rows (Sep 2019 → Mar 2026)
-- Models in Docker named volume: Partial fold-264 models (NOT ready for meaningful backtest)
+### Session 4 additions (2026-03-23 ~23:15 UTC):
+- **3 critical bugs fixed** (eacf2c7): walk-forward embargo, FLAT labeling, live loop resilience
+- **4 Polymarket features added** (a022bae): poly_yes_price_lag1, poly_volume_log_lag1, poly_rolling_accuracy_20, poly_market_exists
+- **Forward-fill alignment** (db4ecfa): searchsorted-based alignment for mixed 5-min/hourly Polymarket granularity
+- **Production Polymarket data**: 23,923 rows in TimescaleDB (Mar 2025 → Mar 2026), 12.8% coverage of training bars
+- **Local training restarted** with all fixes: 68 features, 11,696 FLAT labels (1.7%), 2149 folds (embargo fixed)
+- **LGBMClassifier warning suppressed**: warnings.filterwarnings in predict/predict_proba
 
-### EXACT NEXT STEP — S20-T1: Verify training completes (~06:00 UTC)
+### Current local training state (2026-03-23 ~23:20 UTC):
+- Local training at fold ~70/2149, ~1-2 sec/fold, ~45-60 min remaining
+- Features: 68 (includes 4 Polymarket features)
+- FLAT labels: 11,696/687,528 (1.7%) — improved from 62 (0.009%) but still low
+  - Note: 10bps threshold is too tight for BTC's typical ATR (~100-200bps at 5min)
+  - Consider increasing to 50-100bps in next session for better FLAT coverage
+- Polymarket coverage: 12.8% (88K bars matched from March 2025+)
+- SSH tunnel to prod DB active on port 5433
+- **HuggingFace download cancelled**: SII-WANGZJ/Polymarket_data unauthenticated streaming fails;
+  BTC Up/Down markets only started ~Jan 2025 anyway so no historical benefit
+
+### EXACT NEXT STEP — S20-T1: Verify local training completes (~00:20 UTC Mar 24)
+
+After training finishes, verify in `/tmp/local_train.log`:
+```
+training_complete  mean_accuracy=X  mean_sharpe=X
+```
+Then check models dir:
+```bash
+ls -lh /Users/edgarpocaterra/ep2-crypto/models/
+```
 
 ```bash
 # Check if training finished (look for training_complete log line)

@@ -14,6 +14,7 @@ Key features:
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -269,7 +270,9 @@ class LGBMDirectionModel:
         self._update_feature_importance()
 
         # Compute training metrics on the ORIGINAL (non-augmented) data
-        train_pred = model.predict(x_train)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
+            train_pred = model.predict(x_train)
         train_acc = float(np.mean(train_pred == y_encoded))
 
         metrics: dict[str, float] = {
@@ -278,7 +281,9 @@ class LGBMDirectionModel:
         }
 
         if x_val is not None and y_val is not None:
-            val_pred = model.predict(x_val)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
+                val_pred = model.predict(x_val)
             val_acc = float(np.mean(val_pred == self._encode_labels(y_val)))
             metrics["val_accuracy"] = val_acc
 
@@ -296,7 +301,9 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        classes = self._model.predict(x).astype(np.int32)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
+            classes = self._model.predict(x).astype(np.int32)
         return self._decode_labels(classes)
 
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -311,7 +318,9 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        result: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
+            result: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
         return result
 
     def _update_feature_importance(self) -> None:
