@@ -114,10 +114,12 @@ def _read_local_log(log_path: str, last_fold_seen: int) -> None:
                 time.sleep(2)
                 continue
 
-            with path.open("r", errors="replace") as f:
+            with path.open("rb") as f:
                 f.seek(offset)
-                new_content = f.read()
+                raw = f.read()
                 offset = f.tell()
+            # Strip null bytes that appear when multiple processes write to the same file
+            new_content = raw.replace(b"\x00", b"").decode("utf-8", errors="replace")
 
             for line in new_content.splitlines():
                 m = FOLD_RE.search(line)
@@ -444,41 +446,43 @@ function onFold(fold) {
   updateVerdict(accs, folds.map(f => f.sharpe));
 }
 
-// SSE
-const es = new EventSource('/stream');
+// SSE with auto-reconnect on close/error
+function connectSSE() {
+  const es = new EventSource('/stream');
+  es.addEventListener('fold', e => onFold(JSON.parse(e.data)));
+  es.addEventListener('history_done', e => {
+    historyDone = true;
+    startTime = Date.now();
+    const { folds: n } = JSON.parse(e.data);
+    if (n === 0) {
+      document.getElementById('eta').textContent = 'Computing features on 687,528 bars — folds will start in ~1 min…';
+    }
+  });
+  es.addEventListener('phase', e => {
+    const { phase } = JSON.parse(e.data);
+    const el = document.getElementById('phase');
+    const labels = {
+      starting: 'Starting…', features: 'Computing features…',
+      training: 'Training folds', stacking: 'Stacking ensemble',
+      calibrating: 'Calibrating', saving: 'Saving models', complete: '✓ Complete'
+    };
+    el.textContent = labels[phase] || phase;
+    el.className = 'badge ' + (phase === 'complete' ? '' : phase === 'training' ? '' : 'idle');
+    if (phase === 'training') el.className = 'badge';
+  });
+  es.addEventListener('complete', e => {
+    const { mean_sharpe } = JSON.parse(e.data);
+    document.getElementById('phase').textContent = '✓ Training complete';
+    document.getElementById('phase').className = 'badge';
+    document.getElementById('eta').innerHTML =
+      `<span>🎉 Done! Mean profit score across all periods: <b>${mean_sharpe?.toFixed(1)}</b></span>`;
+    es.close();
+  });
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 2000); };
+  return es;
+}
+const es = connectSSE();
 
-es.addEventListener('fold', e => onFold(JSON.parse(e.data)));
-
-es.addEventListener('history_done', e => {
-  historyDone = true;
-  startTime = Date.now();
-  const { folds: n } = JSON.parse(e.data);
-  if (n === 0) {
-    document.getElementById('eta').textContent = 'Computing features on 687,528 bars — folds will start in ~1 min…';
-  }
-});
-
-es.addEventListener('phase', e => {
-  const { phase } = JSON.parse(e.data);
-  const el = document.getElementById('phase');
-  const labels = {
-    starting: 'Starting…', features: 'Computing features…',
-    training: 'Training folds', stacking: 'Stacking ensemble',
-    calibrating: 'Calibrating', saving: 'Saving models', complete: '✓ Complete'
-  };
-  el.textContent = labels[phase] || phase;
-  el.className = 'badge ' + (phase === 'complete' ? '' : phase === 'training' ? '' : 'idle');
-  if (phase === 'training') el.className = 'badge';
-});
-
-es.addEventListener('complete', e => {
-  const { mean_sharpe } = JSON.parse(e.data);
-  document.getElementById('phase').textContent = '✓ Training complete';
-  document.getElementById('phase').className = 'badge';
-  document.getElementById('eta').innerHTML =
-    `<span>🎉 Done! Mean profit score across all periods: <b>${mean_sharpe?.toFixed(1)}</b></span>`;
-  es.close();
-});
 </script>
 </body>
 </html>
@@ -502,11 +506,14 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
         elif self.path == "/stream":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("X-Accel-Buffering", "no")
-            self.end_headers()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+            except OSError:
+                return
 
             q: list[str] = []
             with _lock:
@@ -524,7 +531,7 @@ class Handler(BaseHTTPRequestHandler):
                     if _done and not q:
                         break
                     time.sleep(0.1)
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
             finally:
                 with _lock:
