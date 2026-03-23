@@ -14,7 +14,6 @@ Key features:
 from __future__ import annotations
 
 import json
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -270,9 +269,7 @@ class LGBMDirectionModel:
         self._update_feature_importance()
 
         # Compute training metrics on the ORIGINAL (non-augmented) data
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
-            train_pred = model.predict(x_train)
+        train_pred = model.predict(self._with_feature_names(x_train))
         train_acc = float(np.mean(train_pred == y_encoded))
 
         metrics: dict[str, float] = {
@@ -281,13 +278,24 @@ class LGBMDirectionModel:
         }
 
         if x_val is not None and y_val is not None:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
-                val_pred = model.predict(x_val)
+            val_pred = model.predict(self._with_feature_names(x_val))
             val_acc = float(np.mean(val_pred == self._encode_labels(y_val)))
             metrics["val_accuracy"] = val_acc
 
         return metrics
+
+    def _with_feature_names(self, x: NDArray[np.float64]) -> Any:
+        """Wrap a numpy array as a DataFrame when feature names are available.
+
+        Converts x to a pandas DataFrame with stored feature names so sklearn's
+        validation layer sees consistent named features and emits no warnings.
+        Falls back to the raw array when feature names were not stored (e.g.
+        models loaded from disk without metadata).
+        """
+        if self._feature_names is None:
+            return x
+        import pandas as pd  # noqa: PLC0415
+        return pd.DataFrame(x, columns=self._feature_names)
 
     def predict(self, x: NDArray[np.float64]) -> NDArray[np.int8]:
         """Predict direction labels.
@@ -301,9 +309,7 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
-            classes = self._model.predict(x).astype(np.int32)
+        classes = self._model.predict(self._with_feature_names(x)).astype(np.int32)
         return self._decode_labels(classes)
 
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -318,9 +324,7 @@ class LGBMDirectionModel:
         if self._model is None:
             msg = "Model not fitted. Call train() first."
             raise RuntimeError(msg)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*valid feature names.*", category=UserWarning)
-            result: NDArray[np.float64] = self._model.predict_proba(x).astype(np.float64)
+        result: NDArray[np.float64] = self._model.predict_proba(self._with_feature_names(x)).astype(np.float64)
         return result
 
     def _update_feature_importance(self) -> None:

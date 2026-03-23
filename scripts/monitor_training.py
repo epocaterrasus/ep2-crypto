@@ -90,13 +90,55 @@ def parse_line(line: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Log reader — greps only the meaningful lines to keep SSH payloads tiny
+# Log reader — two modes:
+#   remote: greps Docker logs on server via SSH (keeps SSH payloads tiny)
+#   local:  tails a local log file (for local training runs)
 # ---------------------------------------------------------------------------
-def read_logs(container: str) -> None:
+def read_logs(container: str, local_log: str | None = None) -> None:
     last_fold_seen = -1
+    if local_log:
+        _read_local_log(local_log, last_fold_seen)
+    else:
+        _read_remote_logs(container, last_fold_seen)
+
+
+def _read_local_log(log_path: str, last_fold_seen: int) -> None:
+    """Read training progress from a local log file, polling for new lines."""
+    global _done
+    path = Path(log_path)
+    offset = 0  # byte offset — only read new content each poll
+
     while not _done:
         try:
-            # Only fetch lines we care about — tiny payload regardless of total log size
+            if not path.exists():
+                time.sleep(2)
+                continue
+
+            with path.open("r", errors="replace") as f:
+                f.seek(offset)
+                new_content = f.read()
+                offset = f.tell()
+
+            for line in new_content.splitlines():
+                m = FOLD_RE.search(line)
+                if m and int(m[2]) <= last_fold_seen:
+                    continue
+                parse_line(line)
+                if m:
+                    last_fold_seen = int(m[2])
+
+            if _phase == "complete":
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
+
+def _read_remote_logs(container: str, last_fold_seen: int) -> None:
+    """Read training progress from a remote Docker container via SSH."""
+    global _done
+    while not _done:
+        try:
             cmd = (
                 f"docker logs {container} 2>&1 | "
                 f"grep -E 'fold_complete|computing_features|walk_forward_start|"
@@ -107,7 +149,6 @@ def read_logs(container: str) -> None:
                 capture_output=True, text=True, timeout=20,
             )
             for line in result.stdout.splitlines():
-                # Skip fold lines we've already processed
                 m = FOLD_RE.search(line)
                 if m and int(m[2]) <= last_fold_seen:
                     continue
@@ -500,9 +541,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--container", default="train-full")
     parser.add_argument("--port", type=int, default=7331)
+    parser.add_argument(
+        "--local",
+        metavar="LOG_FILE",
+        default=None,
+        help="Read from a local log file instead of SSH (e.g. /tmp/local_train.log)",
+    )
     args = parser.parse_args()
 
-    reader = threading.Thread(target=read_logs, args=(args.container,), daemon=True)
+    reader = threading.Thread(target=read_logs, args=(args.container, args.local), daemon=True)
     reader.start()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
