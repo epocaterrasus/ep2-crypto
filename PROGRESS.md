@@ -7,8 +7,35 @@
 - **Sprint 11** — Hyperparameter Tuning (COMPLETE: T1-T4 done, 78 tests)
 - **Sprint 15** — Validation + Ablation Study (COMPLETE: T1-T4 done, 110 tests)
 - **Sprint 16** — Alpha Enhancement (COMPLETE: T1-T8 done)
-- **Sprint 18** — Historical Data Backfill (in progress — scripts being built)
+- **Sprint 18** — Historical Data Backfill (COMPLETE: backfill ran, 3.44M OHLCV rows in TimescaleDB)
 - **Sprint 19** — Production Deployment (COMPLETE: T1-T6 done)
+- **Sprint 20** — Production Training Run (IN PROGRESS — training started 2026-03-23)
+
+## Session Handoff (2026-03-23)
+
+### What was done this session:
+1. **PostgreSQL compatibility layer** — `db/connection.py` DBConnection wrapper, schema/repo/collect_history fixes
+2. **Full production deployment** — Docker rebuilt, Doppler token, TimescaleDB tables, backfill (3.44M rows)
+3. **UnboundLocalError bug** — Fixed `k` variable scope in HMMFeatureComputer
+4. **24/7 trading hours** — `EP2_RISK_ENFORCE_TRADING_HOURS=false` added to Doppler prd, ep2-crypto restarted
+5. **O(n²) feature computation** — Fixed GARCH, EWMA, RSI, HMM to use O(1) stateful incremental updates; feature computation dropped from 30+ min to ~5 min for 687K bars
+6. **train.py init_model bug** — Fixed `init_model=prev_lgbm_model` → `init_model=prev_lgbm_model._model`
+7. **CatBoost predict_proba bug** — Fixed (n,2) output when flat class absent in training window → always returns (n,3)
+
+### Current server state (as of session end):
+- `model-training` container: RUNNING walk-forward training (started ~20:20 UTC)
+  - 687,528 5-min bars (Sep 2019 → Jan 2026)
+  - 2373 folds × ~3.5s/fold ≈ 2.3 hours to complete
+  - Features completed in ~4.5 min, folds running
+- `docker-ep2-crypto-1`: HEALTHY — live prediction loop running 24/7 (no trading hours restriction)
+- `backfill-2019`: EXITED 0 — completed successfully
+
+### Next steps when training completes:
+1. Check training output: `docker logs model-training 2>&1 | tail -50`
+2. Verify models were saved: `ls /opt/ep2-crypto/models/`
+3. Run backtest to validate Sharpe: `docker exec docker-ep2-crypto-1 doppler run -- uv run python scripts/backtest.py`
+4. Check paper trading picks up new models (live loop auto-retrains every 4h, or restart container)
+5. Rebuild Docker image to bake in all the bug fixes (so next deploy doesn't need volume mounts)
 
 ## Completed Sprints
 - **Sprint 9** (2026-03-23): Risk Management — 183 tests, 95.3% coverage
