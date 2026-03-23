@@ -11,6 +11,54 @@
 - **Sprint 19** — Production Deployment (COMPLETE: T1-T6 done)
 - **Sprint 20** — Production Training Run (IN PROGRESS — training started 2026-03-23)
 
+## Session Handoff (2026-03-23 — Session 5)
+
+### EXACT NEXT STEP — S22-T4: Full retrain with 74 features
+
+1. Make sure SSH tunnel is open:
+```bash
+ssh -i ~/.ssh/hetzner_deploy_key -L 5432:localhost:5432 -N deploy@46.225.220.203
+```
+
+2. Launch training (in separate terminal):
+```bash
+cd /Users/edgarpocaterra/ep2-crypto
+EP2_DB_BACKEND=timescaledb \
+EP2_DB_TIMESCALEDB_URL="postgresql://ep2:ep2_secret@localhost:5432/ep2_crypto" \
+nohup uv run python scripts/train.py --output models/ > /tmp/local_train_s22.log 2>&1 &
+```
+
+3. Monitor with dashboard:
+```bash
+uv run python scripts/monitor_training.py --local /tmp/local_train_s22.log
+```
+
+4. When complete, compare mean_accuracy vs S21 baseline and update PROGRESS.md.
+
+### S21 Baseline (NOT yet collected — training never completed)
+Training kept crashing/restarting. Final config when last launched:
+- 68 features (64 base + 4 Polymarket)
+- 30bps FLAT threshold, 1.8x multiplier → ~23.6% FLAT labels
+- 2149 folds (embargo fix active)
+- **No completed run yet** — S21-T4 metrics still pending
+
+### What was done Session 5 (2026-03-23):
+1. **S21-T1**: AlertManager wired into `train.py` — fold notifications every 50 folds, start/complete alerts. Reads `EP2_TELEGRAM_BOT_TOKEN` + `EP2_TELEGRAM_CHAT_ID` from env. Gracefully disabled if not set.
+2. **S21-T2**: Fixed stacking `base_probas` bug — was passing pre-hstacked ndarray, now passes `[oof_lgbm, oof_catboost]` list so `stacking.train()` receives correct API.
+3. **Feature names fix**: `lgbm_direction.py` — replaced `warnings.filterwarnings` suppression (broken in LightGBM worker threads) with `_with_feature_names()` helper that wraps input as pandas DataFrame. Eliminates warning at source.
+4. **Dashboard local mode**: `monitor_training.py --local /tmp/local_train.log` — polls local log file instead of SSH to Docker. Open browser at `http://localhost:7331`.
+5. **30bps FLAT threshold** (committed by parallel session): `labeling.py` flat_threshold_bps 10→30.
+6. **1.8x barrier multipliers** (committed by parallel session): `upper_multiplier` and `lower_multiplier` 1.0→1.8. Combined with 30bps gives ~23.6% FLAT.
+7. **Server training stopped** — running local only on M2 Max.
+
+### Commits this session:
+- `d73ecd6` — Sprint 21: AlertManager notifications + stacking base_probas fix
+- `df47498` — Fix feature names warning + dashboard local mode
+- `64addb5` — (parallel session) filterwarnings suppression (superseded by df47498)
+- `47428e0` — (parallel session) 30bps FLAT threshold + SPRINTS.md updates
+
+---
+
 ## Session Handoff (2026-03-23 — Session 3)
 
 ### What was done this session:
