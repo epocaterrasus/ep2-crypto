@@ -148,9 +148,7 @@ class TestMonthlyReport:
             consecutive_days_to_flag=2,
             downweight_factor=0.5,
         )
-        tracker.register_features(
-            importances={"obi": 0.15, "rsi": 0.10, "vol": 0.08}
-        )
+        tracker.register_features(importances={"obi": 0.15, "rsi": 0.10, "vol": 0.08})
         tracker.record_importance({"obi": 0.10, "rsi": 0.12, "vol": 0.08})
         for _ in range(2):
             tracker.record_daily_psi({"obi": 0.5, "rsi": 0.1, "vol": 0.1})

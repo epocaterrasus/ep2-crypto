@@ -34,7 +34,6 @@ from ep2_crypto.models.tuning import (
     walk_forward_sharpe,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -81,16 +80,12 @@ def small_probas(rng: np.random.Generator) -> np.ndarray:
 
 
 class TestWalkForwardSharpe:
-    def test_positive_drift_returns_positive_sharpe(
-        self, synthetic_returns: np.ndarray
-    ) -> None:
+    def test_positive_drift_returns_positive_sharpe(self, synthetic_returns: np.ndarray) -> None:
         sharpe = walk_forward_sharpe(synthetic_returns, n_splits=2)
         # With positive drift we expect positive Sharpe
         assert sharpe > 0.0
 
-    def test_zero_returns_returns_zero_or_negative(
-        self, zero_returns: np.ndarray
-    ) -> None:
+    def test_zero_returns_returns_zero_or_negative(self, zero_returns: np.ndarray) -> None:
         sharpe = walk_forward_sharpe(zero_returns, n_splits=2)
         assert sharpe == pytest.approx(0.0, abs=1e-6)
 
@@ -130,27 +125,19 @@ class TestWalkForwardSharpe:
 
 class TestDeflatedSharpeRatio:
     def test_high_sharpe_many_bars_returns_high_dsr(self) -> None:
-        dsr = deflated_sharpe_ratio(
-            observed_sharpe=3.0, n_trials=50, n_bars=5000
-        )
+        dsr = deflated_sharpe_ratio(observed_sharpe=3.0, n_trials=50, n_bars=5000)
         assert dsr > 0.5
 
     def test_low_sharpe_high_trials_returns_low_dsr(self) -> None:
-        dsr = deflated_sharpe_ratio(
-            observed_sharpe=0.5, n_trials=200, n_bars=500
-        )
+        dsr = deflated_sharpe_ratio(observed_sharpe=0.5, n_trials=200, n_bars=500)
         assert dsr < 0.9
 
     def test_zero_bars_returns_zero(self) -> None:
-        dsr = deflated_sharpe_ratio(
-            observed_sharpe=2.0, n_trials=50, n_bars=0
-        )
+        dsr = deflated_sharpe_ratio(observed_sharpe=2.0, n_trials=50, n_bars=0)
         assert dsr == 0.0
 
     def test_zero_trials_returns_zero(self) -> None:
-        dsr = deflated_sharpe_ratio(
-            observed_sharpe=2.0, n_trials=0, n_bars=1000
-        )
+        dsr = deflated_sharpe_ratio(observed_sharpe=2.0, n_trials=0, n_bars=1000)
         assert dsr == 0.0
 
     def test_output_in_zero_one_range(self) -> None:
@@ -173,8 +160,7 @@ class TestDeflatedSharpeRatio:
 
     def test_non_normal_skewness(self) -> None:
         dsr = deflated_sharpe_ratio(
-            observed_sharpe=2.0, n_trials=50, n_bars=1000,
-            skewness=-1.0, excess_kurtosis=3.0
+            observed_sharpe=2.0, n_trials=50, n_bars=1000, skewness=-1.0, excess_kurtosis=3.0
         )
         assert 0.0 <= dsr <= 1.0
 
@@ -185,15 +171,11 @@ class TestDeflatedSharpeRatio:
 
 
 class TestPredictionsToReturns:
-    def test_shape_matches_input(
-        self, small_probas: np.ndarray, small_labels: np.ndarray
-    ) -> None:
+    def test_shape_matches_input(self, small_probas: np.ndarray, small_labels: np.ndarray) -> None:
         returns = _predictions_to_returns(small_probas, small_labels)
         assert returns.shape == (200,)
 
-    def test_no_trade_when_all_below_threshold(
-        self, small_labels: np.ndarray
-    ) -> None:
+    def test_no_trade_when_all_below_threshold(self, small_labels: np.ndarray) -> None:
         # All probabilities equal (0.333 each) → max never exceeds 0.55
         probas = np.full((200, 3), 1 / 3, dtype=np.float64)
         returns = _predictions_to_returns(probas, small_labels, threshold=0.55)
@@ -692,9 +674,7 @@ class TestThresholdOptimizer:
         result = optimizer.optimize(small_probas, small_labels)
         assert math.isfinite(result.best_sharpe)
 
-    def test_high_confidence_predictions_trade_less(
-        self, small_labels: np.ndarray
-    ) -> None:
+    def test_high_confidence_predictions_trade_less(self, small_labels: np.ndarray) -> None:
         # Uniform probas → low confidence → more trades at low threshold
         uniform_probas = np.full((200, 3), 1 / 3, dtype=np.float64)
         # Strong DOWN predictions
@@ -704,7 +684,7 @@ class TestThresholdOptimizer:
         opt_uniform = ThresholdOptimizer(threshold_grid=[0.50, 0.55])
         opt_strong = ThresholdOptimizer(threshold_grid=[0.50, 0.85])
 
-        result_uniform = opt_uniform.optimize(uniform_probas, small_labels)
+        opt_uniform.optimize(uniform_probas, small_labels)
         result_strong = opt_strong.optimize(strong_probas, small_labels)
         # strong predictions should be able to use higher threshold
         assert result_strong.best_threshold >= 0.50
@@ -763,7 +743,7 @@ class TestFeatureImportanceAnalyzer:
         folds = self._make_stable_folds(n_folds=5)
         analyzer = FeatureImportanceAnalyzer(top_n=5, stability_threshold=0.8)
         result = analyzer.analyze(folds)
-        unstable = set(result.unstable_features)
+        set(result.unstable_features)
         # noise features should be in the unstable set (rarely appear in top-5)
         assert len(result.unstable_features) > 0
 

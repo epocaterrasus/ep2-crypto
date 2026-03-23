@@ -89,9 +89,7 @@ class TestAcceptanceCriteria:
 
         for i, r in enumerate(results):
             prob_sum = sum(r.regime_probabilities)
-            assert prob_sum == pytest.approx(1.0, abs=1e-6), (
-                f"Probs sum to {prob_sum} at bar {i}"
-            )
+            assert prob_sum == pytest.approx(1.0, abs=1e-6), f"Probs sum to {prob_sum} at bar {i}"
             assert all(p >= 0 for p in r.regime_probabilities), (
                 f"Negative probability at bar {i}: {r.regime_probabilities}"
             )
@@ -114,7 +112,7 @@ class TestAcceptanceCriteria:
         er_per_bar = er_time / 300
 
         # ER should be very fast (< 1ms per bar)
-        assert er_per_bar < 0.001, f"ER too slow: {er_per_bar*1000:.3f}ms/bar"
+        assert er_per_bar < 0.001, f"ER too slow: {er_per_bar * 1000:.3f}ms/bar"
 
     def test_all_components_tested_independently(self) -> None:
         """AC: All regime components tested independently and as ensemble.

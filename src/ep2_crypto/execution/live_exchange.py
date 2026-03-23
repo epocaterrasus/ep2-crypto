@@ -81,8 +81,7 @@ class LiveExchange(VenueAdapter):
             import ccxt.pro as ccxtpro
         except ImportError as exc:
             raise ImportError(
-                "ccxt[pro] is required for LiveExchange. "
-                "Install with: uv add 'ccxt[pro]'"
+                "ccxt[pro] is required for LiveExchange. Install with: uv add 'ccxt[pro]'"
             ) from exc
 
         api_key = os.environ.get("BINANCE_API_KEY", "")
@@ -192,11 +191,7 @@ class LiveExchange(VenueAdapter):
             positions = await self._exchange.fetch_positions([self._symbol])
             for pos in positions:
                 if pos.get("symbol") == self._symbol and pos.get("contracts", 0) > 0:
-                    side = (
-                        OrderSide.BUY
-                        if pos.get("side", "long") == "long"
-                        else OrderSide.SELL
-                    )
+                    side = OrderSide.BUY if pos.get("side", "long") == "long" else OrderSide.SELL
                     return PositionInfo(
                         venue=VenueType.BINANCE_PERPS,
                         symbol=self._symbol,

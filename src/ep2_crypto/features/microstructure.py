@@ -168,10 +168,14 @@ class OFIComputer(FeatureComputer):
             ofi_total = 0.0
             for lev in range(d):
                 ofi_total += _compute_ofi_level(
-                    bids[idx - 1, lev], bid_sizes[idx - 1, lev],
-                    bids[idx, lev], bid_sizes[idx, lev],
-                    asks[idx - 1, lev], ask_sizes[idx - 1, lev],
-                    asks[idx, lev], ask_sizes[idx, lev],
+                    bids[idx - 1, lev],
+                    bid_sizes[idx - 1, lev],
+                    bids[idx, lev],
+                    bid_sizes[idx, lev],
+                    asks[idx - 1, lev],
+                    ask_sizes[idx - 1, lev],
+                    asks[idx, lev],
+                    ask_sizes[idx, lev],
                 )
             result[f"ofi_{label}"] = ofi_total
 
@@ -182,10 +186,14 @@ class OFIComputer(FeatureComputer):
 
 
 def _compute_ofi_level(
-    prev_bid: float, prev_bid_sz: float,
-    curr_bid: float, curr_bid_sz: float,
-    prev_ask: float, prev_ask_sz: float,
-    curr_ask: float, curr_ask_sz: float,
+    prev_bid: float,
+    prev_bid_sz: float,
+    curr_bid: float,
+    curr_bid_sz: float,
+    prev_ask: float,
+    prev_ask_sz: float,
+    curr_ask: float,
+    curr_ask_sz: float,
 ) -> float:
     """Compute OFI for a single level using Cont-Stoikov-Talreja cases.
 
@@ -348,8 +356,8 @@ class TFIComputer(FeatureComputer):
             # 6-bar TFI (approx 30 min for 5-min bars, or 30s for 5s bars)
             lookback = min(6, idx + 1)
             start = idx - lookback + 1
-            signed_sum = float(np.sum(trade_sizes[start:idx + 1] * trade_sides[start:idx + 1]))
-            total_sum = float(np.sum(np.abs(trade_sizes[start:idx + 1])))
+            signed_sum = float(np.sum(trade_sizes[start : idx + 1] * trade_sides[start : idx + 1]))
+            total_sum = float(np.sum(np.abs(trade_sizes[start : idx + 1])))
             result["tfi_6bar"] = signed_sum / total_sum if total_sum > 0 else 0.0
         else:
             result["tfi_1bar"] = float("nan")
@@ -360,9 +368,7 @@ class TFIComputer(FeatureComputer):
             best_bid = bids[idx, 0] if bids.ndim > 1 else bids[idx]
             best_ask = asks[idx, 0] if asks.ndim > 1 else asks[idx]
             mid = (best_bid + best_ask) / 2.0
-            result["relative_spread"] = (
-                (best_ask - best_bid) / mid if mid > 0 else float("nan")
-            )
+            result["relative_spread"] = (best_ask - best_bid) / mid if mid > 0 else float("nan")
         else:
             result["relative_spread"] = float("nan")
 
@@ -379,9 +385,7 @@ class TFIComputer(FeatureComputer):
             # High value = absorption happening
             price_change_bps = rel_price_change * 10_000
             result["absorption"] = (
-                abs_signed_vol / (1.0 + price_change_bps)
-                if abs_signed_vol > 0
-                else 0.0
+                abs_signed_vol / (1.0 + price_change_bps) if abs_signed_vol > 0 else 0.0
             )
         else:
             result["absorption"] = float("nan")
@@ -434,9 +438,9 @@ class KyleLambdaComputer(FeatureComputer):
 
         start = idx - self._window + 1
         # Price changes
-        delta_p = np.diff(closes[start:idx + 1])
+        delta_p = np.diff(closes[start : idx + 1])
         # Signed volumes (aligned with price changes)
-        signed_v = (trade_sizes[start + 1:idx + 1] * trade_sides[start + 1:idx + 1])
+        signed_v = trade_sizes[start + 1 : idx + 1] * trade_sides[start + 1 : idx + 1]
 
         if len(delta_p) < 2 or len(signed_v) < 2:
             return {"kyle_lambda": float("nan")}
@@ -576,8 +580,8 @@ class VPINComputer(FeatureComputer):
         # BVC: classify each bar's volume
         # Buy volume fraction = Z(delta_price / sigma_price)
         # Approximation: price_change > 0 → all buys, < 0 → all sells, = 0 → 50/50
-        price_changes = closes[start:idx + 1] - opens[start:idx + 1]
-        bar_volumes = volumes[start:idx + 1]
+        price_changes = closes[start : idx + 1] - opens[start : idx + 1]
+        bar_volumes = volumes[start : idx + 1]
 
         # Estimate sigma of price changes over window
         sigma = float(np.std(price_changes))
@@ -666,7 +670,7 @@ class BookPressureGradientComputer(FeatureComputer):
         # Slope via linear regression coefficient
         def _slope(y: NDArray[np.float64]) -> float:
             x = levels
-            n = len(x)
+            len(x)
             x_mean = float(np.mean(x))
             y_mean = float(np.mean(y))
             cov = float(np.sum((x - x_mean) * (y - y_mean)))

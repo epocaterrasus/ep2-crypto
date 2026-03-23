@@ -19,13 +19,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 import structlog
-from numpy.typing import NDArray
 from scipy import stats
 
 from ep2_crypto.backtest.metrics import SQRT_BARS_PER_YEAR
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = structlog.get_logger(__name__)
 
@@ -226,9 +229,7 @@ def block_bootstrap_ci(
         # Draw random block starting points
         starts = rng.integers(0, n - block_size + 1, size=n_blocks)
         # Concatenate blocks
-        boot_indices = np.concatenate([
-            np.arange(s, min(s + block_size, n)) for s in starts
-        ])[:n]
+        boot_indices = np.concatenate([np.arange(s, min(s + block_size, n)) for s in starts])[:n]
 
         boot_returns = returns[boot_indices]
         std = boot_returns.std(ddof=1)

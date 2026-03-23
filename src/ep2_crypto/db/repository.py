@@ -5,10 +5,12 @@ All SQL uses ? placeholders — never string interpolation.
 
 from __future__ import annotations
 
-import sqlite3
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
+
+if TYPE_CHECKING:
+    import sqlite3
 
 logger = structlog.get_logger(__name__)
 
@@ -40,8 +42,18 @@ class Repository:
     ) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO ohlcv VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (timestamp_ms, symbol, interval, open_, high, low, close, volume,
-             quote_volume, trades_count),
+            (
+                timestamp_ms,
+                symbol,
+                interval,
+                open_,
+                high,
+                low,
+                close,
+                volume,
+                quote_volume,
+                trades_count,
+            ),
         )
         self._conn.commit()
 
@@ -88,13 +100,15 @@ class Repository:
     ) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO orderbook_snapshot VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (timestamp_ms, symbol, bid_prices, bid_sizes, ask_prices, ask_sizes,
-             mid_price, spread),
+            (timestamp_ms, symbol, bid_prices, bid_sizes, ask_prices, ask_sizes, mid_price, spread),
         )
         self._conn.commit()
 
     def query_orderbook(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM orderbook_snapshot WHERE symbol = ? "
@@ -128,7 +142,10 @@ class Repository:
         return len(rows)
 
     def query_trades(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM agg_trades WHERE symbol = ? "
@@ -153,7 +170,10 @@ class Repository:
         self._conn.commit()
 
     def query_funding_rate(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM funding_rate WHERE symbol = ? "
@@ -177,7 +197,10 @@ class Repository:
         self._conn.commit()
 
     def query_open_interest(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM open_interest WHERE symbol = ? "
@@ -202,7 +225,10 @@ class Repository:
         self._conn.commit()
 
     def query_liquidations(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM liquidation WHERE symbol = ? "
@@ -226,7 +252,11 @@ class Repository:
         self._conn.commit()
 
     def query_cross_market(
-        self, symbol: str, source: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        source: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM cross_market WHERE symbol = ? AND source = ? "
@@ -246,13 +276,20 @@ class Repository:
     ) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO onchain_whale VALUES (?, ?, ?, ?, ?)",
-            (timestamp_ms, tx_hash, value_btc, fee_rate,
-             int(is_exchange_flow) if is_exchange_flow is not None else None),
+            (
+                timestamp_ms,
+                tx_hash,
+                value_btc,
+                fee_rate,
+                int(is_exchange_flow) if is_exchange_flow is not None else None,
+            ),
         )
         self._conn.commit()
 
     def query_whale_txs(
-        self, start_ms: int, end_ms: int,
+        self,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM onchain_whale WHERE timestamp_ms >= ? AND timestamp_ms < ? "
@@ -275,13 +312,24 @@ class Repository:
     ) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO regime_label VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (timestamp_ms, symbol, regime, hmm_state, hmm_prob,
-             bocpd_run_length, garch_vol, efficiency_ratio),
+            (
+                timestamp_ms,
+                symbol,
+                regime,
+                hmm_state,
+                hmm_prob,
+                bocpd_run_length,
+                garch_vol,
+                efficiency_ratio,
+            ),
         )
         self._conn.commit()
 
     def query_regimes(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM regime_label WHERE symbol = ? "
@@ -305,13 +353,25 @@ class Repository:
     ) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO prediction VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (timestamp_ms, symbol, direction, confidence, calibrated_prob_up,
-             calibrated_prob_down, position_size, regime, model_version),
+            (
+                timestamp_ms,
+                symbol,
+                direction,
+                confidence,
+                calibrated_prob_up,
+                calibrated_prob_down,
+                position_size,
+                regime,
+                model_version,
+            ),
         )
         self._conn.commit()
 
     def query_predictions(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM prediction WHERE symbol = ? "
@@ -334,7 +394,10 @@ class Repository:
         self._conn.commit()
 
     def query_feature_snapshots(
-        self, symbol: str, start_ms: int, end_ms: int,
+        self,
+        symbol: str,
+        start_ms: int,
+        end_ms: int,
     ) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM feature_snapshot WHERE symbol = ? "
@@ -347,9 +410,17 @@ class Repository:
     def count_rows(self, table: str) -> int:
         """Count rows in a table. Table name is validated against known tables."""
         allowed = {
-            "ohlcv", "orderbook_snapshot", "agg_trades", "funding_rate",
-            "open_interest", "liquidation", "cross_market", "onchain_whale",
-            "regime_label", "prediction", "feature_snapshot",
+            "ohlcv",
+            "orderbook_snapshot",
+            "agg_trades",
+            "funding_rate",
+            "open_interest",
+            "liquidation",
+            "cross_market",
+            "onchain_whale",
+            "regime_label",
+            "prediction",
+            "feature_snapshot",
         }
         if table not in allowed:
             msg = f"Unknown table: {table}"

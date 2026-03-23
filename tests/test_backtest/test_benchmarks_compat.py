@@ -6,32 +6,33 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ep2_crypto.benchmarks.engine import BacktestEngine as BenchmarkEngine
 from ep2_crypto.benchmarks.strategies import (
+    STRATEGY_REGISTRY,
     BuyAndHold,
     FundingRateCarry,
     FundingRateStrategy,
     SimpleMomentum,
     get_default_benchmark_suite,
-    STRATEGY_REGISTRY,
 )
-from ep2_crypto.benchmarks.engine import BacktestEngine as BenchmarkEngine
-from ep2_crypto.benchmarks.metrics import compute_metrics
 
 
 def _make_df(n: int = 500, seed: int = 42) -> pd.DataFrame:
     """Generate synthetic OHLCV DataFrame with funding rate."""
     rng = np.random.default_rng(seed)
     close = 100_000.0 * np.cumprod(1 + rng.normal(0, 0.001, n))
-    df = pd.DataFrame({
-        "open": np.roll(close, 1),
-        "high": close * (1 + rng.uniform(0, 0.002, n)),
-        "low": close * (1 - rng.uniform(0, 0.002, n)),
-        "close": close,
-        "volume": rng.uniform(100, 500, n),
-        "funding_rate": rng.normal(0.0001, 0.00005, n),  # mostly positive
-        "obi": rng.uniform(-0.5, 0.5, n),
-        "nq_close": 18000 * np.cumprod(1 + rng.normal(0, 0.0005, n)),
-    })
+    df = pd.DataFrame(
+        {
+            "open": np.roll(close, 1),
+            "high": close * (1 + rng.uniform(0, 0.002, n)),
+            "low": close * (1 - rng.uniform(0, 0.002, n)),
+            "close": close,
+            "volume": rng.uniform(100, 500, n),
+            "funding_rate": rng.normal(0.0001, 0.00005, n),  # mostly positive
+            "obi": rng.uniform(-0.5, 0.5, n),
+            "nq_close": 18000 * np.cumprod(1 + rng.normal(0, 0.0005, n)),
+        }
+    )
     df.loc[0, "open"] = 100_000.0
     return df
 
@@ -111,7 +112,7 @@ class TestBenchmarkEngineCompat:
         df = _make_df(300)
         engine = BenchmarkEngine(trading_cost_bps=4.0, slippage_bps=1.0)
         strategy = FundingRateCarry()
-        metrics, returns, positions = engine.run_strategy(strategy, df)
+        metrics, _returns, _positions = engine.run_strategy(strategy, df)
         assert metrics.total_trades >= 0
         assert isinstance(metrics.sharpe_ratio, float)
 
@@ -135,7 +136,7 @@ class TestBenchmarkEngineCompat:
         engine = BenchmarkEngine()
         suite = get_default_benchmark_suite()
         # Only run strategies whose required columns exist
-        for name, strategy in suite.items():
+        for _name, strategy in suite.items():
             try:
                 engine.run_strategy(strategy, df)
             except ValueError:

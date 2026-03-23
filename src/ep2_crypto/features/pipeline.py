@@ -223,7 +223,13 @@ class FeaturePipeline:
         for computer in self._get_computers():
             filtered = _filter_kwargs(computer, kwargs)
             features = computer.compute(
-                idx, timestamps, opens, highs, lows, closes, volumes,
+                idx,
+                timestamps,
+                opens,
+                highs,
+                lows,
+                closes,
+                volumes,
                 **filtered,
             )
             result.update(features)
@@ -260,7 +266,13 @@ class FeaturePipeline:
 
         for i in range(n_bars):
             result = self.compute(
-                i, timestamps, opens, highs, lows, closes, volumes,
+                i,
+                timestamps,
+                opens,
+                highs,
+                lows,
+                closes,
+                volumes,
                 **kwargs,
             )
             for j, name in enumerate(names):

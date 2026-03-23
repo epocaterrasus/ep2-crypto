@@ -8,12 +8,10 @@ from hypothesis import strategies as st
 
 from ep2_crypto.risk.binary_position_sizer import (
     BinaryPositionSizer,
-    BinarySizingResult,
     binary_kelly,
     expected_value_per_share,
     polymarket_fee,
 )
-
 
 # ---------------------------------------------------------------------------
 # polymarket_fee tests
@@ -176,9 +174,7 @@ class TestBinaryPositionSizerCompute:
 
     def test_basic_bet(self) -> None:
         """54% model vs 50c market, $10K bankroll, zero fees."""
-        result = self.sizer.compute(
-            model_prob=0.54, market_price=0.50, bankroll=10_000.0
-        )
+        result = self.sizer.compute(model_prob=0.54, market_price=0.50, bankroll=10_000.0)
         assert not result.rejected
 
         # Raw Kelly = (0.54-0.50)/(1-0.50) = 0.08
@@ -198,9 +194,7 @@ class TestBinaryPositionSizerCompute:
 
     def test_large_edge_capped(self) -> None:
         """80% model vs 50c market → raw Kelly huge, capped at 5%."""
-        result = self.sizer.compute(
-            model_prob=0.80, market_price=0.50, bankroll=10_000.0
-        )
+        result = self.sizer.compute(model_prob=0.80, market_price=0.50, bankroll=10_000.0)
         assert not result.rejected
 
         # Raw Kelly = (0.80-0.50)/(1-0.50) = 0.60
@@ -214,17 +208,13 @@ class TestBinaryPositionSizerCompute:
 
     def test_no_edge_rejected(self) -> None:
         """Model prob <= market price → rejected."""
-        result = self.sizer.compute(
-            model_prob=0.50, market_price=0.50, bankroll=10_000.0
-        )
+        result = self.sizer.compute(model_prob=0.50, market_price=0.50, bankroll=10_000.0)
         assert result.rejected
         assert "no_edge" in (result.rejection_reason or "")
 
     def test_below_minimum_rejected(self) -> None:
         """Very small bankroll → bet below $5 minimum."""
-        result = self.sizer.compute(
-            model_prob=0.52, market_price=0.50, bankroll=100.0
-        )
+        result = self.sizer.compute(model_prob=0.52, market_price=0.50, bankroll=100.0)
         # Raw Kelly = 0.04, QK = 0.01, bet = $1 → below $5
         assert result.rejected
         assert "below_minimum" in (result.rejection_reason or "")
@@ -232,43 +222,41 @@ class TestBinaryPositionSizerCompute:
     def test_drawdown_multiplier(self) -> None:
         """Drawdown gate reduces position size."""
         result_full = self.sizer.compute(
-            model_prob=0.60, market_price=0.50, bankroll=10_000.0,
+            model_prob=0.60,
+            market_price=0.50,
+            bankroll=10_000.0,
             drawdown_multiplier=1.0,
         )
         result_half = self.sizer.compute(
-            model_prob=0.60, market_price=0.50, bankroll=10_000.0,
+            model_prob=0.60,
+            market_price=0.50,
+            bankroll=10_000.0,
             drawdown_multiplier=0.5,
         )
         assert not result_full.rejected
         assert not result_half.rejected
-        assert result_half.cost_usd == pytest.approx(
-            result_full.cost_usd * 0.5, abs=0.01
-        )
+        assert result_half.cost_usd == pytest.approx(result_full.cost_usd * 0.5, abs=0.01)
 
     def test_drawdown_zero_rejects(self) -> None:
         """Drawdown multiplier 0 → bet is zero → rejected."""
         result = self.sizer.compute(
-            model_prob=0.60, market_price=0.50, bankroll=10_000.0,
+            model_prob=0.60,
+            market_price=0.50,
+            bankroll=10_000.0,
             drawdown_multiplier=0.0,
         )
         assert result.rejected
 
     def test_zero_bankroll_rejected(self) -> None:
-        result = self.sizer.compute(
-            model_prob=0.60, market_price=0.50, bankroll=0.0
-        )
+        result = self.sizer.compute(model_prob=0.60, market_price=0.50, bankroll=0.0)
         assert result.rejected
 
     def test_invalid_market_price(self) -> None:
-        result = self.sizer.compute(
-            model_prob=0.60, market_price=0.0, bankroll=10_000.0
-        )
+        result = self.sizer.compute(model_prob=0.60, market_price=0.0, bankroll=10_000.0)
         assert result.rejected
 
     def test_invalid_model_prob(self) -> None:
-        result = self.sizer.compute(
-            model_prob=0.0, market_price=0.50, bankroll=10_000.0
-        )
+        result = self.sizer.compute(model_prob=0.0, market_price=0.50, bankroll=10_000.0)
         assert result.rejected
 
 
@@ -300,9 +288,7 @@ class TestBinaryPositionSizerWithFees:
     def test_fee_recorded_in_result(self) -> None:
         result = self.sizer.compute(0.55, 0.50, 10_000.0)
         assert result.fee_per_share > 0.0
-        assert result.fee_per_share == pytest.approx(
-            polymarket_fee(0.50), abs=1e-10
-        )
+        assert result.fee_per_share == pytest.approx(polymarket_fee(0.50), abs=1e-10)
 
     def test_breakeven_accuracy_at_50c(self) -> None:
         """At 50c, break-even is p / (p + (1-p)*(1-r)) ≈ 50.06%."""
@@ -387,11 +373,11 @@ class TestBinaryPositionSizerProperties:
 
 GOLDEN_CASES = [
     # (model_prob, market_price, bankroll, fee_rate, expected_kelly, expected_cost_approx)
-    (0.54, 0.50, 10_000, 0.0, 0.08, 200.0),    # Basic no-fee
-    (0.60, 0.50, 10_000, 0.0, 0.20, 500.0),     # Larger edge, capped
-    (0.55, 0.45, 10_000, 0.0, 0.1818, 454.55),   # Off-center price, QK=0.0455
-    (0.52, 0.50, 10_000, 0.0, 0.04, 100.0),     # Thin edge
-    (0.70, 0.30, 10_000, 0.0, 0.5714, 500.0),   # Deep value, capped
+    (0.54, 0.50, 10_000, 0.0, 0.08, 200.0),  # Basic no-fee
+    (0.60, 0.50, 10_000, 0.0, 0.20, 500.0),  # Larger edge, capped
+    (0.55, 0.45, 10_000, 0.0, 0.1818, 454.55),  # Off-center price, QK=0.0455
+    (0.52, 0.50, 10_000, 0.0, 0.04, 100.0),  # Thin edge
+    (0.70, 0.30, 10_000, 0.0, 0.5714, 500.0),  # Deep value, capped
 ]
 
 

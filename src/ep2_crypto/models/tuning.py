@@ -21,7 +21,7 @@ Acceptance criteria (from SPRINTS.md):
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -117,10 +117,9 @@ def deflated_sharpe_ratio(
 
     # Expected maximum Sharpe from n_trials random strategies (Bailey & Lopez de Prado eq. 9)
     euler_mascheroni = 0.5772156649
-    expected_max_sr = (
-        (1 - euler_mascheroni) * _inverse_normal(1 - 1.0 / n_trials)
-        + euler_mascheroni * _inverse_normal(1 - 1.0 / (n_trials * math.e))
-    )
+    expected_max_sr = (1 - euler_mascheroni) * _inverse_normal(
+        1 - 1.0 / n_trials
+    ) + euler_mascheroni * _inverse_normal(1 - 1.0 / (n_trials * math.e))
 
     # Sharpe standard deviation under non-normality
     sr_std = math.sqrt(
@@ -188,9 +187,7 @@ def _predictions_to_returns(
     max_prob = probas[np.arange(len(probas)), max_class]
 
     signal = np.zeros(len(probas), dtype=np.float64)
-    signal[max_prob > threshold] = (max_class[max_prob > threshold] - 1).astype(
-        np.float64
-    )
+    signal[max_prob > threshold] = (max_class[max_prob > threshold] - 1).astype(np.float64)
 
     # Simulated return: signal * direction of true label (crude approximation)
     true_dir = y_true.astype(np.float64)
@@ -332,16 +329,8 @@ class LGBMTuner:
             catch=(Exception,),
         )
 
-        n_pruned = sum(
-            1
-            for t in study.trials
-            if t.state == optuna.trial.TrialState.PRUNED
-        )
-        n_completed = sum(
-            1
-            for t in study.trials
-            if t.state == optuna.trial.TrialState.COMPLETE
-        )
+        n_pruned = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.PRUNED)
+        n_completed = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE)
         n_total = len(study.trials)
         pruning_rate = n_pruned / n_total if n_total > 0 else 0.0
 
@@ -472,17 +461,9 @@ class CatBoostTuner:
             catch=(Exception,),
         )
 
-        n_pruned = sum(
-            1
-            for t in study.trials
-            if t.state == optuna.trial.TrialState.PRUNED
-        )
+        n_pruned = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.PRUNED)
         n_total = len(study.trials)
-        n_completed = sum(
-            1
-            for t in study.trials
-            if t.state == optuna.trial.TrialState.COMPLETE
-        )
+        n_completed = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE)
         pruning_rate = n_pruned / n_total if n_total > 0 else 0.0
         best_sharpe = study.best_value if study.best_trial else -10.0
         best_params = study.best_params if study.best_trial else {}
@@ -590,9 +571,7 @@ class GRUTuner:
             config = GRUConfig(
                 hidden_size=trial.suggest_int("hidden_size", 32, 256),
                 num_layers=trial.suggest_int("num_layers", 1, 3),
-                learning_rate=trial.suggest_float(
-                    "learning_rate", 1e-5, 1e-2, log=True
-                ),
+                learning_rate=trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
                 dropout=trial.suggest_float("dropout", 0.1, 0.5),
                 seq_len=trial.suggest_int("seq_len", 12, 60),
                 n_epochs=self._fast_eval_epochs,
@@ -618,17 +597,9 @@ class GRUTuner:
             catch=(Exception,),
         )
 
-        n_pruned = sum(
-            1
-            for t in study.trials
-            if t.state == optuna.trial.TrialState.PRUNED
-        )
+        n_pruned = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.PRUNED)
         n_total = len(study.trials)
-        n_completed = sum(
-            1
-            for t in study.trials
-            if t.state == optuna.trial.TrialState.COMPLETE
-        )
+        n_completed = sum(1 for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE)
         pruning_rate = n_pruned / n_total if n_total > 0 else 0.0
         best_val_loss = study.best_value if study.best_trial else float("inf")
         best_params = study.best_params if study.best_trial else {}
@@ -694,8 +665,22 @@ class ThresholdOptimizer:
     """
 
     _DEFAULT_GRID: list[float] = [
-        0.50, 0.52, 0.54, 0.55, 0.56, 0.58, 0.60,
-        0.62, 0.64, 0.65, 0.66, 0.68, 0.70, 0.72, 0.75, 0.80,
+        0.50,
+        0.52,
+        0.54,
+        0.55,
+        0.56,
+        0.58,
+        0.60,
+        0.62,
+        0.64,
+        0.65,
+        0.66,
+        0.68,
+        0.70,
+        0.72,
+        0.75,
+        0.80,
     ]
 
     def __init__(self, threshold_grid: list[float] | None = None) -> None:
@@ -742,9 +727,7 @@ class ThresholdOptimizer:
 
                 regime_results: dict[float, float] = {}
                 for threshold in self._grid:
-                    r = _predictions_to_returns(
-                        probas[mask], y_true[mask], threshold, cost_bps
-                    )
+                    r = _predictions_to_returns(probas[mask], y_true[mask], threshold, cost_bps)
                     s = walk_forward_sharpe(r, n_splits=1)
                     regime_results[threshold] = s
 
@@ -834,19 +817,11 @@ class FeatureImportanceAnalyzer:
             for feature, importance in fold.items():
                 sum_importance[feature] += importance
 
-        appearance_rate = {
-            f: appearance_count[f] / n_folds for f in all_features
-        }
-        mean_importance = {
-            f: sum_importance[f] / n_folds for f in all_features
-        }
+        appearance_rate = {f: appearance_count[f] / n_folds for f in all_features}
+        mean_importance = {f: sum_importance[f] / n_folds for f in all_features}
 
-        stable = [
-            f for f, rate in appearance_rate.items() if rate >= self._stability_threshold
-        ]
-        unstable = [
-            f for f, rate in appearance_rate.items() if rate < self._stability_threshold
-        ]
+        stable = [f for f, rate in appearance_rate.items() if rate >= self._stability_threshold]
+        unstable = [f for f, rate in appearance_rate.items() if rate < self._stability_threshold]
 
         # Top-10 overlap rate: fraction of consecutive fold pairs with >70% overlap
         if len(fold_top_sets) < 2:
@@ -865,7 +840,11 @@ class FeatureImportanceAnalyzer:
                 if union == 0:
                     continue
                 intersection = len(set_a & set_b)
-                overlap = intersection / min(len(set_a), len(set_b)) if min(len(set_a), len(set_b)) > 0 else 0.0
+                overlap = (
+                    intersection / min(len(set_a), len(set_b))
+                    if min(len(set_a), len(set_b)) > 0
+                    else 0.0
+                )
                 if overlap >= overlap_threshold:
                     overlapping_pairs += 1
             top10_overlap_rate = overlapping_pairs / n_pairs if n_pairs > 0 else 1.0

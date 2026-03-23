@@ -5,11 +5,8 @@ from __future__ import annotations
 import pytest
 
 from ep2_crypto.monitoring.slippage_tracker import (
-    SlippageStats,
     SlippageTracker,
-    _compute_stats,
     _percentile,
-    SlippageRecord,
 )
 
 
@@ -144,13 +141,19 @@ class TestSlippageTracker:
     def test_stats_by_hour(self, tracker: SlippageTracker) -> None:
         for i in range(10):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=3.5,
-                order_size_usd=5000, hour_utc=9,
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=3.5,
+                order_size_usd=5000,
+                hour_utc=9,
             )
         for i in range(10):
             tracker.record(
-                timestamp_ms=(10 + i) * 1000, expected_bps=3.0, actual_bps=4.0,
-                order_size_usd=5000, hour_utc=15,
+                timestamp_ms=(10 + i) * 1000,
+                expected_bps=3.0,
+                actual_bps=4.0,
+                order_size_usd=5000,
+                hour_utc=15,
             )
         by_hour = tracker.get_stats_by_hour()
         assert 9 in by_hour
@@ -160,8 +163,11 @@ class TestSlippageTracker:
         sizes = [500, 3000, 8000, 25000, 100000]
         for i, size in enumerate(sizes):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=3.5,
-                order_size_usd=size, hour_utc=14,
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=3.5,
+                order_size_usd=size,
+                hour_utc=14,
             )
         by_size = tracker.get_stats_by_size_bucket()
         assert len(by_size) >= 3
@@ -169,31 +175,37 @@ class TestSlippageTracker:
     def test_adaptive_slippage_estimate_overall(self, tracker: SlippageTracker) -> None:
         for i in range(50):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0,
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
                 actual_bps=3.0 + i * 0.1,
-                order_size_usd=5000, hour_utc=14,
+                order_size_usd=5000,
+                hour_utc=14,
             )
         estimate = tracker.get_adaptive_slippage_estimate()
         assert estimate > 0
 
-    def test_adaptive_slippage_estimate_by_regime(
-        self, tracker: SlippageTracker
-    ) -> None:
+    def test_adaptive_slippage_estimate_by_regime(self, tracker: SlippageTracker) -> None:
         for i in range(30):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=5.0,
-                order_size_usd=5000, hour_utc=14, regime="volatile",
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=5.0,
+                order_size_usd=5000,
+                hour_utc=14,
+                regime="volatile",
             )
         estimate = tracker.get_adaptive_slippage_estimate(regime="volatile")
         assert estimate > 0
 
-    def test_adaptive_slippage_falls_back_to_overall(
-        self, tracker: SlippageTracker
-    ) -> None:
+    def test_adaptive_slippage_falls_back_to_overall(self, tracker: SlippageTracker) -> None:
         for i in range(30):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=4.0,
-                order_size_usd=5000, hour_utc=14, regime="trending",
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=4.0,
+                order_size_usd=5000,
+                hour_utc=14,
+                regime="trending",
             )
         # Request unknown regime — falls back to overall
         estimate = tracker.get_adaptive_slippage_estimate(regime="unknown_regime")
@@ -203,16 +215,22 @@ class TestSlippageTracker:
         tracker = SlippageTracker(max_records=10)
         for i in range(20):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=3.5,
-                order_size_usd=5000, hour_utc=14,
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=3.5,
+                order_size_usd=5000,
+                hour_utc=14,
             )
         assert tracker.record_count == 10
 
     def test_get_summary(self, tracker: SlippageTracker) -> None:
         for i in range(10):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=3.5,
-                order_size_usd=5000, hour_utc=14,
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=3.5,
+                order_size_usd=5000,
+                hour_utc=14,
             )
         summary = tracker.get_summary()
         assert summary["total_records"] == 10
@@ -223,8 +241,11 @@ class TestSlippageTracker:
     def test_reset(self, tracker: SlippageTracker) -> None:
         for i in range(10):
             tracker.record(
-                timestamp_ms=i * 1000, expected_bps=3.0, actual_bps=7.0,
-                order_size_usd=5000, hour_utc=14,
+                timestamp_ms=i * 1000,
+                expected_bps=3.0,
+                actual_bps=7.0,
+                order_size_usd=5000,
+                hour_utc=14,
             )
         tracker.reset()
         assert tracker.record_count == 0

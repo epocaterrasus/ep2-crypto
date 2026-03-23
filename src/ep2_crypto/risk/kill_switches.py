@@ -21,13 +21,15 @@ Kill switches implemented:
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import structlog
+
+if TYPE_CHECKING:
+    import sqlite3
 
 logger = structlog.get_logger(__name__)
 
@@ -35,6 +37,7 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
+
 
 class SwitchState(Enum):
     ARMED = "armed"
@@ -107,6 +110,7 @@ CREATE TABLE IF NOT EXISTS risk_kill_switch_log (
 # ---------------------------------------------------------------------------
 # KillSwitchManager
 # ---------------------------------------------------------------------------
+
 
 class KillSwitchManager:
     """Manages all kill switches with persistent state.

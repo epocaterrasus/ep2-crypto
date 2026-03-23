@@ -25,6 +25,7 @@ from ep2_crypto.risk.risk_manager import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _config(**overrides: object) -> RiskConfig:
     defaults = {
         "enforce_trading_hours": False,
@@ -94,6 +95,7 @@ def _make_slow_bleed_prices(
 # Scenario 1: COVID-style crash — 20% drop in 6 bars (30 min)
 # ---------------------------------------------------------------------------
 
+
 class TestCOVIDCrash:
     def test_stop_loss_fires_during_crash(self) -> None:
         """When position is open and market drops 20%, stop should fire."""
@@ -102,8 +104,11 @@ class TestCOVIDCrash:
 
         n_bars = 300
         closes, highs, lows = _make_crash_prices(
-            n_bars, start_price=67000.0,
-            crash_start_bar=200, crash_pct=0.20, crash_duration_bars=6,
+            n_bars,
+            start_price=67000.0,
+            crash_start_bar=200,
+            crash_pct=0.20,
+            crash_duration_bars=6,
         )
 
         # Approve and open a trade before the crash
@@ -113,8 +118,11 @@ class TestCOVIDCrash:
         assert decision.approved
 
         rm.on_trade_opened(
-            "long", decision.quantity_btc, closes[idx],
-            signal.timestamp_ms, decision.stop_price,
+            "long",
+            decision.quantity_btc,
+            closes[idx],
+            signal.timestamp_ms,
+            decision.stop_price,
         )
 
         # Walk through crash bars
@@ -122,8 +130,14 @@ class TestCOVIDCrash:
         for i in range(191, 210):
             bar_ts = signal.timestamp_ms + (i - 190) * 300_000
             actions = rm.on_bar(
-                closes[i], highs[i], lows[i], bar_ts,
-                closes, highs, lows, i,
+                closes[i],
+                highs[i],
+                lows[i],
+                bar_ts,
+                closes,
+                highs,
+                lows,
+                i,
             )
             for action in actions:
                 if action.action == RiskActionType.CLOSE_POSITION:
@@ -141,8 +155,11 @@ class TestCOVIDCrash:
         rm = RiskManager(conn, initial_equity=initial_equity, config=_config())
 
         closes, highs, lows = _make_crash_prices(
-            300, start_price=67000.0,
-            crash_start_bar=200, crash_pct=0.20, crash_duration_bars=6,
+            300,
+            start_price=67000.0,
+            crash_start_bar=200,
+            crash_pct=0.20,
+            crash_duration_bars=6,
         )
 
         # Open and immediately face crash
@@ -150,16 +167,25 @@ class TestCOVIDCrash:
         decision = rm.approve_trade(signal, closes, highs, lows, 199)
         if decision.approved:
             rm.on_trade_opened(
-                "long", decision.quantity_btc, closes[199],
-                signal.timestamp_ms, decision.stop_price,
+                "long",
+                decision.quantity_btc,
+                closes[199],
+                signal.timestamp_ms,
+                decision.stop_price,
             )
 
             # Process crash bars
             for i in range(200, 210):
                 bar_ts = signal.timestamp_ms + (i - 199) * 300_000
                 actions = rm.on_bar(
-                    closes[i], highs[i], lows[i], bar_ts,
-                    closes, highs, lows, i,
+                    closes[i],
+                    highs[i],
+                    lows[i],
+                    bar_ts,
+                    closes,
+                    highs,
+                    lows,
+                    i,
                 )
                 for action in actions:
                     if action.action == RiskActionType.CLOSE_POSITION:
@@ -176,6 +202,7 @@ class TestCOVIDCrash:
 # Scenario 2: Flash crash — 20% drop and immediate recovery
 # ---------------------------------------------------------------------------
 
+
 class TestFlashCrash:
     def test_stop_fires_within_first_bar(self) -> None:
         """In a flash crash, the stop should trigger on the first crash bar."""
@@ -183,8 +210,11 @@ class TestFlashCrash:
         rm = RiskManager(conn, initial_equity=50_000.0, config=_config())
 
         closes, highs, lows = _make_crash_prices(
-            300, start_price=67000.0,
-            crash_start_bar=200, crash_pct=0.20, crash_duration_bars=1,  # instant
+            300,
+            start_price=67000.0,
+            crash_start_bar=200,
+            crash_pct=0.20,
+            crash_duration_bars=1,  # instant
         )
 
         signal = _signal(ts_ms=1700000000000)
@@ -192,15 +222,24 @@ class TestFlashCrash:
         assert decision.approved
 
         rm.on_trade_opened(
-            "long", decision.quantity_btc, closes[199],
-            signal.timestamp_ms, decision.stop_price,
+            "long",
+            decision.quantity_btc,
+            closes[199],
+            signal.timestamp_ms,
+            decision.stop_price,
         )
 
         # Single crash bar
         bar_ts = signal.timestamp_ms + 300_000
         actions = rm.on_bar(
-            closes[200], highs[200], lows[200], bar_ts,
-            closes, highs, lows, 200,
+            closes[200],
+            highs[200],
+            lows[200],
+            bar_ts,
+            closes,
+            highs,
+            lows,
+            200,
         )
 
         close_actions = [a for a in actions if a.action == RiskActionType.CLOSE_POSITION]
@@ -210,6 +249,7 @@ class TestFlashCrash:
 # ---------------------------------------------------------------------------
 # Scenario 3: 10 consecutive losses in 1 hour
 # ---------------------------------------------------------------------------
+
 
 class TestConsecutiveLosses:
     def test_kill_switch_triggers_after_consecutive_losses(self) -> None:
@@ -221,8 +261,11 @@ class TestConsecutiveLosses:
         rm = RiskManager(conn, initial_equity=50_000.0, config=config)
 
         closes, highs, lows = _make_crash_prices(
-            300, start_price=67000.0,
-            crash_start_bar=100, crash_pct=0.05, crash_duration_bars=100,
+            300,
+            start_price=67000.0,
+            crash_start_bar=100,
+            crash_pct=0.05,
+            crash_duration_bars=100,
         )
 
         base_ts = int(datetime(2026, 3, 25, 14, 0, tzinfo=UTC).timestamp() * 1000)
@@ -240,8 +283,11 @@ class TestConsecutiveLosses:
 
             entry_price = closes[idx]
             rm.on_trade_opened(
-                "long", decision.quantity_btc, entry_price,
-                signal.timestamp_ms, decision.stop_price,
+                "long",
+                decision.quantity_btc,
+                entry_price,
+                signal.timestamp_ms,
+                decision.stop_price,
             )
 
             # Simulate a small loss
@@ -254,15 +300,15 @@ class TestConsecutiveLosses:
         )
         state = rm.get_risk_state()
         # Either consecutive loss or daily loss should have triggered
-        assert (
-            state.consecutive_losses >= 10
-            or any(ks.state.value == "triggered" for ks in state.kill_switches)
+        assert state.consecutive_losses >= 10 or any(
+            ks.state.value == "triggered" for ks in state.kill_switches
         )
 
 
 # ---------------------------------------------------------------------------
 # Scenario 4: Slow bleed over 14 days — drawdown gate activates
 # ---------------------------------------------------------------------------
+
 
 class TestSlowBleed:
     def test_drawdown_gate_reduces_size_during_bleed(self) -> None:
@@ -273,7 +319,9 @@ class TestSlowBleed:
         # 14 days of data = 4032 bars, with 0.3% daily loss
         n_bars = 4100
         closes, highs, lows = _make_slow_bleed_prices(
-            n_bars, start_price=67000.0, daily_loss_pct=0.003,
+            n_bars,
+            start_price=67000.0,
+            daily_loss_pct=0.003,
         )
 
         base_ts = int(datetime(2026, 3, 25, 0, 0, tzinfo=UTC).timestamp() * 1000)
@@ -309,6 +357,7 @@ class TestSlowBleed:
 # Meta: all stress scenarios complete without exceptions
 # ---------------------------------------------------------------------------
 
+
 class TestStressNoExceptions:
     def test_rapid_open_close_cycle(self) -> None:
         """Rapidly open and close 30 positions — no crashes."""
@@ -316,8 +365,11 @@ class TestStressNoExceptions:
         config = _config(max_trades_per_day=50)
         rm = RiskManager(conn, initial_equity=50_000.0, config=config)
         closes, highs, lows = _make_crash_prices(
-            300, start_price=67000.0,
-            crash_start_bar=250, crash_pct=0.05, crash_duration_bars=10,
+            300,
+            start_price=67000.0,
+            crash_start_bar=250,
+            crash_pct=0.05,
+            crash_duration_bars=10,
         )
 
         base_ts = int(datetime(2026, 3, 25, 14, 0, tzinfo=UTC).timestamp() * 1000)
@@ -327,8 +379,11 @@ class TestStressNoExceptions:
             if not decision.approved:
                 break
             rm.on_trade_opened(
-                "long", decision.quantity_btc, 67000.0,
-                signal.timestamp_ms, decision.stop_price,
+                "long",
+                decision.quantity_btc,
+                67000.0,
+                signal.timestamp_ms,
+                decision.stop_price,
             )
             # Alternating wins and losses
             exit_price = 67100.0 if i % 3 != 0 else 66900.0

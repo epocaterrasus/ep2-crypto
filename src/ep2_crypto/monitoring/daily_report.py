@@ -150,7 +150,7 @@ class DailyReport:
         )
         lines = [
             f"📊 Daily Paper Trading Report — {self.report_date}",
-            f"{'='*45}",
+            f"{'=' * 45}",
             f"Verdict: {verdict_emoji} {self.go_nogo_verdict}",
             "",
             "TRADES",

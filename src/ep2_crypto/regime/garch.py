@@ -125,9 +125,7 @@ class GARCHDetector:
         """
         leverage = self._gamma if ret < 0 else 0.0
         self._sigma2 = (
-            self._omega
-            + (self._alpha + leverage) * ret * ret
-            + self._beta * self._sigma2
+            self._omega + (self._alpha + leverage) * ret * ret + self._beta * self._sigma2
         )
         # Floor to prevent numerical underflow
         self._sigma2 = max(self._sigma2, 1e-15)

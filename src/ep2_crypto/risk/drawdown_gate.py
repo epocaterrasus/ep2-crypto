@@ -21,11 +21,14 @@ Graduated re-entry protocol:
 from __future__ import annotations
 
 import math
-import sqlite3
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    import sqlite3
 
 logger = structlog.get_logger(__name__)
 
@@ -45,7 +48,7 @@ RECOVERY_PHASES = (0.10, 0.25, 0.50, 0.75, 1.00)
 # 7 days = 7 * 288 = 2016 bars -> 40%
 # 14 days = 14 * 288 = 4032 bars -> 0% (halt)
 DURATION_THRESHOLDS: list[tuple[int, float]] = [
-    (864, 0.80),   # 3 days underwater
+    (864, 0.80),  # 3 days underwater
     (2016, 0.40),  # 7 days underwater
     (4032, 0.00),  # 14 days underwater -> halt
 ]
@@ -92,6 +95,7 @@ class DrawdownGateState:
 # ---------------------------------------------------------------------------
 # DrawdownGate
 # ---------------------------------------------------------------------------
+
 
 class DrawdownGate:
     """Progressive position size reduction based on equity drawdown.

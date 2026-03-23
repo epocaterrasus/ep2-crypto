@@ -13,7 +13,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from ep2_crypto.models.tuning import (
     CatBoostTuner,
@@ -25,7 +24,6 @@ from ep2_crypto.models.tuning import (
     deflated_sharpe_ratio,
     walk_forward_sharpe,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -166,7 +164,11 @@ class TestPruningTracking:
     def test_n_pruned_never_exceeds_n_trials(self) -> None:
         x_tr, y_tr, x_val, y_val = _make_dataset(n_samples=200)
         for tuner_cls in [LGBMTuner, CatBoostTuner]:
-            mock = _make_mock_lgbm(n_val=len(y_val)) if tuner_cls == LGBMTuner else _make_mock_catboost(n_val=len(y_val))
+            mock = (
+                _make_mock_lgbm(n_val=len(y_val))
+                if tuner_cls == LGBMTuner
+                else _make_mock_catboost(n_val=len(y_val))
+            )
             model_path = (
                 "ep2_crypto.models.tuning.LGBMDirectionModel"
                 if tuner_cls == LGBMTuner
@@ -241,10 +243,7 @@ class TestFeatureImportanceStability:
     def test_unstable_importances_below_threshold(self) -> None:
         # All random importances → very low stability
         rng = np.random.default_rng(42)
-        folds = [
-            {f"feat_{i}": rng.uniform(0, 10) for i in range(20)}
-            for _ in range(5)
-        ]
+        folds = [{f"feat_{i}": rng.uniform(0, 10) for i in range(20)} for _ in range(5)]
         analyzer = FeatureImportanceAnalyzer(top_n=10, stability_threshold=0.9)
         result = analyzer.analyze(folds)
         # Random data → many unstable features

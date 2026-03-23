@@ -67,8 +67,23 @@ class TestERComputation:
         """Alternating prices (up/down) should give low ER."""
         # Create a series that oscillates but goes nowhere
         closes = np.array(
-            [100.0, 101.0, 100.0, 101.0, 100.0, 101.0, 100.0, 101.0, 100.0, 101.0,
-             100.0, 101.0, 100.0, 101.0, 100.0],
+            [
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+            ],
             dtype=np.float64,
         )
         result = detector.update(14, closes)
@@ -110,8 +125,23 @@ class TestERRegimeClassification:
     def test_choppy_regime(self, detector: EfficiencyRatioDetector) -> None:
         """Oscillating prices -> CHOPPY regime."""
         closes = np.array(
-            [100.0, 101.0, 100.0, 101.0, 100.0, 101.0, 100.0, 101.0, 100.0, 101.0,
-             100.0, 101.0, 100.0, 101.0, 100.0],
+            [
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+                101.0,
+                100.0,
+            ],
             dtype=np.float64,
         )
         result = detector.update(14, closes)
@@ -122,8 +152,23 @@ class TestERRegimeClassification:
         # Construct a series where ER is ~0.4 (between 0.3 and 0.5)
         # Start trending, then add some noise
         closes = np.array(
-            [100.0, 100.5, 101.0, 100.8, 101.5, 101.2, 102.0, 101.8, 102.5, 102.2,
-             103.0, 102.8, 103.5, 103.2, 104.0],
+            [
+                100.0,
+                100.5,
+                101.0,
+                100.8,
+                101.5,
+                101.2,
+                102.0,
+                101.8,
+                102.5,
+                102.2,
+                103.0,
+                102.8,
+                103.5,
+                103.2,
+                104.0,
+            ],
             dtype=np.float64,
         )
         result = detector.update(14, closes)

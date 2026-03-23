@@ -50,16 +50,10 @@ def synthetic_data(
     n_features: int,
 ) -> dict[str, np.ndarray]:
     """Generate synthetic data for meta-labeling tests."""
-    primary_predictions = rng.choice(
-        np.array([-1, 0, 1], dtype=np.int8), size=n_samples
-    )
-    primary_probas = rng.dirichlet(alpha=[1, 1, 1], size=n_samples).astype(
-        np.float64
-    )
+    primary_predictions = rng.choice(np.array([-1, 0, 1], dtype=np.int8), size=n_samples)
+    primary_probas = rng.dirichlet(alpha=[1, 1, 1], size=n_samples).astype(np.float64)
     features = rng.standard_normal((n_samples, n_features)).astype(np.float64)
-    regime_labels = rng.choice(
-        np.array([0, 1, 2], dtype=np.int8), size=n_samples
-    )
+    regime_labels = rng.choice(np.array([0, 1, 2], dtype=np.int8), size=n_samples)
     # Target: make profitable correlated with max proba being high
     max_proba = primary_probas.max(axis=1)
     is_profitable = (max_proba > 0.4).astype(np.int8)
@@ -474,9 +468,7 @@ class TestEdgeCases:
         labeler = MetaLabeler(config=config)
 
         meta = labeler.create_meta_features(
-            primary_predictions=rng.choice(
-                np.array([-1, 0, 1], dtype=np.int8), size=n
-            ),
+            primary_predictions=rng.choice(np.array([-1, 0, 1], dtype=np.int8), size=n),
             primary_probas=rng.dirichlet([1, 1, 1], size=n).astype(np.float64),
             features=rng.standard_normal((n, 5)).astype(np.float64),
             regime_labels=np.zeros(n, dtype=np.int8),
@@ -500,9 +492,7 @@ class TestEdgeCases:
         labeler = MetaLabeler(config=config)
 
         meta = labeler.create_meta_features(
-            primary_predictions=rng.choice(
-                np.array([-1, 0, 1], dtype=np.int8), size=n
-            ),
+            primary_predictions=rng.choice(np.array([-1, 0, 1], dtype=np.int8), size=n),
             primary_probas=rng.dirichlet([1, 1, 1], size=n).astype(np.float64),
             features=rng.standard_normal((n, 5)).astype(np.float64),
             regime_labels=np.ones(n, dtype=np.int8),

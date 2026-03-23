@@ -68,7 +68,7 @@ class ERFeatureComputer(FeatureComputer):
 
             start = idx - window
             net_move = abs(closes[idx] - closes[start])
-            individual_moves = float(np.sum(np.abs(np.diff(closes[start:idx + 1]))))
+            individual_moves = float(np.sum(np.abs(np.diff(closes[start : idx + 1]))))
 
             if individual_moves > 0:
                 result[f"er_{label}"] = net_move / individual_moves
@@ -130,14 +130,14 @@ class GARCHFeatureComputer(FeatureComputer):
             return nan_result
 
         # Compute log returns from start
-        log_prices = np.log(closes[:idx + 1])
+        log_prices = np.log(closes[: idx + 1])
         returns = np.diff(log_prices)
 
         if len(returns) < 2:
             return nan_result
 
         # Initialize conditional variance with sample variance
-        sigma2 = float(np.var(returns[:self.warmup_bars]))
+        sigma2 = float(np.var(returns[: self.warmup_bars]))
         if sigma2 <= 0:
             sigma2 = 1e-8
 
@@ -149,7 +149,7 @@ class GARCHFeatureComputer(FeatureComputer):
         garch_vol = math.sqrt(max(sigma2, 0.0))
 
         # Ratio: current GARCH vol vs recent realized vol
-        recent_returns = returns[-min(20, len(returns)):]
+        recent_returns = returns[-min(20, len(returns)) :]
         realized_vol = float(np.std(recent_returns))
         vol_ratio = garch_vol / realized_vol if realized_vol > 1e-15 else 1.0
 
@@ -204,7 +204,7 @@ class HMMFeatureComputer(FeatureComputer):
             return nan_result
 
         # Compute rolling realized vol for the smoothing window
-        log_prices = np.log(closes[:idx + 1])
+        log_prices = np.log(closes[: idx + 1])
         returns = np.diff(log_prices)
 
         if len(returns) < self._vol_window + self._smooth_window:

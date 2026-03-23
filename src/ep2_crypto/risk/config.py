@@ -23,86 +23,113 @@ class RiskConfig(BaseSettings):
 
     # -- Kill switch thresholds ------------------------------------------------
     daily_loss_limit: float = Field(
-        default=0.03, gt=0, le=1.0,
+        default=0.03,
+        gt=0,
+        le=1.0,
         description="Daily loss halt threshold as fraction of capital",
     )
     weekly_loss_limit: float = Field(
-        default=0.05, gt=0, le=1.0,
+        default=0.05,
+        gt=0,
+        le=1.0,
         description="Weekly loss halt threshold as fraction of capital",
     )
     max_drawdown_halt: float = Field(
-        default=0.15, gt=0, le=1.0,
+        default=0.15,
+        gt=0,
+        le=1.0,
         description="Peak-to-trough drawdown at which trading halts",
     )
     consecutive_loss_limit: int = Field(
-        default=15, ge=1,
+        default=15,
+        ge=1,
         description="Consecutive losing trades before halt",
     )
 
     # -- Position limits -------------------------------------------------------
     max_position_fraction: float = Field(
-        default=0.05, gt=0, le=1.0,
+        default=0.05,
+        gt=0,
+        le=1.0,
         description="Max position NOTIONAL as fraction of equity (5%)",
     )
     max_trades_per_day: int = Field(
-        default=30, ge=1,
+        default=30,
+        ge=1,
         description="Maximum trades allowed per calendar day",
     )
     max_open_positions: int = Field(
-        default=1, ge=1,
+        default=1,
+        ge=1,
         description="Maximum simultaneous open positions",
     )
 
     # -- Sizing ----------------------------------------------------------------
     kelly_fraction: float = Field(
-        default=0.25, gt=0, le=1.0,
+        default=0.25,
+        gt=0,
+        le=1.0,
         description="Fraction of Kelly to use (0.25 = quarter-Kelly)",
     )
     max_risk_per_trade: float = Field(
-        default=0.01, gt=0, le=0.05,
+        default=0.01,
+        gt=0,
+        le=0.05,
         description="Max RISK per trade as fraction of equity. "
         "Monte Carlo: >1% leads to 66%+ DD over a year.",
     )
     min_btc_quantity: float = Field(
-        default=0.001, gt=0,
+        default=0.001,
+        gt=0,
         description="Binance minimum order size in BTC",
     )
 
     # -- Stop loss -------------------------------------------------------------
     atr_stop_multiplier: float = Field(
-        default=3.0, gt=0,
+        default=3.0,
+        gt=0,
         description="ATR multiple for catastrophic stop",
     )
     atr_period: int = Field(
-        default=14, ge=2,
+        default=14,
+        ge=2,
         description="Number of bars for ATR computation",
     )
     max_holding_bars: int = Field(
-        default=6, ge=1,
+        default=6,
+        ge=1,
         description="Force exit after this many bars (6 = 30min)",
     )
 
     # -- Volatility guard ------------------------------------------------------
     min_volatility_ann: float = Field(
-        default=0.15, ge=0,
+        default=0.15,
+        ge=0,
         description="Minimum annualized vol to trade (15%)",
     )
     max_volatility_ann: float = Field(
-        default=1.50, gt=0,
+        default=1.50,
+        gt=0,
         description="Maximum annualized vol to trade (150%)",
     )
 
     # -- Time guards -----------------------------------------------------------
     trading_start_hour_utc: int = Field(
-        default=8, ge=0, lt=24,
+        default=8,
+        ge=0,
+        lt=24,
         description="Start of trading window (UTC hour)",
     )
     trading_end_hour_utc: int = Field(
-        default=21, ge=1, le=24,
+        default=21,
+        ge=1,
+        le=24,
         description="End of trading window (UTC hour)",
     )
     weekend_size_reduction: float = Field(
-        default=0.30, ge=0, le=1.0,
+        default=0.30,
+        ge=0,
+        le=1.0,
         description="Position size reduction on weekends (30%)",
     )
     enforce_trading_hours: bool = Field(
@@ -112,7 +139,8 @@ class RiskConfig(BaseSettings):
 
     # -- Drawdown gate ---------------------------------------------------------
     drawdown_cooldown_bars: int = Field(
-        default=5, ge=0,
+        default=5,
+        ge=0,
         description="Min bars at each recovery phase before advancing",
     )
 

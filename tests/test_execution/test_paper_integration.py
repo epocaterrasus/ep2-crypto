@@ -18,7 +18,6 @@ from ep2_crypto.execution.registry import VenueRegistry
 from ep2_crypto.execution.venue import OrderBookLevel, OrderBookSnapshot, VenueType
 from ep2_crypto.monitoring.daily_report import DailyReportGenerator
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

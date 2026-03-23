@@ -18,10 +18,10 @@ def _make_features(n: int = 200, n_features: int = 5) -> np.ndarray:
     rng = np.random.default_rng(42)
     data = np.zeros((n, n_features))
     data[:, 0] = rng.standard_normal(n) * 100 + 50000  # BTC-scale
-    data[:, 1] = rng.standard_normal(n) * 0.01         # Small-scale
-    data[:, 2] = rng.uniform(0, 1, n)                   # Uniform [0,1]
-    data[:, 3] = rng.exponential(5.0, n)                 # Skewed
-    data[:, 4] = rng.standard_normal(n)                  # Standard normal
+    data[:, 1] = rng.standard_normal(n) * 0.01  # Small-scale
+    data[:, 2] = rng.uniform(0, 1, n)  # Uniform [0,1]
+    data[:, 3] = rng.exponential(5.0, n)  # Skewed
+    data[:, 4] = rng.standard_normal(n)  # Standard normal
     return data
 
 

@@ -168,9 +168,7 @@ class PaperRunner:
             "signals_received": self._signals_received,
             "signals_traded": self._signals_traded,
             "signals_skipped": self._signals_skipped,
-            "trade_rate": round(
-                self._signals_traded / max(self._signals_received, 1), 4
-            ),
+            "trade_rate": round(self._signals_traded / max(self._signals_received, 1), 4),
             "confidence_threshold": self._confidence_threshold,
         }
         # Add exchange-level summary if PaperExchange

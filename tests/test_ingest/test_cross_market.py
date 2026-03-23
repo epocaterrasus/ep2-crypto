@@ -1,4 +1,5 @@
 """Tests for cross-market data collectors: TwelveDataCollector, YFinanceFallbackCollector."""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,10 +17,10 @@ from ep2_crypto.ingest.cross_market import (
     create_cross_market_collector,
 )
 
-
 # ---------------------------------------------------------------------------
 # CrossMarketBar dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestCrossMarketBar:
     def test_dataclass_fields(self) -> None:
@@ -42,6 +43,7 @@ class TestCrossMarketBar:
 # TwelveDataCollector
 # ---------------------------------------------------------------------------
 
+
 class TestTwelveDataCollector:
     def test_name(self) -> None:
         c = TwelveDataCollector(api_key="test_key")
@@ -63,6 +65,7 @@ class TestTwelveDataCollector:
 
     def test_parse_twelve_data_response(self) -> None:
         """_fetch_bars parses Twelve Data JSON response correctly."""
+
         async def _run() -> None:
             c = TwelveDataCollector(api_key="key", poll_interval_s=9999)
 
@@ -106,6 +109,7 @@ class TestTwelveDataCollector:
 
     def test_api_error_returns_empty(self) -> None:
         """API error response returns empty list without raising."""
+
         async def _run() -> None:
             c = TwelveDataCollector(api_key="key", poll_interval_s=9999)
             response_data = {"status": "error", "message": "Invalid API key"}
@@ -124,6 +128,7 @@ class TestTwelveDataCollector:
 
     def test_network_error_returns_empty(self) -> None:
         """Network errors return empty list without raising."""
+
         async def _run() -> None:
             c = TwelveDataCollector(api_key="key", poll_interval_s=9999)
             with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
@@ -134,6 +139,7 @@ class TestTwelveDataCollector:
 
     def test_no_api_key_raises_on_connect(self) -> None:
         """Missing API key raises RuntimeError from _connect."""
+
         async def _run() -> None:
             c = TwelveDataCollector(api_key="")
             with pytest.raises(RuntimeError, match="TWELVE_DATA_API_KEY"):
@@ -151,15 +157,21 @@ class TestTwelveDataCollector:
 
     def test_bars_accumulate_on_fetch(self) -> None:
         """After fetching bars, get_latest_bars returns them."""
+
         async def _run() -> None:
             c = TwelveDataCollector(api_key="key")
             response_data = {
                 "status": "ok",
-                "values": [{
-                    "datetime": "2026-03-23 15:30:00",
-                    "open": "100", "high": "105", "low": "99",
-                    "close": "103", "volume": "1000",
-                }],
+                "values": [
+                    {
+                        "datetime": "2026-03-23 15:30:00",
+                        "open": "100",
+                        "high": "105",
+                        "low": "99",
+                        "close": "103",
+                        "volume": "1000",
+                    }
+                ],
             }
             with patch("urllib.request.urlopen") as mock_urlopen:
                 mock_response = MagicMock()
@@ -189,6 +201,7 @@ class TestTwelveDataCollector:
 # ---------------------------------------------------------------------------
 # YFinanceFallbackCollector
 # ---------------------------------------------------------------------------
+
 
 class TestYFinanceFallbackCollector:
     def test_name(self) -> None:
@@ -230,13 +243,15 @@ class TestYFinanceFallbackCollector:
 
         ts = pd.Timestamp("2026-03-23 15:30:00", tz="UTC")
         hist = pd.DataFrame(
-            [{
-                "Open": 17_100.0,
-                "High": 17_150.0,
-                "Low": 17_090.0,
-                "Close": 17_120.0,
-                "Volume": 5_000,
-            }],
+            [
+                {
+                    "Open": 17_100.0,
+                    "High": 17_150.0,
+                    "Low": 17_090.0,
+                    "Close": 17_120.0,
+                    "Volume": 5_000,
+                }
+            ],
             index=[ts],
         )
         mock_ticker = MagicMock()
@@ -282,6 +297,7 @@ class TestYFinanceFallbackCollector:
 # ---------------------------------------------------------------------------
 # Factory function
 # ---------------------------------------------------------------------------
+
 
 class TestCreateCrossMarketCollector:
     def test_returns_twelve_data_when_key_set(self) -> None:

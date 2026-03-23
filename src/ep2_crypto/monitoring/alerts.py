@@ -81,11 +81,13 @@ class TelegramSender:
             import urllib.request
 
             url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
-            payload = json.dumps({
-                "chat_id": self._chat_id,
-                "text": alert.formatted,
-                "parse_mode": "HTML",
-            }).encode()
+            payload = json.dumps(
+                {
+                    "chat_id": self._chat_id,
+                    "text": alert.formatted,
+                    "parse_mode": "HTML",
+                }
+            ).encode()
             req = urllib.request.Request(  # noqa: S310
                 url, data=payload, headers={"Content-Type": "application/json"}
             )
@@ -237,24 +239,24 @@ class AlertManager:
         return delivered
 
     def send_info(self, title: str, message: str, **metadata: Any) -> bool:
-        return self.send(Alert(
-            tier=AlertTier.INFO, title=title, message=message, metadata=metadata
-        ))
+        return self.send(
+            Alert(tier=AlertTier.INFO, title=title, message=message, metadata=metadata)
+        )
 
     def send_warning(self, title: str, message: str, **metadata: Any) -> bool:
-        return self.send(Alert(
-            tier=AlertTier.WARNING, title=title, message=message, metadata=metadata
-        ))
+        return self.send(
+            Alert(tier=AlertTier.WARNING, title=title, message=message, metadata=metadata)
+        )
 
     def send_critical(self, title: str, message: str, **metadata: Any) -> bool:
-        return self.send(Alert(
-            tier=AlertTier.CRITICAL, title=title, message=message, metadata=metadata
-        ))
+        return self.send(
+            Alert(tier=AlertTier.CRITICAL, title=title, message=message, metadata=metadata)
+        )
 
     def send_emergency(self, title: str, message: str, **metadata: Any) -> bool:
-        return self.send(Alert(
-            tier=AlertTier.EMERGENCY, title=title, message=message, metadata=metadata
-        ))
+        return self.send(
+            Alert(tier=AlertTier.EMERGENCY, title=title, message=message, metadata=metadata)
+        )
 
     @property
     def sent_count(self) -> int:

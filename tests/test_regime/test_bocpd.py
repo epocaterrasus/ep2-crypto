@@ -45,8 +45,13 @@ class TestBOCPDStep:
     def test_sudden_shift_high_cp_prob(self, detector: BOCPDDetector) -> None:
         """A sudden mean shift should trigger high changepoint probability."""
         detector_sensitive = BOCPDDetector(
-            hazard_lambda=20.0, threshold=0.1, r_max=100,
-            mu0=0.0, kappa0=1.0, alpha0=1.0, beta0=1e-6,
+            hazard_lambda=20.0,
+            threshold=0.1,
+            r_max=100,
+            mu0=0.0,
+            kappa0=1.0,
+            alpha0=1.0,
+            beta0=1e-6,
         )
         # 30 bars of low values
         for _ in range(30):
@@ -159,15 +164,19 @@ class TestBOCPDBatch:
 class TestBOCPDResult:
     def test_result_is_frozen(self) -> None:
         result = BOCPDResult(
-            changepoint_prob=0.1, run_length=10.0,
-            max_run_length_prob=0.5, is_changepoint=False,
+            changepoint_prob=0.1,
+            run_length=10.0,
+            max_run_length_prob=0.5,
+            is_changepoint=False,
         )
         with pytest.raises(AttributeError):
             result.changepoint_prob = 0.9  # type: ignore[misc]
 
     def test_is_changepoint_flag(self) -> None:
         result = BOCPDResult(
-            changepoint_prob=0.5, run_length=0.0,
-            max_run_length_prob=0.5, is_changepoint=True,
+            changepoint_prob=0.5,
+            run_length=0.0,
+            max_run_length_prob=0.5,
+            is_changepoint=True,
         )
         assert result.is_changepoint

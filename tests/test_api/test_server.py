@@ -106,10 +106,12 @@ class TestHealth:
 
     @pytest.mark.asyncio()
     async def test_health_degraded(self) -> None:
-        state = AppState(dependency_checks=[
-            {"name": "binance_ws", "status": "ok"},
-            {"name": "model_loaded", "status": "degraded", "message": "stale model"},
-        ])
+        state = AppState(
+            dependency_checks=[
+                {"name": "binance_ws", "status": "ok"},
+                {"name": "model_loaded", "status": "degraded", "message": "stale model"},
+            ]
+        )
         app = create_app(state)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -119,10 +121,12 @@ class TestHealth:
 
     @pytest.mark.asyncio()
     async def test_health_unhealthy(self) -> None:
-        state = AppState(dependency_checks=[
-            {"name": "binance_ws", "status": "down", "message": "connection lost"},
-            {"name": "model_loaded", "status": "ok"},
-        ])
+        state = AppState(
+            dependency_checks=[
+                {"name": "binance_ws", "status": "down", "message": "connection lost"},
+                {"name": "model_loaded", "status": "ok"},
+            ]
+        )
         app = create_app(state)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:

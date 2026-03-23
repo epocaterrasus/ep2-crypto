@@ -301,8 +301,7 @@ class PerformanceLogger:
     def get_recent_pnl(self, n_trades: int = 50) -> list[float]:
         """Get the PnL of the N most recent completed trades."""
         cursor = self._conn.execute(
-            "SELECT pnl FROM trade_log WHERE pnl IS NOT NULL "
-            "ORDER BY timestamp_ms DESC LIMIT ?",
+            "SELECT pnl FROM trade_log WHERE pnl IS NOT NULL ORDER BY timestamp_ms DESC LIMIT ?",
             (n_trades,),
         )
         return [row[0] for row in cursor.fetchall()]
@@ -319,8 +318,7 @@ class PerformanceLogger:
     def get_win_rate(self, n_trades: int = 50) -> float | None:
         """Calculate win rate over the last N completed trades."""
         cursor = self._conn.execute(
-            "SELECT pnl FROM trade_log WHERE pnl IS NOT NULL "
-            "ORDER BY timestamp_ms DESC LIMIT ?",
+            "SELECT pnl FROM trade_log WHERE pnl IS NOT NULL ORDER BY timestamp_ms DESC LIMIT ?",
             (n_trades,),
         )
         pnls = [row[0] for row in cursor.fetchall()]
@@ -336,9 +334,7 @@ class PerformanceLogger:
 
     def get_completed_trade_count(self) -> int:
         """Number of trades with outcomes filled in."""
-        cursor = self._conn.execute(
-            "SELECT COUNT(*) FROM trade_log WHERE pnl IS NOT NULL"
-        )
+        cursor = self._conn.execute("SELECT COUNT(*) FROM trade_log WHERE pnl IS NOT NULL")
         return cursor.fetchone()[0]
 
     def get_bar_count(self) -> int:
@@ -400,9 +396,7 @@ class PerformanceLogger:
         self.log_trade(record)
         elapsed_us = (time.perf_counter() - start) * 1_000_000
         # Clean up the benchmark row
-        self._conn.execute(
-            "DELETE FROM trade_log WHERE timestamp_ms = 0 AND direction = 'flat'"
-        )
+        self._conn.execute("DELETE FROM trade_log WHERE timestamp_ms = 0 AND direction = 'flat'")
         self._conn.commit()
         self._trade_count -= 1
         return elapsed_us

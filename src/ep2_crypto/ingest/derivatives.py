@@ -54,10 +54,12 @@ class BybitOICollector(BaseCollector):
         else:
             import ccxt
 
-            self._exchange = ccxt.bybit({
-                "enableRateLimit": True,
-                **self._exchange_config,
-            })
+            self._exchange = ccxt.bybit(
+                {
+                    "enableRateLimit": True,
+                    **self._exchange_config,
+                }
+            )
         self._log.info("exchange_connected")
 
     async def _disconnect(self) -> None:
@@ -86,7 +88,9 @@ class BybitOICollector(BaseCollector):
         """Fetch open interest from exchange and store."""
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
-            None, self._exchange.fetch_open_interest, self._unified_symbol,
+            None,
+            self._exchange.fetch_open_interest,
+            self._unified_symbol,
         )
 
         if not result:
@@ -143,10 +147,12 @@ class BybitFundingCollector(BaseCollector):
         else:
             import ccxt
 
-            self._exchange = ccxt.bybit({
-                "enableRateLimit": True,
-                **self._exchange_config,
-            })
+            self._exchange = ccxt.bybit(
+                {
+                    "enableRateLimit": True,
+                    **self._exchange_config,
+                }
+            )
         self._log.info("exchange_connected")
 
     async def _disconnect(self) -> None:
@@ -175,7 +181,9 @@ class BybitFundingCollector(BaseCollector):
         """Fetch funding rate from exchange and store."""
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
-            None, self._exchange.fetch_funding_rate, self._unified_symbol,
+            None,
+            self._exchange.fetch_funding_rate,
+            self._unified_symbol,
         )
 
         if not result:
@@ -238,10 +246,12 @@ class BybitLiquidationCollector(BaseCollector):
             self._ws = await websockets.connect(self._ws_url)
 
         # Subscribe to liquidation topic
-        subscribe_msg = json.dumps({
-            "op": "subscribe",
-            "args": [f"allLiquidation.{self._symbol}"],
-        })
+        subscribe_msg = json.dumps(
+            {
+                "op": "subscribe",
+                "args": [f"allLiquidation.{self._symbol}"],
+            }
+        )
         await self._ws.send(subscribe_msg)
         self._log.info("ws_connected_and_subscribed")
 

@@ -8,11 +8,8 @@ from dataclasses import dataclass
 import pytest
 
 from ep2_crypto.monitoring.daily_report import (
-    DailyReport,
     DailyReportGenerator,
-    RegimeStats,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -142,6 +139,7 @@ class TestRiskMetrics:
     def test_sharpe_positive_for_consistent_profits(self) -> None:
         # Use varying returns so std > 0 — e.g. mostly wins with some small losses
         import random
+
         rng = random.Random(42)
         trades = [FakeTrade(str(i), 10.0 + rng.gauss(0, 2), 0.0) for i in range(50)]
         report = make_generator().generate(trades)
@@ -184,8 +182,8 @@ class TestRegimeBreakdown:
 
     def test_profitable_regime_count(self) -> None:
         trades = [
-            FakeTrade("0", 100.0, 0.0),   # trending win
-            FakeTrade("1", -10.0, 0.0),   # ranging loss
+            FakeTrade("0", 100.0, 0.0),  # trending win
+            FakeTrade("1", -10.0, 0.0),  # ranging loss
         ]
         labels = {"0": "trending", "1": "ranging"}
         report = make_generator().generate(trades, regime_labels=labels)
@@ -227,7 +225,10 @@ class TestGoNoGo:
             is_win = i % 5 != 0  # 80% wins
             pnl = 5.0 if is_win else -2.0
             trades.append(FakeTrade(str(i), pnl, 0.1, notional_usd=5_000.0))
-        labels = {str(i): "trending" if i % 3 == 0 else "ranging" if i % 3 == 1 else "volatile" for i in range(n)}
+        labels = {
+            str(i): "trending" if i % 3 == 0 else "ranging" if i % 3 == 1 else "volatile"
+            for i in range(n)
+        }
         gen = DailyReportGenerator(initial_balance=100_000.0)
         report = gen.generate(trades, regime_labels=labels)
         # Most criteria should pass for profitable setup
@@ -238,8 +239,14 @@ class TestGoNoGo:
         trades = make_trades(n=5)
         report = make_generator().generate(trades)
         expected_keys = {
-            "enough_trades", "win_rate_ok", "sharpe_ok", "drawdown_ok",
-            "profit_factor_ok", "avg_pnl_ok", "consec_losses_ok", "regime_breadth_ok",
+            "enough_trades",
+            "win_rate_ok",
+            "sharpe_ok",
+            "drawdown_ok",
+            "profit_factor_ok",
+            "avg_pnl_ok",
+            "consec_losses_ok",
+            "regime_breadth_ok",
         }
         assert expected_keys.issubset(report.go_nogo_details.keys())
 
@@ -252,6 +259,7 @@ class TestGoNoGo:
 class TestOutputFormats:
     def test_to_dict_is_json_compatible(self) -> None:
         import json
+
         trades = make_trades(n=5)
         report = make_generator().generate(trades)
         d = report.to_dict()
@@ -264,8 +272,14 @@ class TestOutputFormats:
         report = make_generator().generate(trades)
         d = report.to_dict()
         required = {
-            "report_date", "total_trades", "win_rate", "profit_factor",
-            "net_pnl_usd", "sharpe_ratio", "max_drawdown_pct", "go_nogo_verdict",
+            "report_date",
+            "total_trades",
+            "win_rate",
+            "profit_factor",
+            "net_pnl_usd",
+            "sharpe_ratio",
+            "max_drawdown_pct",
+            "go_nogo_verdict",
         }
         assert required.issubset(d.keys())
 

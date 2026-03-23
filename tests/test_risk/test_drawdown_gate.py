@@ -27,6 +27,7 @@ def gate(conn: sqlite3.Connection) -> DrawdownGate:
 # Depth-based convex multiplier (k=1.5)
 # ---------------------------------------------------------------------------
 
+
 class TestConvexMultiplierCurve:
     """Verify the convex formula: multiplier = max(0, (1 - dd/max_dd)^1.5)."""
 
@@ -97,6 +98,7 @@ class TestConvexMultiplierCurve:
 # Duration-based multiplier
 # ---------------------------------------------------------------------------
 
+
 class TestDurationMultiplier:
     def test_short_underwater_no_reduction(self, gate: DrawdownGate) -> None:
         gate.update(100_000.0)
@@ -107,9 +109,7 @@ class TestDurationMultiplier:
         # Duration mult should still be near 1.0
         assert state.duration_multiplier > 0.99
 
-    def test_three_day_underwater_eighty_percent(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_three_day_underwater_eighty_percent(self, conn: sqlite3.Connection) -> None:
         gate = DrawdownGate(conn, initial_equity=100_000.0)
         gate.update(100_000.0)
         # Simulate 864 bars at slight drawdown (1%)
@@ -135,6 +135,7 @@ class TestDurationMultiplier:
 # Recovery protocol
 # ---------------------------------------------------------------------------
 
+
 class TestGraduatedRecovery:
     def test_recovery_does_not_snap_back(self, gate: DrawdownGate) -> None:
         gate.update(100_000.0)
@@ -145,9 +146,7 @@ class TestGraduatedRecovery:
         # Phase 0 cap = 10%, so mult should be <= 0.10
         assert mult <= 0.10 + 0.01
 
-    def test_recovery_phases_advance_with_wins(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_recovery_phases_advance_with_wins(self, conn: sqlite3.Connection) -> None:
         gate = DrawdownGate(conn, initial_equity=100_000.0, cooldown_bars=0)
         gate.update(100_000.0)
         gate.update(90_000.0)  # Enter recovery
@@ -168,9 +167,7 @@ class TestGraduatedRecovery:
         gate.update(100_000.0)
         assert gate.get_multiplier() <= 0.50 + 0.01
 
-    def test_loss_during_recovery_drops_phase(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_loss_during_recovery_drops_phase(self, conn: sqlite3.Connection) -> None:
         gate = DrawdownGate(conn, initial_equity=100_000.0, cooldown_bars=0)
         gate.update(100_000.0)
         gate.update(90_000.0)
@@ -187,9 +184,7 @@ class TestGraduatedRecovery:
         state = gate.get_state()
         assert state.recovery_phase == 0
 
-    def test_full_recovery_to_100_percent(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_full_recovery_to_100_percent(self, conn: sqlite3.Connection) -> None:
         gate = DrawdownGate(conn, initial_equity=100_000.0, cooldown_bars=0)
         gate.update(100_000.0)
         gate.update(90_000.0)  # Enter recovery
@@ -203,9 +198,7 @@ class TestGraduatedRecovery:
 
         assert gate.get_multiplier() == pytest.approx(1.0)
 
-    def test_cooldown_prevents_premature_advance(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_cooldown_prevents_premature_advance(self, conn: sqlite3.Connection) -> None:
         gate = DrawdownGate(conn, initial_equity=100_000.0, cooldown_bars=5)
         gate.update(100_000.0)
         gate.update(90_000.0)
@@ -233,6 +226,7 @@ class TestGraduatedRecovery:
 # Persistence
 # ---------------------------------------------------------------------------
 
+
 class TestPersistence:
     def test_state_survives_restart(self, conn: sqlite3.Connection) -> None:
         g1 = DrawdownGate(conn, initial_equity=100_000.0)
@@ -258,6 +252,7 @@ class TestPersistence:
 # Validation
 # ---------------------------------------------------------------------------
 
+
 class TestValidation:
     def test_negative_equity_rejected(self, conn: sqlite3.Connection) -> None:
         with pytest.raises(ValueError, match="positive"):
@@ -275,6 +270,7 @@ class TestValidation:
 # ---------------------------------------------------------------------------
 # State snapshot
 # ---------------------------------------------------------------------------
+
 
 class TestGetState:
     def test_state_reflects_drawdown(self, gate: DrawdownGate) -> None:

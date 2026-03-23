@@ -229,6 +229,4 @@ class BacktestEngine:
                 continue
             m: BacktestMetrics = result["metrics"]
             rows.append({"strategy": name, **m.to_dict()})
-        return pd.DataFrame(rows).set_index("strategy").sort_values(
-            "sharpe_ratio", ascending=False
-        )
+        return pd.DataFrame(rows).set_index("strategy").sort_values("sharpe_ratio", ascending=False)

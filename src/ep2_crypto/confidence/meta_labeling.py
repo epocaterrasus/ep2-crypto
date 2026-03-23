@@ -115,28 +115,16 @@ class MetaLabeler:
         n_samples = len(primary_predictions)
 
         if primary_probas.shape[0] != n_samples:
-            msg = (
-                f"primary_probas has {primary_probas.shape[0]} samples, "
-                f"expected {n_samples}"
-            )
+            msg = f"primary_probas has {primary_probas.shape[0]} samples, expected {n_samples}"
             raise ValueError(msg)
         if features.shape[0] != n_samples:
-            msg = (
-                f"features has {features.shape[0]} samples, "
-                f"expected {n_samples}"
-            )
+            msg = f"features has {features.shape[0]} samples, expected {n_samples}"
             raise ValueError(msg)
         if len(regime_labels) != n_samples:
-            msg = (
-                f"regime_labels has {len(regime_labels)} samples, "
-                f"expected {n_samples}"
-            )
+            msg = f"regime_labels has {len(regime_labels)} samples, expected {n_samples}"
             raise ValueError(msg)
         if primary_probas.ndim != 2 or primary_probas.shape[1] != 3:
-            msg = (
-                f"primary_probas must have shape (n_samples, 3), "
-                f"got {primary_probas.shape}"
-            )
+            msg = f"primary_probas must have shape (n_samples, 3), got {primary_probas.shape}"
             raise ValueError(msg)
 
         self._n_original_features = features.shape[1]
@@ -150,12 +138,14 @@ class MetaLabeler:
         self._feature_names = names
 
         # Concatenate columns
-        meta = np.column_stack([
-            primary_predictions.astype(np.float64).reshape(-1, 1),
-            primary_probas.astype(np.float64),
-            features.astype(np.float64),
-            regime_labels.astype(np.float64).reshape(-1, 1),
-        ])
+        meta = np.column_stack(
+            [
+                primary_predictions.astype(np.float64).reshape(-1, 1),
+                primary_probas.astype(np.float64),
+                features.astype(np.float64),
+                regime_labels.astype(np.float64).reshape(-1, 1),
+            ]
+        )
 
         logger.debug(
             "meta_features_created",
@@ -299,9 +289,9 @@ class MetaLabeler:
             raise RuntimeError(msg)
 
         assert self._model is not None  # for mypy, guarded by is_fitted
-        probas: NDArray[np.float64] = self._model.predict_proba(meta_features)[
-            :, 1
-        ].astype(np.float64)
+        probas: NDArray[np.float64] = self._model.predict_proba(meta_features)[:, 1].astype(
+            np.float64
+        )
         return probas
 
     def gate(
@@ -462,8 +452,7 @@ class MetaLabeler:
         total = float(np.sum(importances))
         if total > 0:
             self._feature_importance_map = {
-                name: float(imp / total)
-                for name, imp in zip(names, importances, strict=True)
+                name: float(imp / total) for name, imp in zip(names, importances, strict=True)
             }
         else:
             self._feature_importance_map = {name: 0.0 for name in names}
@@ -489,9 +478,7 @@ class MetaLabeler:
         # Count how many (pos, neg) pairs where pos > neg
         count = 0.0
         for ps in pos_scores:
-            count += float(np.sum(ps > neg_scores)) + 0.5 * float(
-                np.sum(ps == neg_scores)
-            )
+            count += float(np.sum(ps > neg_scores)) + 0.5 * float(np.sum(ps == neg_scores))
 
         auc = count / (n_pos * n_neg)
         return auc

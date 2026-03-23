@@ -29,10 +29,14 @@ class TestKellyFormula:
     def test_positive_edge(self, sizer: PositionSizer) -> None:
         # WR=0.55, payoff=1.0 -> Kelly = (0.55*1 - 0.45)/1 = 0.10
         result = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
-            win_rate=0.55, payoff_ratio=1.0,
+            win_rate=0.55,
+            payoff_ratio=1.0,
         )
         assert not result.rejected
         assert result.raw_kelly_fraction == pytest.approx(0.10, rel=0.01)
@@ -40,20 +44,28 @@ class TestKellyFormula:
     def test_no_edge_rejected(self, sizer: PositionSizer) -> None:
         # WR=0.45, payoff=1.0 -> Kelly = (0.45 - 0.55)/1 = -0.10 -> 0
         result = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
-            win_rate=0.45, payoff_ratio=1.0,
+            win_rate=0.45,
+            payoff_ratio=1.0,
         )
         assert result.rejected
         assert "non-positive" in (result.rejection_reason or "")
 
     def test_quarter_kelly_applied(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 1.0, 50_000.0, 67000.0,
+            "long",
+            1.0,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
-            win_rate=0.55, payoff_ratio=1.0,
+            win_rate=0.55,
+            payoff_ratio=1.0,
         )
         assert not result.rejected
         assert result.quarter_kelly_fraction == pytest.approx(0.025, rel=0.01)
@@ -63,10 +75,14 @@ class TestMaxCap:
     def test_never_exceeds_5_percent(self, sizer: PositionSizer) -> None:
         # High WR + high confidence should still cap at 5%
         result = sizer.compute(
-            "long", 1.0, 50_000.0, 67000.0,
+            "long",
+            1.0,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
-            win_rate=0.80, payoff_ratio=2.0,
+            win_rate=0.80,
+            payoff_ratio=2.0,
         )
         assert not result.rejected
         assert result.position_fraction <= 0.05 + 1e-9
@@ -74,10 +90,14 @@ class TestMaxCap:
     def test_notional_within_cap(self, sizer: PositionSizer) -> None:
         equity = 100_000.0
         result = sizer.compute(
-            "long", 1.0, equity, 67000.0,
+            "long",
+            1.0,
+            equity,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
-            win_rate=0.80, payoff_ratio=2.0,
+            win_rate=0.80,
+            payoff_ratio=2.0,
         )
         assert not result.rejected
         assert result.notional_usd <= equity * 0.05 + 1.0
@@ -86,13 +106,19 @@ class TestMaxCap:
 class TestDrawdownScaling:
     def test_drawdown_multiplier_reduces_size(self, sizer: PositionSizer) -> None:
         full = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
             drawdown_multiplier=1.0,
         )
         reduced = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
             drawdown_multiplier=0.50,
@@ -104,7 +130,10 @@ class TestDrawdownScaling:
 
     def test_zero_drawdown_multiplier_rejected(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
             drawdown_multiplier=0.0,
@@ -115,7 +144,10 @@ class TestDrawdownScaling:
 class TestATRStop:
     def test_long_stop_below_price(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_volatile_prices(67000.0),
             current_idx=49,
         )
@@ -125,7 +157,10 @@ class TestATRStop:
 
     def test_short_stop_above_price(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "short", 0.80, 50_000.0, 67000.0,
+            "short",
+            0.80,
+            50_000.0,
+            67000.0,
             *_volatile_prices(67000.0),
             current_idx=49,
         )
@@ -136,22 +171,34 @@ class TestATRStop:
 class TestRejections:
     def test_invalid_direction(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "sideways", 0.80, 50_000.0, 67000.0,
-            *_flat_prices(67000.0), current_idx=49,
+            "sideways",
+            0.80,
+            50_000.0,
+            67000.0,
+            *_flat_prices(67000.0),
+            current_idx=49,
         )
         assert result.rejected
 
     def test_zero_confidence(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.0, 50_000.0, 67000.0,
-            *_flat_prices(67000.0), current_idx=49,
+            "long",
+            0.0,
+            50_000.0,
+            67000.0,
+            *_flat_prices(67000.0),
+            current_idx=49,
         )
         assert result.rejected
 
     def test_zero_equity(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.80, 0.0, 67000.0,
-            *_flat_prices(67000.0), current_idx=49,
+            "long",
+            0.80,
+            0.0,
+            67000.0,
+            *_flat_prices(67000.0),
+            current_idx=49,
         )
         assert result.rejected
 
@@ -159,13 +206,19 @@ class TestRejections:
 class TestWeekendFundingScaling:
     def test_time_multiplier_reduces_size(self, sizer: PositionSizer) -> None:
         full = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
             time_multiplier=1.0,
         )
         weekend = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
             *_flat_prices(67000.0),
             current_idx=49,
             time_multiplier=0.70,
@@ -205,15 +258,23 @@ class TestValidation:
 class TestNonPositivePrice:
     def test_zero_price_rejected(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.80, 50_000.0, 0.0,
-            *_flat_prices(67000.0), current_idx=49,
+            "long",
+            0.80,
+            50_000.0,
+            0.0,
+            *_flat_prices(67000.0),
+            current_idx=49,
         )
         assert result.rejected
 
     def test_negative_price_rejected(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.80, 50_000.0, -100.0,
-            *_flat_prices(67000.0), current_idx=49,
+            "long",
+            0.80,
+            50_000.0,
+            -100.0,
+            *_flat_prices(67000.0),
+            current_idx=49,
         )
         assert result.rejected
 
@@ -226,10 +287,14 @@ class TestRiskCapApplied:
             kelly_fraction=0.25,
         )
         result = sizer.compute(
-            "long", 1.0, 100_000.0, 67000.0,
+            "long",
+            1.0,
+            100_000.0,
+            67000.0,
             *_volatile_prices(67000.0),
             current_idx=49,
-            win_rate=0.70, payoff_ratio=1.5,
+            win_rate=0.70,
+            payoff_ratio=1.5,
         )
         if not result.rejected:
             max_risk_usd = 0.005 * 100_000.0
@@ -242,10 +307,14 @@ class TestRiskCapApplied:
             min_btc_quantity=0.01,
         )
         result = sizer.compute(
-            "long", 0.80, 500.0, 67000.0,  # tiny equity
+            "long",
+            0.80,
+            500.0,
+            67000.0,  # tiny equity
             *_volatile_prices(67000.0),
             current_idx=49,
-            win_rate=0.55, payoff_ratio=1.0,
+            win_rate=0.55,
+            payoff_ratio=1.0,
         )
         # Should be rejected because risk budget too small for min BTC
         assert result.rejected
@@ -254,14 +323,20 @@ class TestRiskCapApplied:
 class TestPayoffRatioEdgeCases:
     def test_zero_payoff_rejected(self, sizer: PositionSizer) -> None:
         result = sizer.compute(
-            "long", 0.80, 50_000.0, 67000.0,
-            *_flat_prices(67000.0), current_idx=49,
-            win_rate=0.55, payoff_ratio=0.0,
+            "long",
+            0.80,
+            50_000.0,
+            67000.0,
+            *_flat_prices(67000.0),
+            current_idx=49,
+            win_rate=0.55,
+            payoff_ratio=0.0,
         )
         assert result.rejected
 
 
 # -- Helpers ------------------------------------------------------------------
+
 
 def _flat_prices(price: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Constant price arrays (ATR will be near zero, fallback used)."""

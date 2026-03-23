@@ -126,9 +126,7 @@ class FeatureDriftDetector:
         self._current_buffer: dict[str, list[float]] = {}
         self._latest_psi: dict[str, float] = {}
 
-    def set_reference(
-        self, feature_name: str, values: np.ndarray
-    ) -> None:
+    def set_reference(self, feature_name: str, values: np.ndarray) -> None:
         """Set the reference distribution for a feature (from training data)."""
         self._reference[feature_name] = np.asarray(values, dtype=np.float64)
         self._current_buffer.setdefault(feature_name, [])
@@ -138,9 +136,7 @@ class FeatureDriftDetector:
             n_samples=len(values),
         )
 
-    def set_references_batch(
-        self, feature_values: dict[str, np.ndarray]
-    ) -> None:
+    def set_references_batch(self, feature_values: dict[str, np.ndarray]) -> None:
         """Set reference distributions for multiple features at once."""
         for name, values in feature_values.items():
             self.set_reference(name, values)
@@ -200,9 +196,7 @@ class FeatureDriftDetector:
             reports.append(self.compute_drift(name))
         return reports
 
-    def generate_daily_report(
-        self, timestamp_ms: int
-    ) -> DailyDriftSummary:
+    def generate_daily_report(self, timestamp_ms: int) -> DailyDriftSummary:
         """Generate a summary drift report across all features."""
         reports = self.compute_all_drift()
         drifted = [r for r in reports if r.is_drifted]
@@ -236,11 +230,7 @@ class FeatureDriftDetector:
 
     def get_drifted_features(self) -> list[str]:
         """Return names of features currently exceeding the alert threshold."""
-        return [
-            name
-            for name, psi in self._latest_psi.items()
-            if psi >= self._alert_threshold
-        ]
+        return [name for name, psi in self._latest_psi.items() if psi >= self._alert_threshold]
 
     def get_psi(self, feature_name: str) -> float | None:
         """Get the latest PSI value for a feature."""

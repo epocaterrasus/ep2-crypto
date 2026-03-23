@@ -61,26 +61,18 @@ class ConfidencePositionConfig:
 
     def __post_init__(self) -> None:
         if not (0 < self.kelly_fraction <= 1):
-            raise ValueError(
-                f"kelly_fraction must be in (0, 1], got {self.kelly_fraction}"
-            )
+            raise ValueError(f"kelly_fraction must be in (0, 1], got {self.kelly_fraction}")
         if not (0 < self.max_position_pct <= 1):
-            raise ValueError(
-                f"max_position_pct must be in (0, 1], got {self.max_position_pct}"
-            )
+            raise ValueError(f"max_position_pct must be in (0, 1], got {self.max_position_pct}")
         if not (0 <= self.min_confidence <= 1):
-            raise ValueError(
-                f"min_confidence must be in [0, 1], got {self.min_confidence}"
-            )
+            raise ValueError(f"min_confidence must be in [0, 1], got {self.min_confidence}")
         if self.prior_alpha <= 0 or self.prior_beta <= 0:
             raise ValueError(
                 f"Beta prior params must be positive, got alpha={self.prior_alpha}, "
                 f"beta={self.prior_beta}"
             )
         if self.min_trades_for_kelly < 1:
-            raise ValueError(
-                f"min_trades_for_kelly must be >= 1, got {self.min_trades_for_kelly}"
-            )
+            raise ValueError(f"min_trades_for_kelly must be >= 1, got {self.min_trades_for_kelly}")
 
 
 @dataclass

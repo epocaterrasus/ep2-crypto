@@ -64,10 +64,14 @@ class TestOHLCV:
 class TestOrderbook:
     def test_insert_and_query(self, repo):
         repo.insert_orderbook(
-            1000, "BTC/USDT",
-            "[100.0, 99.5]", "[1.0, 2.0]",
-            "[100.5, 101.0]", "[1.5, 2.5]",
-            100.25, 0.5,
+            1000,
+            "BTC/USDT",
+            "[100.0, 99.5]",
+            "[1.0, 2.0]",
+            "[100.5, 101.0]",
+            "[1.5, 2.5]",
+            100.25,
+            0.5,
         )
         rows = repo.query_orderbook("BTC/USDT", 0, 2000)
         assert len(rows) == 1
@@ -142,8 +146,12 @@ class TestRegime:
 class TestPrediction:
     def test_insert_and_query(self, repo):
         repo.insert_prediction(
-            1000, "BTC/USDT", "up", 0.72,
-            calibrated_prob_up=0.65, model_version="v1.0",
+            1000,
+            "BTC/USDT",
+            "up",
+            0.72,
+            calibrated_prob_up=0.65,
+            model_version="v1.0",
         )
         rows = repo.query_predictions("BTC/USDT", 0, 2000)
         assert len(rows) == 1

@@ -171,20 +171,28 @@ class TestRegimeResult:
             changepoint_alert=False,
             changepoint_prob=0.01,
             er_result=ERResult(
-                er_short=0.4, er_long=0.3,
-                regime=ERRegime.NEUTRAL, confidence=0.5,
+                er_short=0.4,
+                er_long=0.3,
+                regime=ERRegime.NEUTRAL,
+                confidence=0.5,
             ),
             garch_result=GARCHResult(
-                conditional_vol=0.01, vol_regime=VolRegime.MEDIUM,
-                vol_percentile=0.5, confidence=0.5,
+                conditional_vol=0.01,
+                vol_regime=VolRegime.MEDIUM,
+                vol_percentile=0.5,
+                confidence=0.5,
             ),
             hmm_result=HMMResult(
                 state_probabilities=(0.5, 0.5),
-                most_likely_state=0, n_states=2, is_fitted=True,
+                most_likely_state=0,
+                n_states=2,
+                is_fitted=True,
             ),
             bocpd_result=BOCPDResult(
-                changepoint_prob=0.01, run_length=10.0,
-                max_run_length_prob=0.5, is_changepoint=False,
+                changepoint_prob=0.01,
+                run_length=10.0,
+                max_run_length_prob=0.5,
+                is_changepoint=False,
             ),
         )
         with pytest.raises(AttributeError):

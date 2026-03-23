@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from ep2_crypto.backtest.engine import (
     BacktestConfig,
@@ -107,10 +106,12 @@ class TestBacktestEngineBasic:
         signals = np.ones(300, dtype=np.int8)  # always long
         confidences = np.full(300, 0.7)
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
 
         assert isinstance(result, BacktestResult)
@@ -122,10 +123,12 @@ class TestBacktestEngineBasic:
         signals = -np.ones(300, dtype=np.int8)
         confidences = np.full(300, 0.7)
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
         assert result.total_trades >= 1
 
@@ -155,10 +158,12 @@ class TestBacktestEngineExecution:
         signals[10] = 1
         confidences = np.full(100, 0.7)
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
 
         # If trades happened, the entry should be after bar 10
@@ -173,10 +178,12 @@ class TestBacktestEngineExecution:
         signals = np.ones(200, dtype=np.int8)
         confidences = np.full(200, 0.3)  # below threshold
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.55,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.55,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
         assert result.total_trades == 0
 
@@ -186,10 +193,12 @@ class TestBacktestEngineExecution:
         signals = np.ones(300, dtype=np.int8)
         confidences = np.full(300, 0.7)
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
         if result.total_trades > 0:
             assert result.total_fee_usd > 0
@@ -202,11 +211,13 @@ class TestBacktestEngineExecution:
 
         results = []
         for _ in range(2):
-            engine = BacktestEngine(BacktestConfig(
-                initial_equity=50_000.0,
-                seed=42,
-                confidence_threshold=0.5,
-            ))
+            engine = BacktestEngine(
+                BacktestConfig(
+                    initial_equity=50_000.0,
+                    seed=42,
+                    confidence_threshold=0.5,
+                )
+            )
             r = engine.run(**data, signals=signals, confidences=confidences)
             results.append(r)
 
@@ -244,10 +255,12 @@ class TestBacktestEngineRisk:
         signals[10] = 1
         signals[50] = -1
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
         # At least 1 trade should be closed by reversal
         assert result.total_trades >= 1
@@ -262,10 +275,12 @@ class TestBacktestEngineOutput:
         signals = np.ones(200, dtype=np.int8)
         confidences = np.full(200, 0.7)
 
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data, signals=signals, confidences=confidences)
         assert len(result.equity_curve) == 200
 

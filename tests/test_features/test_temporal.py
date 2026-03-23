@@ -35,7 +35,12 @@ class TestCyclicalTime:
     def test_output_names(self) -> None:
         comp = CyclicalTimeComputer()
         assert comp.output_names() == [
-            "minute_sin", "minute_cos", "hour_sin", "hour_cos", "dow_sin", "dow_cos",
+            "minute_sin",
+            "minute_cos",
+            "hour_sin",
+            "hour_cos",
+            "dow_sin",
+            "dow_cos",
         ]
 
     def test_warmup(self) -> None:
@@ -49,8 +54,13 @@ class TestCyclicalTime:
         data = _make_temporal_data(100, start_hour=10)
         for i in range(100):
             result = comp.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             for key, val in result.items():
                 assert -1.0 <= val <= 1.0, f"{key} = {val} out of bounds"
@@ -60,13 +70,18 @@ class TestCyclicalTime:
         comp = CyclicalTimeComputer()
         data = _make_temporal_data(20, start_hour=14)
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         for prefix in ["minute", "hour", "dow"]:
             sin_val = result[f"{prefix}_sin"]
             cos_val = result[f"{prefix}_cos"]
-            assert sin_val ** 2 + cos_val ** 2 == pytest.approx(1.0, abs=1e-10)
+            assert sin_val**2 + cos_val**2 == pytest.approx(1.0, abs=1e-10)
 
     def test_midnight_values(self) -> None:
         """At midnight UTC (hour=0, minute=0), hour_sin=0, hour_cos=1."""

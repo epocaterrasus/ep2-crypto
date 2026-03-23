@@ -13,9 +13,10 @@ Key design points:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
@@ -32,9 +33,6 @@ from ep2_crypto.execution.venue import (
     VenueAdapter,
     VenueType,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 
@@ -154,9 +152,7 @@ class PolymarketAdapter(VenueAdapter):
         try:
             self._client = self._build_client()
             # Verify auth by fetching API key
-            await asyncio.get_event_loop().run_in_executor(
-                None, self._client.derive_api_key
-            )
+            await asyncio.get_event_loop().run_in_executor(None, self._client.derive_api_key)
             self._connected = True
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             logger.info("polymarket_connected", host=self._config.host)
@@ -171,17 +167,13 @@ class PolymarketAdapter(VenueAdapter):
 
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
 
         if self._ws_task and not self._ws_task.done():
             self._ws_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._ws_task
-            except asyncio.CancelledError:
-                pass
 
         self._heartbeat_task = None
         self._ws_task = None
@@ -199,8 +191,7 @@ class PolymarketAdapter(VenueAdapter):
             from py_clob_client.clob_types import ApiCreds  # type: ignore[import]
         except ImportError as exc:
             raise ImportError(
-                "py-clob-client is required for Polymarket. "
-                "Add it via: uv add py-clob-client"
+                "py-clob-client is required for Polymarket. Add it via: uv add py-clob-client"
             ) from exc
 
         creds = ApiCreds(
@@ -226,9 +217,7 @@ class PolymarketAdapter(VenueAdapter):
             try:
                 await asyncio.sleep(self._config.heartbeat_interval_s)
                 if self._connected and self._client is not None:
-                    await asyncio.get_event_loop().run_in_executor(
-                        None, self._ping
-                    )
+                    await asyncio.get_event_loop().run_in_executor(None, self._ping)
                     logger.debug("polymarket_heartbeat_ok")
             except asyncio.CancelledError:
                 break
@@ -264,9 +253,7 @@ class PolymarketAdapter(VenueAdapter):
         markets = await self._fetch_gamma_markets(fragment)
 
         if not markets:
-            raise LookupError(
-                f"No active Polymarket market found matching '{fragment}'"
-            )
+            raise LookupError(f"No active Polymarket market found matching '{fragment}'")
 
         market = markets[0]  # Gamma API returns newest first
         logger.info(
@@ -297,21 +284,14 @@ class PolymarketAdapter(VenueAdapter):
 
     def _fetch_gamma_markets_sync(self, slug_fragment: str) -> list[BinaryMarket]:
         """Synchronous fallback for Gamma API."""
-        import urllib.request
         import json
+        import urllib.request
 
-        url = (
-            f"{self._config.gamma_api_host}/markets"
-            f"?slug={slug_fragment}&active=true&closed=false"
-        )
+        url = f"{self._config.gamma_api_host}/markets?slug={slug_fragment}&active=true&closed=false"
         with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
             data = json.loads(resp.read())
 
-        return [
-            self._parse_gamma_market(m)
-            for m in data
-            if slug_fragment in m.get("slug", "")
-        ]
+        return [self._parse_gamma_market(m) for m in data if slug_fragment in m.get("slug", "")]
 
     def _parse_gamma_market(self, raw: dict[str, Any]) -> BinaryMarket:
         """Parse a Gamma API market response dict into BinaryMarket."""
@@ -566,9 +546,9 @@ class PolymarketAdapter(VenueAdapter):
             )
 
         filled_orders = [
-            o for o in self._pending_orders.values()
-            if o.condition_id == self._active_market.condition_id
-            and o.status == OrderStatus.FILLED
+            o
+            for o in self._pending_orders.values()
+            if o.condition_id == self._active_market.condition_id and o.status == OrderStatus.FILLED
         ]
         total_yes = sum(o.size for o in filled_orders if o.side == OrderSide.BUY)
         total_no = sum(o.size for o in filled_orders if o.side == OrderSide.SELL)
@@ -610,7 +590,7 @@ class PolymarketAdapter(VenueAdapter):
                 venue=VenueType.POLYMARKET_BINARY,
                 symbol=self._active_market.slug,
                 bids=sorted(bids, key=lambda x: -x.price),  # highest bid first
-                asks=sorted(asks, key=lambda x: x.price),   # lowest ask first
+                asks=sorted(asks, key=lambda x: x.price),  # lowest ask first
                 timestamp_ms=int(time.time() * 1000),
             )
         except Exception as exc:
@@ -641,9 +621,7 @@ class PolymarketAdapter(VenueAdapter):
         if self._client is None:
             return False
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
-                None, self._client.get_ok
-            )
+            result = await asyncio.get_event_loop().run_in_executor(None, self._client.get_ok)
             healthy = result is not None
             logger.debug("polymarket_health_check", healthy=healthy)
             return healthy
@@ -709,5 +687,10 @@ class PolymarketAdapter(VenueAdapter):
 
     def get_pending_orders(self) -> list[_PendingOrder]:
         """Return orders that are not yet in a terminal state."""
-        terminal = {OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.EXPIRED}
+        terminal = {
+            OrderStatus.FILLED,
+            OrderStatus.CANCELLED,
+            OrderStatus.REJECTED,
+            OrderStatus.EXPIRED,
+        }
         return [o for o in self._pending_orders.values() if o.status not in terminal]

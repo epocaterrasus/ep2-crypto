@@ -37,6 +37,7 @@ def _make_price_data(n: int = 50) -> dict[str, np.ndarray]:
 
 # ---- Realized Volatility Tests ----
 
+
 class TestRealizedVol:
     def test_output_names(self) -> None:
         rv = RealizedVolComputer()
@@ -51,16 +52,37 @@ class TestRealizedVol:
         rv = RealizedVolComputer()
         data = _make_price_data()
         result = rv.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["realized_vol_short"])
         assert np.isnan(result["realized_vol_long"])
 
     def test_golden_dataset(self) -> None:
         """Hand-verified realized volatility."""
-        closes = np.array([100.0, 101.0, 99.0, 102.0, 98.0, 103.0, 100.0,
-                           101.0, 99.0, 102.0, 98.0, 103.0, 100.0, 101.0])
+        closes = np.array(
+            [
+                100.0,
+                101.0,
+                99.0,
+                102.0,
+                98.0,
+                103.0,
+                100.0,
+                101.0,
+                99.0,
+                102.0,
+                98.0,
+                103.0,
+                100.0,
+                101.0,
+            ]
+        )
         n = len(closes)
 
         rv = RealizedVolComputer(short_window=6, long_window=12)
@@ -84,8 +106,13 @@ class TestRealizedVol:
         rv = RealizedVolComputer()
         for i in range(rv.warmup_bars - 1, 50):
             result = rv.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert result["realized_vol_short"] > 0
             assert result["realized_vol_long"] > 0
@@ -106,6 +133,7 @@ class TestRealizedVol:
 
 # ---- Parkinson Volatility Tests ----
 
+
 class TestParkinsonVol:
     def test_output_names(self) -> None:
         pv = ParkinsonVolComputer()
@@ -120,8 +148,13 @@ class TestParkinsonVol:
         pv = ParkinsonVolComputer()
         data = _make_price_data()
         result = pv.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["parkinson_vol_short"])
 
@@ -136,7 +169,7 @@ class TestParkinsonVol:
         h = highs[2:8]
         lo = lows[2:8]
         log_hl = np.log(h / lo)
-        sigma_sq = float(np.sum(log_hl ** 2)) / (4.0 * 6 * math.log(2))
+        sigma_sq = float(np.sum(log_hl**2)) / (4.0 * 6 * math.log(2))
         expected = math.sqrt(sigma_sq)
 
         pv = ParkinsonVolComputer(short_window=6, long_window=6)
@@ -152,8 +185,13 @@ class TestParkinsonVol:
         pv = ParkinsonVolComputer()
         for i in range(pv.warmup_bars - 1, 50):
             result = pv.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert result["parkinson_vol_short"] > 0
             assert result["parkinson_vol_long"] > 0
@@ -179,6 +217,7 @@ class TestParkinsonVol:
 
 # ---- EWMA Volatility Tests ----
 
+
 class TestEWMAVol:
     def test_output_names(self) -> None:
         ev = EWMAVolComputer()
@@ -193,8 +232,13 @@ class TestEWMAVol:
         ev = EWMAVolComputer()
         data = _make_price_data()
         result = ev.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["ewma_vol"])
 
@@ -204,8 +248,13 @@ class TestEWMAVol:
         ev = EWMAVolComputer()
         for i in range(ev.warmup_bars - 1, 50):
             result = ev.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert result["ewma_vol"] > 0
 
@@ -241,7 +290,7 @@ class TestEWMAVol:
         log_rets = np.log(closes[1:] / closes[:-1])
         var = log_rets[0] ** 2
         for r in log_rets[1:23]:  # up to idx=23
-            var = 0.94 * var + 0.06 * r ** 2
+            var = 0.94 * var + 0.06 * r**2
         expected = math.sqrt(var)
 
         result = ev.compute(23, ts, dummy, dummy, dummy, closes, dummy)
@@ -249,6 +298,7 @@ class TestEWMAVol:
 
 
 # ---- Vol-of-Vol Tests ----
+
 
 class TestVolOfVol:
     def test_output_names(self) -> None:
@@ -264,8 +314,13 @@ class TestVolOfVol:
         vov = VolOfVolComputer()
         data = _make_price_data()
         result = vov.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["vol_of_vol"])
 
@@ -275,8 +330,13 @@ class TestVolOfVol:
         vov = VolOfVolComputer()
         for i in range(vov.warmup_bars - 1, 50):
             result = vov.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert result["vol_of_vol"] >= 0
 
@@ -304,9 +364,11 @@ class TestVolOfVol:
 
 # ---- Registry Integration ----
 
+
 class TestVolatilityRegistry:
     def test_all_computers_register(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         reg = FeatureRegistry()
         reg.register(RealizedVolComputer())
         reg.register(ParkinsonVolComputer())
@@ -316,6 +378,7 @@ class TestVolatilityRegistry:
 
     def test_compute_all_produces_all_features(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         data = _make_price_data(50)
         reg = FeatureRegistry()
         reg.register(RealizedVolComputer())
@@ -325,13 +388,19 @@ class TestVolatilityRegistry:
 
         result = reg.compute_all(
             40,
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
 
         expected_keys = {
-            "realized_vol_short", "realized_vol_long",
-            "parkinson_vol_short", "parkinson_vol_long",
+            "realized_vol_short",
+            "realized_vol_long",
+            "parkinson_vol_short",
+            "parkinson_vol_long",
             "ewma_vol",
             "vol_of_vol",
         }

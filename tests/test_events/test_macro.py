@@ -159,7 +159,12 @@ class TestMacroEventMonitor:
         monitor = MacroEventMonitor(calendar=self._make_calendar())
         # Way before the event
         signal = monitor.update(
-            900_000_000, 50000.0, 49900.0, 18000.0, 17950.0, vix_level=20.0,
+            900_000_000,
+            50000.0,
+            49900.0,
+            18000.0,
+            17950.0,
+            vix_level=20.0,
         )
         assert signal is None
 
@@ -229,7 +234,10 @@ class TestMacroEventMonitor:
 
         signal = monitor.update(
             signal_time,
-            50100.0, 50000.0, 18050.0, 18000.0,
+            50100.0,
+            50000.0,
+            18050.0,
+            18000.0,
             vix_level=40.0,  # VIX too high
         )
 
@@ -250,7 +258,10 @@ class TestMacroEventMonitor:
         # Tiny NQ move (< 0.1%)
         signal = monitor.update(
             signal_time,
-            50001.0, 50000.0, 18001.0, 18000.0,
+            50001.0,
+            50000.0,
+            18001.0,
+            18000.0,
             vix_level=20.0,
         )
 
@@ -271,7 +282,10 @@ class TestMacroEventMonitor:
         signal_time = event_time + 120_000
         signal = monitor.update(
             signal_time,
-            50100.0, 50000.0, 18050.0, 18000.0,
+            50100.0,
+            50000.0,
+            18050.0,
+            18000.0,
             vix_level=20.0,
         )
         assert signal is not None
@@ -280,7 +294,10 @@ class TestMacroEventMonitor:
         expired_time = signal_time + 700_000
         signal = monitor.update(
             expired_time,
-            50100.0, 50000.0, 18050.0, 18000.0,
+            50100.0,
+            50000.0,
+            18050.0,
+            18000.0,
             vix_level=20.0,
         )
         assert signal is None
@@ -300,7 +317,10 @@ class TestMacroEventMonitor:
         # First signal
         sig1 = monitor.update(
             signal_time,
-            50100.0, 50000.0, 18050.0, 18000.0,
+            50100.0,
+            50000.0,
+            18050.0,
+            18000.0,
             vix_level=20.0,
         )
         assert sig1 is not None
@@ -308,7 +328,10 @@ class TestMacroEventMonitor:
         # Same window, should return same signal (not create new)
         sig2 = monitor.update(
             signal_time + 60_000,
-            50150.0, 50100.0, 18060.0, 18050.0,
+            50150.0,
+            50100.0,
+            18060.0,
+            18050.0,
             vix_level=20.0,
         )
         assert sig2 is not None
@@ -349,7 +372,10 @@ class TestMacroEventMonitor:
 
         signal = monitor.update(
             signal_time,
-            50100.0, 50000.0, 18050.0, 18000.0,
+            50100.0,
+            50000.0,
+            18050.0,
+            18000.0,
             vix_level=15.0,  # Low VIX = high confidence
         )
 
@@ -372,7 +398,10 @@ class TestMacroEventMonitor:
 
         signal = monitor.update(
             signal_time,
-            50100.0, 50000.0, 18050.0, 18000.0,
+            50100.0,
+            50000.0,
+            18050.0,
+            18000.0,
             vix_level=None,  # No VIX data
         )
 
@@ -383,7 +412,11 @@ class TestMacroEventMonitor:
     def test_empty_calendar(self) -> None:
         monitor = MacroEventMonitor(calendar=[])
         signal = monitor.update(
-            1_000_000_000, 50000.0, 49900.0, 18000.0, 17950.0,
+            1_000_000_000,
+            50000.0,
+            49900.0,
+            18000.0,
+            17950.0,
         )
         assert signal is None
 

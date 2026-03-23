@@ -47,9 +47,12 @@ class CyclicalTimeComputer(FeatureComputer):
     ) -> dict[str, float]:
         if idx < self.warmup_bars - 1:
             return {
-                "minute_sin": float("nan"), "minute_cos": float("nan"),
-                "hour_sin": float("nan"), "hour_cos": float("nan"),
-                "dow_sin": float("nan"), "dow_cos": float("nan"),
+                "minute_sin": float("nan"),
+                "minute_cos": float("nan"),
+                "hour_sin": float("nan"),
+                "hour_cos": float("nan"),
+                "dow_sin": float("nan"),
+                "dow_cos": float("nan"),
             }
 
         ts_ms = int(timestamps[idx])

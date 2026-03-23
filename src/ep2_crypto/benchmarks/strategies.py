@@ -117,7 +117,7 @@ class MeanReversionRSI(BenchmarkStrategy):
         rsi = self._compute_rsi(df["close"], self.period)
 
         positions = pd.Series(0.0, index=df.index, name="position")
-        positions[rsi < self.oversold] = 1.0   # Buy oversold
+        positions[rsi < self.oversold] = 1.0  # Buy oversold
         positions[rsi > self.overbought] = -1.0  # Sell overbought
 
         # Forward-fill: hold position until opposite signal
@@ -296,11 +296,14 @@ class VolatilityBreakout(BenchmarkStrategy):
         high = df["high"]
         low = df["low"]
         prev_close = df["close"].shift(1)
-        tr = pd.concat([
-            high - low,
-            (high - prev_close).abs(),
-            (low - prev_close).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         return tr.ewm(span=period, adjust=False).mean()
 
 
@@ -442,9 +445,7 @@ class NaiveEnsemble(BenchmarkStrategy):
             try:
                 all_positions[f"s_{i}"] = strategy.generate_positions(df)
             except (ValueError, KeyError) as e:
-                logger.warning(
-                    "Strategy %s failed in ensemble: %s", strategy.name, str(e)
-                )
+                logger.warning("Strategy %s failed in ensemble: %s", strategy.name, str(e))
                 all_positions[f"s_{i}"] = 0.0
 
         # Majority vote: sign of sum

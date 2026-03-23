@@ -169,7 +169,7 @@ class HawkesProcess:
 
         # Prune old events to bound memory
         if len(self._event_times) > self._max_history:
-            self._event_times = self._event_times[-self._max_history:]
+            self._event_times = self._event_times[-self._max_history :]
 
         return self._mu + self._alpha * self._intensity_sum
 
@@ -259,7 +259,9 @@ class CascadeDetector:
         burst_window_s: float = 60.0,
     ) -> None:
         self._hawkes = HawkesProcess(
-            mu=hawkes_mu, alpha=hawkes_alpha, beta=hawkes_beta,
+            mu=hawkes_mu,
+            alpha=hawkes_alpha,
+            beta=hawkes_beta,
         )
         self._burst_window_s = burst_window_s
 
@@ -295,11 +297,9 @@ class CascadeDetector:
         # Track recent liquidations for burst rate
         self._recent_liq_times.append(timestamp_s)
         cutoff = timestamp_s - self._burst_window_s
-        self._recent_liq_times = [
-            t for t in self._recent_liq_times if t >= cutoff
-        ]
+        self._recent_liq_times = [t for t in self._recent_liq_times if t >= cutoff]
         if len(self._recent_liq_times) > self._max_recent_liqs:
-            self._recent_liq_times = self._recent_liq_times[-self._max_recent_liqs:]
+            self._recent_liq_times = self._recent_liq_times[-self._max_recent_liqs :]
 
         # Update burst rate
         self._state.liq_burst_rate = len(self._recent_liq_times) / self._burst_window_s
@@ -345,7 +345,7 @@ class CascadeDetector:
         if open_interest is not None:
             self._oi_history.append(open_interest)
             if len(self._oi_history) > self._oi_history_size:
-                self._oi_history = self._oi_history[-self._oi_history_size:]
+                self._oi_history = self._oi_history[-self._oi_history_size :]
             if len(self._oi_history) >= 10:
                 sorted_oi = sorted(self._oi_history)
                 rank = sum(1 for v in sorted_oi if v <= open_interest)
@@ -355,7 +355,7 @@ class CascadeDetector:
         if funding_rate is not None:
             self._funding_history.append(funding_rate)
             if len(self._funding_history) > self._funding_history_size:
-                self._funding_history = self._funding_history[-self._funding_history_size:]
+                self._funding_history = self._funding_history[-self._funding_history_size :]
             if len(self._funding_history) >= 10:
                 arr = np.array(self._funding_history)
                 mean = float(np.mean(arr))
@@ -369,7 +369,7 @@ class CascadeDetector:
         if book_depth is not None:
             self._depth_history.append(book_depth)
             if len(self._depth_history) > self._depth_history_size:
-                self._depth_history = self._depth_history[-self._depth_history_size:]
+                self._depth_history = self._depth_history[-self._depth_history_size :]
             if len(self._depth_history) >= 10:
                 avg_depth = sum(self._depth_history) / len(self._depth_history)
                 if avg_depth > 0:
@@ -486,3 +486,241 @@ class CascadeDetector:
         self._depth_history.clear()
         self._recent_liq_times.clear()
         self._state = CascadeState()
+
+
+class OnlineHawkesEstimator:
+    """Online MLE estimator for Hawkes process parameters via stochastic gradient.
+
+    Fits mu, alpha, beta using stochastic gradient ascent on the Hawkes
+    log-likelihood. After each event batch the parameters are updated toward
+    higher log-likelihood without storing the full history.
+
+    Log-likelihood of Hawkes process on [0, T] with events t_1,...,t_N:
+      LL = sum_i log(lambda(t_i)) - integral_0^T lambda(s) ds
+         = sum_i log(mu + alpha * A_i) - mu*T - alpha/beta * sum_i (1 - exp(-beta*(T-t_i)))
+
+    where A_i = sum_{j<i} exp(-beta*(t_i - t_j)).
+
+    Parameters:
+        mu_init: Initial background rate.
+        alpha_init: Initial excitation magnitude.
+        beta_init: Initial decay rate (must be > alpha for stationarity).
+        lr: Learning rate for stochastic gradient steps.
+        lr_decay: Multiplicative decay applied to lr every `decay_every` events.
+        decay_every: Number of events between lr decay steps.
+        min_mu: Lower bound for mu.
+        max_alpha_beta_ratio: Upper bound for alpha/beta (branching ratio cap).
+    """
+
+    def __init__(
+        self,
+        mu_init: float = 0.01,
+        alpha_init: float = 0.05,
+        beta_init: float = 0.1,
+        lr: float = 1e-3,
+        lr_decay: float = 0.995,
+        decay_every: int = 50,
+        min_mu: float = 1e-6,
+        max_alpha_beta_ratio: float = 0.99,
+    ) -> None:
+        if beta_init <= 0:
+            msg = "beta_init must be positive"
+            raise ValueError(msg)
+        if alpha_init < 0:
+            msg = "alpha_init must be non-negative"
+            raise ValueError(msg)
+
+        self._mu = mu_init
+        self._alpha = alpha_init
+        self._beta = beta_init
+        self._lr = lr
+        self._lr_decay = lr_decay
+        self._decay_every = decay_every
+        self._min_mu = min_mu
+        self._max_ratio = max_alpha_beta_ratio
+
+        # Online state
+        self._event_times: list[float] = []
+        self._n_events: int = 0
+        self._A: float = 0.0  # running recursive sum exp(-beta*(t - t_last))
+        self._t_last: float = 0.0
+        self._T: float = 0.0  # current time horizon
+
+    @property
+    def n_events(self) -> int:
+        return self._n_events
+
+    def get_params(self) -> dict[str, float]:
+        """Return current estimated parameters."""
+        return {
+            "mu": self._mu,
+            "alpha": self._alpha,
+            "beta": self._beta,
+            "branching_ratio": self._alpha / self._beta,
+        }
+
+    def add_event(self, t: float) -> None:
+        """Record a new liquidation event and update parameters.
+
+        Args:
+            t: Event timestamp in seconds.
+        """
+        # Decay running sum to current time
+        if self._n_events > 0:
+            dt = t - self._t_last
+            if dt > 0:
+                self._A = self._A * math.exp(-self._beta * dt) + 1.0
+            else:
+                self._A += 1.0
+        else:
+            self._A = 1.0
+
+        self._t_last = t
+        self._T = t
+        self._event_times.append(t)
+        self._n_events += 1
+
+        # Perform a gradient step every event
+        self._update_params(t)
+
+        # Decay learning rate periodically
+        if self._n_events % self._decay_every == 0:
+            self._lr *= self._lr_decay
+
+        # Bound memory
+        if len(self._event_times) > 1000:
+            self._event_times = self._event_times[-500:]
+
+    def _update_params(self, t_new: float) -> None:
+        """One stochastic gradient ascent step on log-likelihood.
+
+        Uses finite differences for beta gradient (analytically tricky).
+        Mu and alpha have closed-form gradients.
+        """
+        if self._n_events < 2:
+            return
+
+        # Current intensity at t_new
+        lam = self._mu + self._alpha * self._A
+        if lam <= 0:
+            return
+
+        # Gradient w.r.t. mu: d/dmu [log lam - mu * T] = 1/lam - T (stochastic approx)
+        grad_mu = 1.0 / lam - self._T
+
+        # Gradient w.r.t. alpha: d/dalpha [log lam - alpha/beta * integral_term]
+        # Stochastic: 1/lam * A - 1/beta * (1 - exp(-beta*(T - t_new)))
+        integral_alpha = (1.0 - math.exp(-self._beta * max(0.0, self._T - t_new))) / self._beta
+        grad_alpha = self._A / lam - integral_alpha
+
+        # Gradient w.r.t. beta: finite difference
+        grad_beta = self._fd_beta_gradient(t_new, lam)
+
+        # Gradient ascent steps
+        self._mu = max(self._min_mu, self._mu + self._lr * grad_mu)
+        self._alpha = max(0.0, self._alpha + self._lr * grad_alpha)
+        self._beta = max(self._alpha / self._max_ratio + 1e-9, self._beta + self._lr * grad_beta)
+
+        # Enforce stationarity: alpha/beta < max_ratio
+        if self._alpha / self._beta >= self._max_ratio:
+            self._alpha = self._beta * self._max_ratio * 0.99
+
+    def _fd_beta_gradient(self, t_new: float, lam: float, eps: float = 1e-5) -> float:
+        """Finite difference approximation of d(log_lik)/d(beta)."""
+        beta_plus = self._beta + eps
+        beta_minus = max(1e-9, self._beta - eps)
+
+        # A at t_new for perturbed beta values (recompute from recent events)
+        def _compute_a(beta_val: float) -> float:
+            a = 0.0
+            for ti in self._event_times[-50:]:  # Use at most 50 recent events
+                if ti < t_new:
+                    a = a * math.exp(-beta_val * (t_new - ti)) + 1.0 if a > 0 else 1.0
+            return a
+
+        a_plus = _compute_a(beta_plus)
+        a_minus = _compute_a(beta_minus)
+
+        lam_plus = self._mu + self._alpha * a_plus
+        lam_minus = self._mu + self._alpha * a_minus
+
+        ll_plus = math.log(max(lam_plus, 1e-10))
+        ll_minus = math.log(max(lam_minus, 1e-10))
+
+        return (ll_plus - ll_minus) / (2 * eps)
+
+    def reset(self) -> None:
+        """Reset online estimator state (keep hyperparameters)."""
+        self._event_times.clear()
+        self._n_events = 0
+        self._A = 0.0
+        self._t_last = 0.0
+        self._T = 0.0
+
+
+class StateDependentAmplifier:
+    """State-dependent cascade amplifier based on OI and funding conditions.
+
+    Amplifies the base cascade probability when market conditions indicate
+    elevated systemic risk (high OI + extreme funding = crowded positions
+    that could unwind violently).
+
+    Stress levels:
+        0 = Normal: OI < 75th percentile AND |funding| < 1σ
+        1 = Elevated: OI ≥ 75th percentile OR |funding| ≥ 1σ
+        2 = High: OI ≥ 90th percentile AND |funding| ≥ 1.5σ
+        3 = Critical: OI ≥ 95th percentile AND |funding| ≥ 2σ
+
+    Amplification: P_amplified = 1 - (1 - P_base) * exp(-stress_factor)
+    where stress_factor ∈ {0.0, 0.15, 0.35, 0.65} for levels 0-3.
+    """
+
+    _STRESS_FACTORS = {0: 0.0, 1: 0.15, 2: 0.35, 3: 0.65}
+
+    def stress_level(self, oi_percentile: float, funding_zscore: float) -> int:
+        """Compute stress level from OI percentile and funding z-score.
+
+        Args:
+            oi_percentile: OI rank in [0, 1] vs historical distribution.
+            funding_zscore: Funding rate z-score (signed).
+
+        Returns:
+            Stress level 0-3.
+        """
+        abs_fz = abs(funding_zscore)
+
+        if oi_percentile >= 0.95 and abs_fz >= 2.0:
+            return 3
+        if oi_percentile >= 0.90 and abs_fz >= 1.5:
+            return 2
+        if oi_percentile >= 0.75 or abs_fz >= 1.0:
+            return 1
+        return 0
+
+    def amplify(
+        self,
+        base_prob: float,
+        oi_percentile: float,
+        funding_zscore: float,
+    ) -> tuple[float, float]:
+        """Amplify base cascade probability by market stress conditions.
+
+        Args:
+            base_prob: Base cascade probability from CascadeDetector in [0, 1].
+            oi_percentile: OI rank vs history in [0, 1].
+            funding_zscore: Funding rate z-score.
+
+        Returns:
+            Tuple of (amplified_probability, stress_factor) where
+            amplified_probability ∈ [0, 1] and stress_factor ∈ [0, 0.65].
+        """
+        level = self.stress_level(oi_percentile, funding_zscore)
+        sf = self._STRESS_FACTORS[level]
+
+        if sf == 0.0:
+            return base_prob, 0.0
+
+        # P_amplified = 1 - (1 - P_base) * exp(-sf)
+        # This maps [0,1] to [0,1], monotonically increases with sf
+        amplified = 1.0 - (1.0 - base_prob) * math.exp(-sf)
+        return min(1.0, amplified), sf

@@ -6,13 +6,16 @@ Uses file-backed SQLite (not :memory:) to verify real persistence.
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ep2_crypto.risk.drawdown_gate import DrawdownGate
 from ep2_crypto.risk.kill_switches import KillSwitchManager
 from ep2_crypto.risk.position_tracker import PositionSide, PositionTracker
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -24,9 +27,11 @@ def db_path(tmp_path: Path) -> Path:
 # Kill switch persistence (file-backed)
 # ---------------------------------------------------------------------------
 
+
 class TestKillSwitchPersistence:
     def test_triggered_state_survives_file_close_reopen(
-        self, db_path: Path,
+        self,
+        db_path: Path,
     ) -> None:
         """Trigger -> close connection -> reopen -> verify still triggered."""
         thresholds = {
@@ -52,7 +57,8 @@ class TestKillSwitchPersistence:
         conn2.close()
 
     def test_reset_state_survives_file_close_reopen(
-        self, db_path: Path,
+        self,
+        db_path: Path,
     ) -> None:
         thresholds = {
             "daily_loss": 0.03,
@@ -127,6 +133,7 @@ class TestKillSwitchPersistence:
 # Position tracker persistence (file-backed)
 # ---------------------------------------------------------------------------
 
+
 class TestPositionTrackerPersistence:
     def test_open_position_survives_crash(self, db_path: Path) -> None:
         """Simulate crash: open position -> close conn -> reopen -> verify."""
@@ -178,6 +185,7 @@ class TestPositionTrackerPersistence:
 # ---------------------------------------------------------------------------
 # Drawdown gate persistence (file-backed)
 # ---------------------------------------------------------------------------
+
 
 class TestDrawdownGatePersistence:
     def test_drawdown_state_survives_restart(self, db_path: Path) -> None:

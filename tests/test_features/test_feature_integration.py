@@ -90,16 +90,19 @@ class TestFeatureIntegration:
         expected_keys: set[str] | None = None
         for i in range(warmup, 100):
             result = pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
                 **_get_kwargs(data),
             )
             if expected_keys is None:
                 expected_keys = set(result.keys())
             else:
-                assert set(result.keys()) == expected_keys, (
-                    f"Inconsistent keys at idx={i}"
-                )
+                assert set(result.keys()) == expected_keys, f"Inconsistent keys at idx={i}"
 
     def test_no_nan_inf_after_warmup(self) -> None:
         """No NaN or Inf values in any feature after warmup."""
@@ -109,14 +112,17 @@ class TestFeatureIntegration:
 
         for i in range(warmup, 200):
             result = pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
                 **_get_kwargs(data),
             )
             for key, val in result.items():
-                assert np.isfinite(val), (
-                    f"Non-finite value in '{key}' at idx={i}: {val}"
-                )
+                assert np.isfinite(val), f"Non-finite value in '{key}' at idx={i}: {val}"
 
     def test_compute_time_under_2ms(self) -> None:
         """Feature computation should be < 2ms per bar on average."""
@@ -128,16 +134,19 @@ class TestFeatureIntegration:
         start = time.perf_counter()
         for i in range(warmup, 500):
             pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
                 **_get_kwargs(data),
             )
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         avg_ms = elapsed_ms / n_bars
-        assert avg_ms < 2.0, (
-            f"Average compute time {avg_ms:.3f}ms exceeds 2ms target"
-        )
+        assert avg_ms < 2.0, f"Average compute time {avg_ms:.3f}ms exceeds 2ms target"
 
     def test_expected_feature_count(self) -> None:
         """Total feature count: Sprint 3-5 features = 64."""
@@ -146,8 +155,12 @@ class TestFeatureIntegration:
         warmup = pipeline.warmup_bars
         result = pipeline.compute(
             warmup + 5,
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             **_get_kwargs(data),
         )
         assert len(result) == 64
@@ -160,8 +173,13 @@ class TestFeatureIntegration:
 
         for i in range(warmup, 100):
             result = pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
                 **_get_kwargs(data),
             )
 

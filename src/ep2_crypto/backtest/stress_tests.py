@@ -29,16 +29,19 @@ Usage::
 from __future__ import annotations
 
 import dataclasses
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
-from numpy.typing import NDArray
 
 from ep2_crypto.backtest.engine import BacktestConfig, BacktestEngine
-from ep2_crypto.backtest.metrics import BacktestResult
 from ep2_crypto.risk.config import RiskConfig
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from ep2_crypto.backtest.metrics import BacktestResult
 
 logger = structlog.get_logger(__name__)
 
@@ -47,14 +50,15 @@ logger = structlog.get_logger(__name__)
 # Scenario identifiers
 # ---------------------------------------------------------------------------
 
-class HistoricalScenario(str, Enum):
-    COVID_CRASH_MAR2020 = "covid_crash_mar2020"       # -50% in 48h
-    CHINA_BAN_MAY2021 = "china_ban_may2021"            # -30% in 8h
-    FTX_COLLAPSE_NOV2022 = "ftx_collapse_nov2022"      # -25% over 5 days
+
+class HistoricalScenario(StrEnum):
+    COVID_CRASH_MAR2020 = "covid_crash_mar2020"  # -50% in 48h
+    CHINA_BAN_MAY2021 = "china_ban_may2021"  # -30% in 8h
+    FTX_COLLAPSE_NOV2022 = "ftx_collapse_nov2022"  # -25% over 5 days
     ATH_CORRECTION_MAR2024 = "ath_correction_mar2024"  # -15% over 3 days
 
 
-class SyntheticScenario(str, Enum):
+class SyntheticScenario(StrEnum):
     ZERO_VOLATILITY_48H = "zero_volatility_48h"
     TEN_FLASH_CRASHES = "ten_flash_crashes"
     CORRELATION_DROP = "correlation_drop"
@@ -65,6 +69,7 @@ class SyntheticScenario(str, Enum):
 # ---------------------------------------------------------------------------
 # Result structures
 # ---------------------------------------------------------------------------
+
 
 @dataclasses.dataclass
 class StressTestResult:
@@ -127,6 +132,7 @@ class StressReport:
 # ---------------------------------------------------------------------------
 # Price path generators
 # ---------------------------------------------------------------------------
+
 
 def _make_crash_path(
     n_bars: int,
@@ -224,6 +230,7 @@ def _make_signals_for_crash(
 # Historical scenario generators
 # ---------------------------------------------------------------------------
 
+
 class HistoricalStressScenario:
     """Synthetic price paths calibrated to known historical crashes.
 
@@ -296,6 +303,7 @@ class HistoricalStressScenario:
 # ---------------------------------------------------------------------------
 # Synthetic scenario generators
 # ---------------------------------------------------------------------------
+
 
 class SyntheticStressScenario:
     """Parameterised synthetic adversarial scenarios."""
@@ -418,7 +426,17 @@ class SyntheticStressScenario:
             funding_rates[i] = funding_rate
 
         signals, confidences = _make_signals_for_crash(n_bars, seed)
-        return opens, highs, lows, closes2, volumes, timestamps_ms, signals, confidences, funding_rates
+        return (
+            opens,
+            highs,
+            lows,
+            closes2,
+            volumes,
+            timestamps_ms,
+            signals,
+            confidences,
+            funding_rates,
+        )
 
     def broken_model(
         self,
@@ -450,6 +468,7 @@ class SyntheticStressScenario:
 # Pass/fail criteria
 # ---------------------------------------------------------------------------
 
+
 def _evaluate_stress_result(
     scenario_name: str,
     result: BacktestResult,
@@ -468,9 +487,8 @@ def _evaluate_stress_result(
     expected_max_trades = n_bars // 6
     kill_switch_fired = result.total_trades < max(1, expected_max_trades * 0.5)
 
-    passed = (
-        result.max_drawdown <= max_allowed_dd
-        or (kill_switch_fired and result.max_drawdown <= kill_switch_dd_threshold + 0.05)
+    passed = result.max_drawdown <= max_allowed_dd or (
+        kill_switch_fired and result.max_drawdown <= kill_switch_dd_threshold + 0.05
     )
 
     reason = ""
@@ -496,6 +514,7 @@ def _evaluate_stress_result(
 # ---------------------------------------------------------------------------
 # StressTestRunner
 # ---------------------------------------------------------------------------
+
 
 class StressTestRunner:
     """Run all historical and synthetic stress scenarios.
@@ -538,15 +557,27 @@ class StressTestRunner:
         for scenario in scenarios:
             logger.info("stress.historical.start", scenario=scenario.value)
             (
-                opens, highs, lows, closes, volumes, timestamps_ms,
-                signals, confidences, meta,
+                opens,
+                highs,
+                lows,
+                closes,
+                volumes,
+                timestamps_ms,
+                signals,
+                confidences,
+                _meta,
             ) = gen.generate(scenario, seed=self._seed)
 
             engine = self._make_engine()
             result = engine.run(
-                opens=opens, highs=highs, lows=lows, closes=closes,
-                volumes=volumes, timestamps_ms=timestamps_ms,
-                signals=signals, confidences=confidences,
+                opens=opens,
+                highs=highs,
+                lows=lows,
+                closes=closes,
+                volumes=volumes,
+                timestamps_ms=timestamps_ms,
+                signals=signals,
+                confidences=confidences,
             )
             sr = _evaluate_stress_result(
                 scenario_name=scenario.value,
@@ -580,24 +611,24 @@ class StressTestRunner:
             funding_rates = None
 
             if scenario == SyntheticScenario.ZERO_VOLATILITY_48H:
-                opens, highs, lows, closes, volumes, ts, sigs, confs = (
-                    gen.zero_volatility_48h(seed=self._seed)
+                opens, highs, lows, closes, volumes, ts, sigs, confs = gen.zero_volatility_48h(
+                    seed=self._seed
                 )
             elif scenario == SyntheticScenario.TEN_FLASH_CRASHES:
-                opens, highs, lows, closes, volumes, ts, sigs, confs = (
-                    gen.ten_flash_crashes(seed=self._seed)
+                opens, highs, lows, closes, volumes, ts, sigs, confs = gen.ten_flash_crashes(
+                    seed=self._seed
                 )
             elif scenario == SyntheticScenario.CORRELATION_DROP:
-                opens, highs, lows, closes, volumes, ts, sigs, confs = (
-                    gen.correlation_drop(seed=self._seed)
+                opens, highs, lows, closes, volumes, ts, sigs, confs = gen.correlation_drop(
+                    seed=self._seed
                 )
             elif scenario == SyntheticScenario.HIGH_FUNDING_RATE:
                 opens, highs, lows, closes, volumes, ts, sigs, confs, funding_rates = (
                     gen.high_funding_rate(seed=self._seed)
                 )
             elif scenario == SyntheticScenario.BROKEN_MODEL:
-                opens, highs, lows, closes, volumes, ts, sigs, confs = (
-                    gen.broken_model(seed=self._seed)
+                opens, highs, lows, closes, volumes, ts, sigs, confs = gen.broken_model(
+                    seed=self._seed
                 )
             else:
                 logger.warning("stress.unknown_scenario", scenario=scenario.value)
@@ -605,9 +636,14 @@ class StressTestRunner:
 
             engine = self._make_engine()
             result = engine.run(
-                opens=opens, highs=highs, lows=lows, closes=closes,
-                volumes=volumes, timestamps_ms=ts,
-                signals=sigs, confidences=confs,
+                opens=opens,
+                highs=highs,
+                lows=lows,
+                closes=closes,
+                volumes=volumes,
+                timestamps_ms=ts,
+                signals=sigs,
+                confidences=confs,
                 funding_rates=funding_rates,
             )
             sr = _evaluate_stress_result(

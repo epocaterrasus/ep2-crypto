@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
-from ep2_crypto.benchmarks.metrics import compute_metrics, BARS_PER_DAY
+from ep2_crypto.benchmarks.metrics import compute_metrics
 
 
 class TestComputeMetrics:

@@ -11,17 +11,17 @@ from ep2_crypto.execution.venue import (
     OrderRequest,
     OrderSide,
     OrderStatus,
-    OrderType,
     VenueType,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
-def make_snapshot(bid: float = 99_990.0, ask: float = 100_010.0, depth: int = 5) -> OrderBookSnapshot:
+def make_snapshot(
+    bid: float = 99_990.0, ask: float = 100_010.0, depth: int = 5
+) -> OrderBookSnapshot:
     """Create a realistic BTC orderbook snapshot."""
     bids = [OrderBookLevel(price=bid - i * 10, size=0.5) for i in range(depth)]
     asks = [OrderBookLevel(price=ask + i * 10, size=0.5) for i in range(depth)]
@@ -73,7 +73,7 @@ class TestFillSimulator:
         sim = FillSimulator(slippage_noise_bps=0.0)
         # Book only has 5 * 0.5 = 2.5 BTC on ask side
         snap = make_snapshot(depth=5)
-        price, filled, unfilled = sim.simulate(
+        _price, filled, unfilled = sim.simulate(
             OrderRequest(side=OrderSide.BUY, size=10.0),
             snap,
         )
@@ -85,18 +85,14 @@ class TestFillSimulator:
         snap = OrderBookSnapshot(
             venue=VenueType.PAPER, symbol="BTC/USDT", bids=[], asks=[], timestamp_ms=0
         )
-        price, filled, unfilled = sim.simulate(
-            OrderRequest(side=OrderSide.BUY, size=0.1), snap
-        )
+        _price, filled, unfilled = sim.simulate(OrderRequest(side=OrderSide.BUY, size=0.1), snap)
         assert filled == 0.0
         assert unfilled == 0.1
 
     def test_slippage_noise_applied(self) -> None:
         sim = FillSimulator(slippage_noise_bps=10.0)
         snap = make_snapshot(ask=100_000.0, depth=1)
-        price, filled, _ = sim.simulate(
-            OrderRequest(side=OrderSide.BUY, size=0.5), snap
-        )
+        price, _filled, _ = sim.simulate(OrderRequest(side=OrderSide.BUY, size=0.5), snap)
         # Should be ≥ best ask due to noise
         assert price >= 100_000.0
 
@@ -113,9 +109,7 @@ class TestFillSimulator:
             asks=asks,
             timestamp_ms=0,
         )
-        price, filled, unfilled = sim.simulate(
-            OrderRequest(side=OrderSide.BUY, size=2.0), snap
-        )
+        price, filled, _unfilled = sim.simulate(OrderRequest(side=OrderSide.BUY, size=2.0), snap)
         assert filled == pytest.approx(2.0)
         assert price == pytest.approx(100_500.0, rel=1e-6)  # (100k + 101k) / 2
 
@@ -208,9 +202,7 @@ class TestPaperExchangeOrders:
     async def test_buy_order_fills(self) -> None:
         exchange = make_exchange(balance=10_000.0)
         await exchange.connect()
-        result = await exchange.place_order(
-            OrderRequest(side=OrderSide.BUY, size=0.05)
-        )
+        result = await exchange.place_order(OrderRequest(side=OrderSide.BUY, size=0.05))
         assert result.status == OrderStatus.FILLED
         assert result.fill_quantity == pytest.approx(0.05, rel=1e-6)
         assert result.fill_price > 0
@@ -223,9 +215,7 @@ class TestPaperExchangeOrders:
         # First open a long
         await exchange.place_order(OrderRequest(side=OrderSide.BUY, size=0.05))
         # Then sell
-        result = await exchange.place_order(
-            OrderRequest(side=OrderSide.SELL, size=0.05)
-        )
+        result = await exchange.place_order(OrderRequest(side=OrderSide.SELL, size=0.05))
         assert result.status == OrderStatus.FILLED
         assert result.fill_price > 0
 
@@ -251,7 +241,9 @@ class TestPaperExchangeOrders:
 
     @pytest.mark.asyncio
     async def test_fee_applied_on_buy(self) -> None:
-        exchange = PaperExchange(initial_balance_usd=200_000.0, taker_fee_bps=4.0, slippage_noise_bps=0.0)
+        exchange = PaperExchange(
+            initial_balance_usd=200_000.0, taker_fee_bps=4.0, slippage_noise_bps=0.0
+        )
         exchange.update_price(100_000.0)
         exchange.update_orderbook(make_snapshot(ask=100_010.0, depth=10))
         await exchange.connect()

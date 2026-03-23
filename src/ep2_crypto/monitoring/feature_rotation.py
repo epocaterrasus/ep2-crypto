@@ -58,9 +58,7 @@ class FeatureRotationTracker:
         self._downweight_factor = downweight_factor
         self._features: dict[str, FeatureRotationState] = {}
 
-    def register_feature(
-        self, name: str, initial_importance: float = 0.0
-    ) -> None:
+    def register_feature(self, name: str, initial_importance: float = 0.0) -> None:
         """Register a feature for tracking."""
         self._features[name] = FeatureRotationState(
             name=name,
@@ -139,11 +137,7 @@ class FeatureRotationTracker:
 
     def get_downweighted_features(self) -> dict[str, float]:
         """Get features with weight < 1.0."""
-        return {
-            name: s.weight
-            for name, s in self._features.items()
-            if s.weight < 1.0
-        }
+        return {name: s.weight for name, s in self._features.items() if s.weight < 1.0}
 
     def generate_monthly_report(self) -> RotationReport:
         """Generate monthly feature rotation report."""

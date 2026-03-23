@@ -10,14 +10,12 @@ All external SDK calls are mocked.
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from ep2_crypto.execution import (
     OrderRequest,
-    OrderResult,
     OrderSide,
     OrderStatus,
     PolymarketAdapter,
@@ -26,7 +24,6 @@ from ep2_crypto.execution import (
     VenueType,
 )
 from ep2_crypto.execution.polymarket import BinaryMarket
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -95,9 +92,7 @@ class TestRegistryIntegration:
         retrieved = registry.get(VenueType.POLYMARKET_BINARY)
         assert retrieved is connected_adapter
 
-    def test_registry_list_venues(
-        self, connected_adapter: PolymarketAdapter
-    ) -> None:
+    def test_registry_list_venues(self, connected_adapter: PolymarketAdapter) -> None:
         registry = VenueRegistry()
         registry.register(connected_adapter)
         venues = registry.list_venues()
@@ -135,9 +130,7 @@ class TestRegistryIntegration:
 
 class TestOrderPipeline:
     @pytest.mark.asyncio
-    async def test_full_buy_flow(
-        self, connected_adapter: PolymarketAdapter
-    ) -> None:
+    async def test_full_buy_flow(self, connected_adapter: PolymarketAdapter) -> None:
         """Place → query → cancel lifecycle."""
         # Place
         request = OrderRequest(side=OrderSide.BUY, size=100.0, price=0.62)
@@ -166,9 +159,7 @@ class TestOrderPipeline:
         assert call_args["token_id"] == "0xno_int"
 
     @pytest.mark.asyncio
-    async def test_order_fee_populated(
-        self, connected_adapter: PolymarketAdapter
-    ) -> None:
+    async def test_order_fee_populated(self, connected_adapter: PolymarketAdapter) -> None:
         request = OrderRequest(side=OrderSide.BUY, size=100.0, price=0.62)
         result = await connected_adapter.place_order(request)
         assert result.fee > 0
@@ -182,9 +173,7 @@ class TestOrderPipeline:
 
 class TestBalanceAndPosition:
     @pytest.mark.asyncio
-    async def test_balance_and_place_flow(
-        self, connected_adapter: PolymarketAdapter
-    ) -> None:
+    async def test_balance_and_place_flow(self, connected_adapter: PolymarketAdapter) -> None:
         balance = await connected_adapter.get_balance()
         assert balance == pytest.approx(1_000.0)
 
@@ -194,9 +183,7 @@ class TestBalanceAndPosition:
         assert result.status not in (OrderStatus.REJECTED,)
 
     @pytest.mark.asyncio
-    async def test_health_check_before_order(
-        self, connected_adapter: PolymarketAdapter
-    ) -> None:
+    async def test_health_check_before_order(self, connected_adapter: PolymarketAdapter) -> None:
         healthy = await connected_adapter.health_check()
         assert healthy
 
@@ -213,6 +200,7 @@ class TestBalanceAndPosition:
 class TestLiveLoopVenueSelection:
     def test_live_loop_accepts_binance_venue(self) -> None:
         import sys
+
         sys.path.insert(0, "/Users/edgarpocaterra/ep2-crypto/scripts")
         from live import LivePredictionLoop  # type: ignore[import]
 
@@ -221,6 +209,7 @@ class TestLiveLoopVenueSelection:
 
     def test_live_loop_accepts_polymarket_venue(self) -> None:
         import sys
+
         sys.path.insert(0, "/Users/edgarpocaterra/ep2-crypto/scripts")
         from live import LivePredictionLoop  # type: ignore[import]
 
@@ -229,6 +218,7 @@ class TestLiveLoopVenueSelection:
 
     def test_live_loop_default_venue_is_binance(self) -> None:
         import sys
+
         sys.path.insert(0, "/Users/edgarpocaterra/ep2-crypto/scripts")
         from live import LivePredictionLoop  # type: ignore[import]
 
@@ -243,21 +233,23 @@ class TestLiveLoopVenueSelection:
 
 class TestCleanExports:
     def test_all_public_names_importable(self) -> None:
-        from ep2_crypto.execution import __all__ as public_api
-
         import ep2_crypto.execution as execution_module
+        from ep2_crypto.execution import __all__ as public_api
 
         for name in public_api:
             assert hasattr(execution_module, name), f"{name} missing from execution package"
 
     def test_polymarket_adapter_importable_from_package(self) -> None:
         from ep2_crypto.execution import PolymarketAdapter
+
         assert PolymarketAdapter is not None
 
     def test_polymarket_config_importable_from_package(self) -> None:
         from ep2_crypto.execution import PolymarketConfig
+
         assert PolymarketConfig is not None
 
     def test_venue_registry_importable_from_package(self) -> None:
         from ep2_crypto.execution import VenueRegistry
+
         assert VenueRegistry is not None

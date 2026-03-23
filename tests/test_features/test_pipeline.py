@@ -105,12 +105,21 @@ class TestFeaturePipeline:
         expected_keys: set[str] | None = None
         for i in range(warmup, 100):
             result = pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
-                bids=data["bids"], asks=data["asks"],
-                bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-                trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
-                nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
+                bids=data["bids"],
+                asks=data["asks"],
+                bid_sizes=data["bid_sizes"],
+                ask_sizes=data["ask_sizes"],
+                trade_sizes=data["trade_sizes"],
+                trade_sides=data["trade_sides"],
+                nq_closes=data["nq_closes"],
+                eth_closes=data["eth_closes"],
             )
             if expected_keys is None:
                 expected_keys = set(result.keys())
@@ -125,12 +134,21 @@ class TestFeaturePipeline:
 
         for i in range(warmup, 200):
             result = pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
-                bids=data["bids"], asks=data["asks"],
-                bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-                trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
-                nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
+                bids=data["bids"],
+                asks=data["asks"],
+                bid_sizes=data["bid_sizes"],
+                ask_sizes=data["ask_sizes"],
+                trade_sizes=data["trade_sizes"],
+                trade_sides=data["trade_sides"],
+                nq_closes=data["nq_closes"],
+                eth_closes=data["eth_closes"],
             )
             for key, val in result.items():
                 assert np.isfinite(val), f"Non-finite '{key}' at idx={i}: {val}"
@@ -142,11 +160,19 @@ class TestFeaturePipeline:
         warmup = pipeline.warmup_bars
 
         result = pipeline.compute(
-            warmup + 5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+            warmup + 5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            bids=data["bids"],
+            asks=data["asks"],
+            bid_sizes=data["bid_sizes"],
+            ask_sizes=data["ask_sizes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
             # No nq_closes or eth_closes
         )
         # Should still produce all keys
@@ -158,10 +184,17 @@ class TestFeaturePipeline:
         data = _make_pipeline_data(50)
 
         result = pipeline.compute(
-            20, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
+            20,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            bids=data["bids"],
+            asks=data["asks"],
+            bid_sizes=data["bid_sizes"],
+            ask_sizes=data["ask_sizes"],
         )
         # OBI: 4, ROC: 4, Session: 3 = 11
         assert len(result) == 11
@@ -176,12 +209,20 @@ class TestFeaturePipeline:
         data = _make_pipeline_data(100)
 
         output = pipeline.compute_batch(
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
-            nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            bids=data["bids"],
+            asks=data["asks"],
+            bid_sizes=data["bid_sizes"],
+            ask_sizes=data["ask_sizes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
+            nq_closes=data["nq_closes"],
+            eth_closes=data["eth_closes"],
         )
         assert output.shape == (100, pipeline.n_features)
 
@@ -191,17 +232,25 @@ class TestFeaturePipeline:
         data = _make_pipeline_data(100)
 
         output = pipeline.compute_batch(
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             fill_nan=True,
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
-            nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+            bids=data["bids"],
+            asks=data["asks"],
+            bid_sizes=data["bid_sizes"],
+            ask_sizes=data["ask_sizes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
+            nq_closes=data["nq_closes"],
+            eth_closes=data["eth_closes"],
         )
         warmup = pipeline.warmup_bars
         # After warmup + some buffer, no NaN should remain
-        post_warmup = output[warmup + 5:]
+        post_warmup = output[warmup + 5 :]
         assert np.all(np.isfinite(post_warmup)), "NaN found after warmup in batch output"
 
     def test_compute_time_under_1ms(self) -> None:
@@ -214,12 +263,21 @@ class TestFeaturePipeline:
         start = time.perf_counter()
         for i in range(warmup, 300):
             pipeline.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
-                bids=data["bids"], asks=data["asks"],
-                bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-                trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
-                nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
+                bids=data["bids"],
+                asks=data["asks"],
+                bid_sizes=data["bid_sizes"],
+                ask_sizes=data["ask_sizes"],
+                trade_sizes=data["trade_sizes"],
+                trade_sides=data["trade_sides"],
+                nq_closes=data["nq_closes"],
+                eth_closes=data["eth_closes"],
             )
         elapsed_ms = (time.perf_counter() - start) * 1000
         avg_ms = elapsed_ms / n_bars

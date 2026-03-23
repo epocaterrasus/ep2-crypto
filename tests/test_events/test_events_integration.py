@@ -260,7 +260,11 @@ class TestModuleIndependence:
         for i in range(15):
             ts = 900_000 + i * 5000
             monitor.update(
-                ts, 50000.0 + i * 10, 50000.0, 18000.0 + i * 5, 18000.0,
+                ts,
+                50000.0 + i * 10,
+                50000.0,
+                18000.0 + i * 5,
+                18000.0,
             )
 
         # Should work without any external dependencies

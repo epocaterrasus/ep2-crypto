@@ -151,7 +151,7 @@ class TestHMMUpdate:
         idx = 100
 
         # Result should be same regardless of future data
-        r1 = detector.update(idx, data[:idx + 1])
+        r1 = detector.update(idx, data[: idx + 1])
 
         detector2 = HMMDetector(n_states=2, min_fit_samples=50, fit_window=200)
         r2 = detector2.update(idx, data)

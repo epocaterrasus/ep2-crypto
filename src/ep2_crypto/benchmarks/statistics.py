@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-from ep2_crypto.benchmarks.metrics import BARS_PER_YEAR, BacktestMetrics, compute_metrics
+from ep2_crypto.benchmarks.metrics import BARS_PER_YEAR
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +95,7 @@ class StatisticalAnalyzer:
         for b in range(n_bootstrap):
             # Sample blocks with replacement
             block_starts = rng.integers(0, n - block_size + 1, size=n_blocks)
-            sample = np.concatenate([
-                ret_array[s:s + block_size] for s in block_starts
-            ])[:n]
+            sample = np.concatenate([ret_array[s : s + block_size] for s in block_starts])[:n]
             mean_s = sample.mean()
             std_s = sample.std(ddof=1)
             if std_s > 1e-15:
@@ -175,10 +173,7 @@ class StatisticalAnalyzer:
 
         # Ledoit-Wolf variance of Sharpe difference
         corr = np.corrcoef(a, b)[0, 1]
-        v = (
-            2 * (1 - corr)
-            + 0.5 * (sr_a**2 + sr_b**2 - 2 * sr_a * sr_b * corr**2)
-        ) / n
+        v = (2 * (1 - corr) + 0.5 * (sr_a**2 + sr_b**2 - 2 * sr_a * sr_b * corr**2)) / n
 
         if v <= 0:
             return {"test_statistic": 0.0, "p_value": 1.0, "significant": False}
@@ -270,10 +265,16 @@ class StatisticalAnalyzer:
         return {
             "max_drawdown": float(actual_max_dd),
             "expected_max_dd_random_walk": float(expected_max_dd),
-            "drawdown_ratio": float(actual_max_dd / expected_max_dd) if expected_max_dd > 0 else 0.0,
+            "drawdown_ratio": float(actual_max_dd / expected_max_dd)
+            if expected_max_dd > 0
+            else 0.0,
             "n_drawdown_episodes": len(episodes),
-            "avg_drawdown_depth": float(np.mean([e["max_drawdown"] for e in episodes])) if episodes else 0.0,
-            "avg_drawdown_duration_bars": float(np.mean([e["duration_bars"] for e in episodes])) if episodes else 0.0,
+            "avg_drawdown_depth": float(np.mean([e["max_drawdown"] for e in episodes]))
+            if episodes
+            else 0.0,
+            "avg_drawdown_duration_bars": float(np.mean([e["duration_bars"] for e in episodes]))
+            if episodes
+            else 0.0,
             "top_5_drawdowns": top5,
             "current_drawdown": float(drawdown.iloc[-1]) if len(drawdown) > 0 else 0.0,
         }
@@ -293,11 +294,13 @@ class StatisticalAnalyzer:
             if mask.sum() == 0:
                 continue
             dd_slice = drawdown[mask]
-            episodes.append({
-                "max_drawdown": float(dd_slice.min()),
-                "duration_bars": int(mask.sum()),
-                "start_idx": int(mask.idxmax()) if hasattr(mask.idxmax(), '__int__') else 0,
-            })
+            episodes.append(
+                {
+                    "max_drawdown": float(dd_slice.min()),
+                    "duration_bars": int(mask.sum()),
+                    "start_idx": int(mask.idxmax()) if hasattr(mask.idxmax(), "__int__") else 0,
+                }
+            )
 
         return episodes
 

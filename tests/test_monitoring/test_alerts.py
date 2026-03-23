@@ -69,12 +69,14 @@ class TestRateLimiter:
         assert limiter.get_remaining(AlertTier.CRITICAL) is None
 
     def test_custom_limits(self) -> None:
-        limiter = RateLimiter(limits={
-            AlertTier.INFO: 3,
-            AlertTier.WARNING: 10,
-            AlertTier.CRITICAL: 0,
-            AlertTier.EMERGENCY: 0,
-        })
+        limiter = RateLimiter(
+            limits={
+                AlertTier.INFO: 3,
+                AlertTier.WARNING: 10,
+                AlertTier.CRITICAL: 0,
+                AlertTier.EMERGENCY: 0,
+            }
+        )
         for _ in range(3):
             assert limiter.allow(AlertTier.INFO)
             limiter.record(AlertTier.INFO)

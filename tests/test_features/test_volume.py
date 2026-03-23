@@ -40,11 +40,15 @@ def _make_volume_data(n: int = 30) -> dict[str, np.ndarray]:
 
 # ---- Volume Delta Tests ----
 
+
 class TestVolumeDelta:
     def test_output_names(self) -> None:
         vd = VolumeDeltaComputer()
         assert vd.output_names() == [
-            "vol_delta_1bar", "vol_delta_5bar", "vol_delta_1bar_raw", "vol_delta_5bar_raw",
+            "vol_delta_1bar",
+            "vol_delta_5bar",
+            "vol_delta_1bar_raw",
+            "vol_delta_5bar_raw",
         ]
 
     def test_warmup(self) -> None:
@@ -56,9 +60,15 @@ class TestVolumeDelta:
         vd = VolumeDeltaComputer()
         data = _make_volume_data()
         result = vd.compute(
-            2, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+            2,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
         )
         assert np.isnan(result["vol_delta_1bar"])
         assert np.isnan(result["vol_delta_5bar"])
@@ -67,8 +77,13 @@ class TestVolumeDelta:
         vd = VolumeDeltaComputer()
         data = _make_volume_data()
         result = vd.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["vol_delta_1bar"])
 
@@ -82,8 +97,15 @@ class TestVolumeDelta:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = vd.compute(
-            6, ts, dummy, dummy, dummy, dummy, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            6,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         assert result["vol_delta_1bar"] == pytest.approx(1.0)
         assert result["vol_delta_5bar"] == pytest.approx(1.0)
@@ -100,8 +122,15 @@ class TestVolumeDelta:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = vd.compute(
-            6, ts, dummy, dummy, dummy, dummy, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            6,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         assert result["vol_delta_1bar"] == pytest.approx(-1.0)
         assert result["vol_delta_5bar"] == pytest.approx(-1.0)
@@ -116,8 +145,15 @@ class TestVolumeDelta:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = vd.compute(
-            6, ts, dummy, dummy, dummy, dummy, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            6,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         # idx=6: trade_sizes[6]=7, trade_sides[6]=1 -> signed=7, total=7
         assert result["vol_delta_1bar"] == pytest.approx(1.0)
@@ -135,9 +171,15 @@ class TestVolumeDelta:
         vd = VolumeDeltaComputer()
         for i in range(vd.warmup_bars - 1, 50):
             result = vd.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
-                trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
+                trade_sizes=data["trade_sizes"],
+                trade_sides=data["trade_sides"],
             )
             for key in ["vol_delta_1bar", "vol_delta_5bar"]:
                 if not np.isnan(result[key]):
@@ -145,6 +187,7 @@ class TestVolumeDelta:
 
 
 # ---- VWAP Tests ----
+
 
 class TestVWAP:
     def test_output_names(self) -> None:
@@ -160,8 +203,13 @@ class TestVWAP:
         vwap = VWAPComputer(window=12)
         data = _make_volume_data()
         result = vwap.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["vwap"])
         assert np.isnan(result["vwap_deviation"])
@@ -210,8 +258,13 @@ class TestVWAP:
         vwap = VWAPComputer(window=12)
         for i in range(vwap.warmup_bars - 1, 50):
             result = vwap.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             if not np.isnan(result["vwap"]):
                 assert result["vwap"] > 0, f"VWAP should be positive, got {result['vwap']}"
@@ -233,6 +286,7 @@ class TestVWAP:
 
 # ---- Volume ROC Tests ----
 
+
 class TestVolumeROC:
     def test_output_names(self) -> None:
         vroc = VolumeROCComputer()
@@ -247,8 +301,13 @@ class TestVolumeROC:
         vroc = VolumeROCComputer()
         data = _make_volume_data()
         result = vroc.compute(
-            3, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            3,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["vol_roc_1"])
         assert np.isnan(result["vol_roc_3"])
@@ -299,9 +358,11 @@ class TestVolumeROC:
 
 # ---- Registry Integration ----
 
+
 class TestVolumeRegistry:
     def test_all_computers_register(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         reg = FeatureRegistry()
         reg.register(VolumeDeltaComputer())
         reg.register(VWAPComputer())
@@ -310,6 +371,7 @@ class TestVolumeRegistry:
 
     def test_compute_all_produces_all_features(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         data = _make_volume_data(30)
         reg = FeatureRegistry()
         reg.register(VolumeDeltaComputer())
@@ -318,15 +380,26 @@ class TestVolumeRegistry:
 
         result = reg.compute_all(
             20,
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
         )
 
         expected_keys = {
-            "vol_delta_1bar", "vol_delta_5bar", "vol_delta_1bar_raw", "vol_delta_5bar_raw",
-            "vwap", "vwap_deviation",
-            "vol_roc_1", "vol_roc_3", "vol_roc_6",
+            "vol_delta_1bar",
+            "vol_delta_5bar",
+            "vol_delta_1bar_raw",
+            "vol_delta_5bar_raw",
+            "vwap",
+            "vwap_deviation",
+            "vol_roc_1",
+            "vol_roc_3",
+            "vol_roc_6",
         }
         assert set(result.keys()) == expected_keys
 

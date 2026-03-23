@@ -165,8 +165,10 @@ class TestGARCHBatch:
 class TestGARCHResult:
     def test_result_is_frozen(self) -> None:
         result = GARCHResult(
-            conditional_vol=0.01, vol_regime=VolRegime.MEDIUM,
-            vol_percentile=0.5, confidence=0.5,
+            conditional_vol=0.01,
+            vol_regime=VolRegime.MEDIUM,
+            vol_percentile=0.5,
+            confidence=0.5,
         )
         with pytest.raises(AttributeError):
             result.conditional_vol = 0.02  # type: ignore[misc]

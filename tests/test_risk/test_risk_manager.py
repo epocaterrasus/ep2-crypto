@@ -41,9 +41,7 @@ def _make_signal(
     timestamp_ms: int | None = None,
 ) -> SignalInput:
     if timestamp_ms is None:
-        timestamp_ms = int(
-            datetime(2026, 3, 25, 14, 0, tzinfo=UTC).timestamp() * 1000
-        )
+        timestamp_ms = int(datetime(2026, 3, 25, 14, 0, tzinfo=UTC).timestamp() * 1000)
     return SignalInput(
         direction=direction,
         confidence=confidence,
@@ -51,9 +49,7 @@ def _make_signal(
     )
 
 
-def _make_prices(
-    n: int = 300, base: float = 67000.0
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _make_prices(n: int = 300, base: float = 67000.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(42)
     closes = base + np.cumsum(rng.normal(0, 50, n))
     highs = closes + rng.uniform(30, 150, n)
@@ -79,8 +75,11 @@ class TestApproveTradeBasic:
 
         # Open position
         rm.on_trade_opened(
-            "long", decision.quantity_btc, 67000.0,
-            signal.timestamp_ms, decision.stop_price,
+            "long",
+            decision.quantity_btc,
+            67000.0,
+            signal.timestamp_ms,
+            decision.stop_price,
         )
 
         # Try to open another
@@ -115,9 +114,7 @@ class TestKillSwitchIntegration:
     def test_emergency_kill_switch(self, rm: RiskManager) -> None:
         rm.trigger_emergency("Manual test halt")
         closes, highs, lows = _make_prices()
-        decision = rm.approve_trade(
-            _make_signal(), closes, highs, lows, len(closes) - 1
-        )
+        decision = rm.approve_trade(_make_signal(), closes, highs, lows, len(closes) - 1)
         assert not decision.approved
         assert "Kill switch" in decision.reason
 
@@ -126,16 +123,12 @@ class TestKillSwitchIntegration:
         rm.reset_kill_switch("emergency", "Test complete, safe to resume")
 
         closes, highs, lows = _make_prices()
-        decision = rm.approve_trade(
-            _make_signal(), closes, highs, lows, len(closes) - 1
-        )
+        decision = rm.approve_trade(_make_signal(), closes, highs, lows, len(closes) - 1)
         assert decision.approved
 
 
 class TestMaxTradesPerDay:
-    def test_exceeding_daily_trade_limit(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_exceeding_daily_trade_limit(self, conn: sqlite3.Connection) -> None:
         config = RiskConfig(
             enforce_trading_hours=False,
             min_volatility_ann=0.0,
@@ -151,8 +144,11 @@ class TestMaxTradesPerDay:
             d = rm.approve_trade(signal, closes, highs, lows, idx)
             assert d.approved
             rm.on_trade_opened(
-                "long", d.quantity_btc, 67000.0,
-                signal.timestamp_ms, d.stop_price,
+                "long",
+                d.quantity_btc,
+                67000.0,
+                signal.timestamp_ms,
+                d.stop_price,
             )
             rm.on_trade_closed(67100.0, signal.timestamp_ms + 300_000)
 
@@ -171,8 +167,11 @@ class TestOnBar:
         signal = _make_signal()
         d = rm.approve_trade(signal, closes, highs, lows, idx)
         rm.on_trade_opened(
-            "long", d.quantity_btc, 67000.0,
-            signal.timestamp_ms, d.stop_price,
+            "long",
+            d.quantity_btc,
+            67000.0,
+            signal.timestamp_ms,
+            d.stop_price,
         )
 
         # Simulate 6 bars
@@ -180,8 +179,14 @@ class TestOnBar:
         for i in range(7):
             bar_ts = signal.timestamp_ms + (i + 1) * 300_000
             bar_actions = rm.on_bar(
-                67000.0, 67100.0, 66900.0, bar_ts,
-                closes, highs, lows, idx,
+                67000.0,
+                67100.0,
+                66900.0,
+                bar_ts,
+                closes,
+                highs,
+                lows,
+                idx,
             )
             actions.extend(bar_actions)
 
@@ -196,15 +201,24 @@ class TestOnBar:
         signal = _make_signal()
         d = rm.approve_trade(signal, closes, highs, lows, idx)
         rm.on_trade_opened(
-            "long", d.quantity_btc, 67000.0,
-            signal.timestamp_ms, d.stop_price,
+            "long",
+            d.quantity_btc,
+            67000.0,
+            signal.timestamp_ms,
+            d.stop_price,
         )
 
         # Bar with low below stop price
         bar_ts = signal.timestamp_ms + 300_000
         actions = rm.on_bar(
-            66000.0, 67100.0, d.stop_price - 100, bar_ts,
-            closes, highs, lows, idx,
+            66000.0,
+            67100.0,
+            d.stop_price - 100,
+            bar_ts,
+            closes,
+            highs,
+            lows,
+            idx,
         )
 
         close_actions = [a for a in actions if a.action == RiskActionType.CLOSE_POSITION]
@@ -215,8 +229,14 @@ class TestOnBar:
         closes, highs, lows = _make_prices()
         idx = len(closes) - 1
         actions = rm.on_bar(
-            67000.0, 67100.0, 66900.0, 1700000000000,
-            closes, highs, lows, idx,
+            67000.0,
+            67100.0,
+            66900.0,
+            1700000000000,
+            closes,
+            highs,
+            lows,
+            idx,
         )
         assert actions == []
 
@@ -229,15 +249,24 @@ class TestOnBarKillSwitch:
         signal = _make_signal()
         d = rm.approve_trade(signal, closes, highs, lows, idx)
         rm.on_trade_opened(
-            "long", d.quantity_btc, 67000.0,
-            signal.timestamp_ms, d.stop_price,
+            "long",
+            d.quantity_btc,
+            67000.0,
+            signal.timestamp_ms,
+            d.stop_price,
         )
         # Trigger emergency while position is open
         rm.trigger_emergency("Test during bar")
         bar_ts = signal.timestamp_ms + 300_000
         actions = rm.on_bar(
-            67000.0, 67100.0, 66900.0, bar_ts,
-            closes, highs, lows, idx,
+            67000.0,
+            67100.0,
+            66900.0,
+            bar_ts,
+            closes,
+            highs,
+            lows,
+            idx,
         )
         close_actions = [a for a in actions if a.action == RiskActionType.CLOSE_POSITION]
         assert len(close_actions) >= 1
@@ -252,14 +281,23 @@ class TestShortStopLoss:
         d = rm.approve_trade(signal, closes, highs, lows, idx)
         assert d.approved
         rm.on_trade_opened(
-            "short", d.quantity_btc, 67000.0,
-            signal.timestamp_ms, d.stop_price,
+            "short",
+            d.quantity_btc,
+            67000.0,
+            signal.timestamp_ms,
+            d.stop_price,
         )
         # Bar high exceeds short stop price
         bar_ts = signal.timestamp_ms + 300_000
         actions = rm.on_bar(
-            67000.0, d.stop_price + 500, 66800.0, bar_ts,
-            closes, highs, lows, idx,
+            67000.0,
+            d.stop_price + 500,
+            66800.0,
+            bar_ts,
+            closes,
+            highs,
+            lows,
+            idx,
         )
         close_actions = [a for a in actions if a.action == RiskActionType.CLOSE_POSITION]
         assert len(close_actions) >= 1
@@ -335,8 +373,11 @@ class TestDayWeekReset:
         signal = _make_signal()
         d = rm.approve_trade(signal, closes, highs, lows, len(closes) - 1)
         rm.on_trade_opened(
-            "long", d.quantity_btc, 67000.0,
-            signal.timestamp_ms, d.stop_price,
+            "long",
+            d.quantity_btc,
+            67000.0,
+            signal.timestamp_ms,
+            d.stop_price,
         )
         rm.on_trade_closed(67100.0, signal.timestamp_ms + 300_000)
         assert rm.get_risk_state().trades_today == 1

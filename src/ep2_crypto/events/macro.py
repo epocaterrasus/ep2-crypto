@@ -368,10 +368,7 @@ class MacroEventMonitor:
 
         # Weighted combination
         confidence = (
-            0.35 * corr_factor
-            + 0.25 * mag_factor
-            + 0.20 * vix_factor
-            + 0.20 * impact_factor
+            0.35 * corr_factor + 0.25 * mag_factor + 0.20 * vix_factor + 0.20 * impact_factor
         )
 
         return max(0.0, min(1.0, confidence))

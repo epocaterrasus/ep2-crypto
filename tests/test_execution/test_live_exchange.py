@@ -16,7 +16,6 @@ from ep2_crypto.execution.venue import (
     VenueType,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -145,9 +144,7 @@ class TestLiveExchangeOrders:
 
     @pytest.mark.asyncio
     async def test_place_market_buy(self, exchange: LiveExchange) -> None:
-        result = await exchange.place_order(
-            OrderRequest(side=OrderSide.BUY, size=0.1)
-        )
+        await exchange.place_order(OrderRequest(side=OrderSide.BUY, size=0.1))
         exchange._exchange.create_order.assert_awaited_once()
         call_args = exchange._exchange.create_order.call_args
         assert call_args.kwargs["type"] == "market"
@@ -156,15 +153,13 @@ class TestLiveExchangeOrders:
 
     @pytest.mark.asyncio
     async def test_place_market_sell(self, exchange: LiveExchange) -> None:
-        result = await exchange.place_order(
-            OrderRequest(side=OrderSide.SELL, size=0.05)
-        )
+        await exchange.place_order(OrderRequest(side=OrderSide.SELL, size=0.05))
         call_args = exchange._exchange.create_order.call_args
         assert call_args.kwargs["side"] == "sell"
 
     @pytest.mark.asyncio
     async def test_place_limit_order(self, exchange: LiveExchange) -> None:
-        result = await exchange.place_order(
+        await exchange.place_order(
             OrderRequest(side=OrderSide.BUY, size=0.1, order_type=OrderType.LIMIT, price=99_000.0)
         )
         call_args = exchange._exchange.create_order.call_args
@@ -189,7 +184,12 @@ class TestLiveExchangeOrders:
     @pytest.mark.asyncio
     async def test_cancel_order(self, exchange: LiveExchange) -> None:
         result = await exchange.cancel_order("order-123")
-        exchange._exchange.cancel_order.assert_awaited_once_with("order-123", symbol=LiveExchange._LiveExchange__name if hasattr(LiveExchange, '_LiveExchange__name') else "BTC/USDT:USDT")
+        exchange._exchange.cancel_order.assert_awaited_once_with(
+            "order-123",
+            symbol=LiveExchange._LiveExchange__name
+            if hasattr(LiveExchange, "_LiveExchange__name")
+            else "BTC/USDT:USDT",
+        )
         assert result.status == OrderStatus.CANCELLED
 
     @pytest.mark.asyncio

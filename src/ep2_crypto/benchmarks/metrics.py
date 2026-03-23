@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +207,6 @@ def _extract_trades(
     trades = []
     pos_array = positions.values
     ret_array = returns.values
-    idx = positions.index
 
     # Find indices where position changes (trade boundaries)
     change_mask = np.diff(pos_array, prepend=pos_array[0] - 1) != 0

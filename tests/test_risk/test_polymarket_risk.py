@@ -7,7 +7,6 @@ import time
 
 import pytest
 
-from ep2_crypto.risk.binary_position_sizer import BinaryPositionSizer
 from ep2_crypto.risk.config import RiskConfig
 from ep2_crypto.risk.kill_switches import SwitchName  # noqa: F401 — Literal type
 from ep2_crypto.risk.polymarket_risk import (
@@ -117,7 +116,7 @@ class TestKillSwitches:
 
     def test_consecutive_loss_triggers(self) -> None:
         adapter = _make_adapter(consecutive_loss_limit=3)
-        for i in range(3):
+        for _i in range(3):
             adapter.on_trade_opened()
             adapter.on_trade_resolved(won=False, pnl=-10.0)
 
@@ -310,7 +309,7 @@ class TestFullScenario:
         """Simulate consecutive losses triggering kill switch."""
         adapter = _make_adapter(consecutive_loss_limit=5, daily_loss_limit=0.10)
 
-        for i in range(5):
+        for _i in range(5):
             signal = _make_signal(model_prob=0.55)
             decision = adapter.approve_trade(signal)
             if not decision.approved:

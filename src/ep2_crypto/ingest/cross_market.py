@@ -12,6 +12,7 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import time
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 
 import structlog
 
-from ep2_crypto.ingest.base import BaseCollector, CollectorState, HealthStatus
+from ep2_crypto.ingest.base import BaseCollector
 
 logger = structlog.get_logger(__name__)
 
@@ -87,13 +88,11 @@ class TwelveDataCollector(BaseCollector):
                 for _ in bars:
                     self._record_message(time.time())
             # Wait for poll_interval or until stop
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._stop_event.wait(),
                     timeout=self._poll_interval_s,
                 )
-            except asyncio.TimeoutError:
-                pass
 
     def get_latest_bars(self) -> list[CrossMarketBar]:
         return list(self._bars)
@@ -104,13 +103,15 @@ class TwelveDataCollector(BaseCollector):
         Returns an empty list on error rather than raising, to allow the
         collector to continue polling other symbols.
         """
-        params = urllib.parse.urlencode({
-            "symbol": symbol,
-            "interval": "1min",
-            "outputsize": 5,
-            "apikey": self._api_key,
-            "format": "JSON",
-        })
+        params = urllib.parse.urlencode(
+            {
+                "symbol": symbol,
+                "interval": "1min",
+                "outputsize": 5,
+                "apikey": self._api_key,
+                "format": "JSON",
+            }
+        )
         url = f"{self._TWELVE_DATA_BASE}/time_series?{params}"
 
         try:
@@ -137,18 +138,21 @@ class TwelveDataCollector(BaseCollector):
             try:
                 dt_str = v["datetime"]  # "2026-03-23 15:30:00"
                 import datetime
+
                 dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
                 ts_ms = int(dt.timestamp() * 1000)
-                bars.append(CrossMarketBar(
-                    symbol=symbol,
-                    timestamp_ms=ts_ms,
-                    open=float(v["open"]),
-                    high=float(v["high"]),
-                    low=float(v["low"]),
-                    close=float(v["close"]),
-                    volume=float(v.get("volume", 0)),
-                    source="twelve_data",
-                ))
+                bars.append(
+                    CrossMarketBar(
+                        symbol=symbol,
+                        timestamp_ms=ts_ms,
+                        open=float(v["open"]),
+                        high=float(v["high"]),
+                        low=float(v["low"]),
+                        close=float(v["close"]),
+                        volume=float(v.get("volume", 0)),
+                        source="twelve_data",
+                    )
+                )
             except (KeyError, ValueError) as exc:
                 self._log.warning("twelve_data_parse_error", symbol=symbol, error=str(exc))
         return bars
@@ -195,13 +199,11 @@ class YFinanceFallbackCollector(BaseCollector):
                 self._bars.extend(bars)
                 for _ in bars:
                     self._record_message(time.time())
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._stop_event.wait(),
                     timeout=self._poll_interval_s,
                 )
-            except asyncio.TimeoutError:
-                pass
 
     def get_latest_bars(self) -> list[CrossMarketBar]:
         return list(self._bars)
@@ -211,9 +213,7 @@ class YFinanceFallbackCollector(BaseCollector):
         yf_symbol = self._SYMBOL_MAP.get(symbol, symbol)
         loop = asyncio.get_event_loop()
         try:
-            bars = await loop.run_in_executor(
-                None, self._fetch_yfinance_sync, yf_symbol, symbol
-            )
+            bars = await loop.run_in_executor(None, self._fetch_yfinance_sync, yf_symbol, symbol)
         except Exception as exc:
             self._log.warning("yfinance_fetch_failed", symbol=symbol, error=str(exc))
             return []
@@ -235,16 +235,18 @@ class YFinanceFallbackCollector(BaseCollector):
         bars: list[CrossMarketBar] = []
         for ts, row in hist.iterrows():
             ts_ms = int(ts.timestamp() * 1000)
-            bars.append(CrossMarketBar(
-                symbol=orig_symbol,
-                timestamp_ms=ts_ms,
-                open=float(row["Open"]),
-                high=float(row["High"]),
-                low=float(row["Low"]),
-                close=float(row["Close"]),
-                volume=float(row.get("Volume", 0)),
-                source="yfinance",
-            ))
+            bars.append(
+                CrossMarketBar(
+                    symbol=orig_symbol,
+                    timestamp_ms=ts_ms,
+                    open=float(row["Open"]),
+                    high=float(row["High"]),
+                    low=float(row["Low"]),
+                    close=float(row["Close"]),
+                    volume=float(row.get("Volume", 0)),
+                    source="yfinance",
+                )
+            )
         return bars
 
 
@@ -256,6 +258,8 @@ def create_cross_market_collector(
     api_key = os.environ.get("TWELVE_DATA_API_KEY", "")
     if api_key:
         logger.info("cross_market_using_twelve_data")
-        return TwelveDataCollector(symbols=symbols, poll_interval_s=poll_interval_s, api_key=api_key)
+        return TwelveDataCollector(
+            symbols=symbols, poll_interval_s=poll_interval_s, api_key=api_key
+        )
     logger.info("cross_market_using_yfinance_fallback", reason="TWELVE_DATA_API_KEY not set")
     return YFinanceFallbackCollector(symbols=symbols, poll_interval_s=poll_interval_s)

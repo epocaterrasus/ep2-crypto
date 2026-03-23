@@ -16,9 +16,7 @@ def guard() -> VolatilityGuard:
     return VolatilityGuard()
 
 
-def _make_prices_with_vol(
-    n_bars: int, base_price: float, target_vol_ann: float
-) -> np.ndarray:
+def _make_prices_with_vol(n_bars: int, base_price: float, target_vol_ann: float) -> np.ndarray:
     """Generate synthetic close prices with approximately the target annualized vol."""
     rng = np.random.default_rng(42)
     bar_vol = target_vol_ann / ANNUALIZATION_FACTOR

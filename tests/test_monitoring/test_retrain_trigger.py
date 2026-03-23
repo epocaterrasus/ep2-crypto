@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from ep2_crypto.monitoring.retrain_trigger import (
-    RetrainDecision,
     RetrainReason,
     RetrainTrigger,
     ValidationResult,
@@ -122,9 +120,7 @@ class TestExecuteRetrain:
             feature_overlap=0.85,
             calibration_ece=0.03,
         )
-        decision = trigger.execute_retrain(
-            RetrainReason.FEATURE_DRIFT, trainer, timestamp_ms=1000
-        )
+        decision = trigger.execute_retrain(RetrainReason.FEATURE_DRIFT, trainer, timestamp_ms=1000)
         assert decision.model_swapped
         assert decision.validation_result == ValidationResult.PASSED
         trainer.swap_model.assert_called_once()
@@ -137,9 +133,7 @@ class TestExecuteRetrain:
             feature_overlap=0.85,
             calibration_ece=0.03,
         )
-        decision = trigger.execute_retrain(
-            RetrainReason.SCHEDULED, trainer, timestamp_ms=2000
-        )
+        decision = trigger.execute_retrain(RetrainReason.SCHEDULED, trainer, timestamp_ms=2000)
         assert not decision.model_swapped
         assert decision.validation_result == ValidationResult.FAILED_PERFORMANCE
         trainer.discard_new_model.assert_called_once()
@@ -151,9 +145,7 @@ class TestExecuteRetrain:
             feature_overlap=0.5,  # Below 0.7 threshold
             calibration_ece=0.03,
         )
-        decision = trigger.execute_retrain(
-            RetrainReason.SCHEDULED, trainer, timestamp_ms=3000
-        )
+        decision = trigger.execute_retrain(RetrainReason.SCHEDULED, trainer, timestamp_ms=3000)
         assert not decision.model_swapped
         assert decision.validation_result == ValidationResult.FAILED_FEATURE_OVERLAP
 
@@ -164,9 +156,7 @@ class TestExecuteRetrain:
             feature_overlap=0.85,
             calibration_ece=0.08,  # Above 0.05 threshold
         )
-        decision = trigger.execute_retrain(
-            RetrainReason.SCHEDULED, trainer, timestamp_ms=4000
-        )
+        decision = trigger.execute_retrain(RetrainReason.SCHEDULED, trainer, timestamp_ms=4000)
         assert not decision.model_swapped
         assert decision.validation_result == ValidationResult.FAILED_CALIBRATION
 
@@ -177,17 +167,13 @@ class TestExecuteRetrain:
             feature_overlap=0.3,
             calibration_ece=0.1,
         )
-        decision = trigger.execute_retrain(
-            RetrainReason.MANUAL, trainer, timestamp_ms=5000
-        )
+        decision = trigger.execute_retrain(RetrainReason.MANUAL, trainer, timestamp_ms=5000)
         assert not decision.model_swapped
         assert decision.validation_result == ValidationResult.FAILED_MULTIPLE
 
     def test_retrain_exception_handled(self, trigger: RetrainTrigger) -> None:
         trainer = make_trainer(retrain_raises=True)
-        decision = trigger.execute_retrain(
-            RetrainReason.MANUAL, trainer, timestamp_ms=6000
-        )
+        decision = trigger.execute_retrain(RetrainReason.MANUAL, trainer, timestamp_ms=6000)
         assert not decision.model_swapped
         assert decision.validation_result == ValidationResult.FAILED_PERFORMANCE
         assert "error" in decision.details
@@ -225,9 +211,7 @@ class TestExecuteRetrain:
             feature_overlap=0.85,
             calibration_ece=0.03,
         )
-        decision = trigger.execute_retrain(
-            RetrainReason.FEATURE_DRIFT, trainer, timestamp_ms=7000
-        )
+        decision = trigger.execute_retrain(RetrainReason.FEATURE_DRIFT, trainer, timestamp_ms=7000)
         assert decision.timestamp_ms == 7000
         assert decision.old_sharpe == 1.0
         assert decision.new_sharpe == 1.5

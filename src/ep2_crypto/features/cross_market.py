@@ -220,14 +220,16 @@ class LeadLagComputer(FeatureComputer):
 
         # BTC returns over the window
         start = idx - self._window + 1
-        btc_rets = np.diff(closes[start - 1:idx + 1]) / closes[start - 1:idx]
+        btc_rets = np.diff(closes[start - 1 : idx + 1]) / closes[start - 1 : idx]
 
         result: dict[str, float] = {}
         for lag in [1, 2, 3]:
             # NQ returns lagged by `lag` bars
             nq_start = start - lag
             nq_end = idx - lag + 1
-            nq_rets = np.diff(nq_closes[nq_start - 1:nq_end]) / nq_closes[nq_start - 1:nq_end - 1]
+            nq_rets = (
+                np.diff(nq_closes[nq_start - 1 : nq_end]) / nq_closes[nq_start - 1 : nq_end - 1]
+            )
 
             min_len = min(len(btc_rets), len(nq_rets))
             if min_len < 5:
@@ -376,8 +378,8 @@ class CoinbasePremiumComputer(FeatureComputer):
 
         # Rolling z-score
         start = idx - self._zscore_window + 1
-        bin_window = closes[start:idx + 1]
-        cb_window = coinbase_closes[start:idx + 1]
+        bin_window = closes[start : idx + 1]
+        cb_window = coinbase_closes[start : idx + 1]
         valid = (bin_window > 0) & (cb_window > 0)
         if np.sum(valid) < 10:
             return nan_result
@@ -470,10 +472,9 @@ class ETHOrderFlowComputer(FeatureComputer):
 
         # Rolling z-score of net taker over window
         start = idx - self._zscore_window + 1
-        raw = np.array([
-            float(eth_trade_sizes[i] * eth_trade_sides[i])
-            for i in range(start, idx + 1)
-        ])
+        raw = np.array(
+            [float(eth_trade_sizes[i] * eth_trade_sides[i]) for i in range(start, idx + 1)]
+        )
         mu = float(np.mean(raw))
         sigma = float(np.std(raw))
         zscore = (net - mu) / sigma if sigma > 1e-12 else 0.0
@@ -550,7 +551,7 @@ class LongShortRatioComputer(FeatureComputer):
 
         # Rolling z-score
         start = idx - self._zscore_window + 1
-        window = long_short_ratio[start:idx + 1]
+        window = long_short_ratio[start : idx + 1]
         valid = window > 0
         if np.sum(valid) < 10:
             return nan_result
@@ -564,7 +565,7 @@ class LongShortRatioComputer(FeatureComputer):
         if ratio > 2.5:
             contrarian = -(ratio - 2.5) / 2.5  # negative = expect down
         elif ratio < 0.5:
-            contrarian = (0.5 - ratio) / 0.5   # positive = expect up
+            contrarian = (0.5 - ratio) / 0.5  # positive = expect up
         else:
             contrarian = 0.0
 
@@ -630,7 +631,7 @@ class CrossExchangeOFIComputer(FeatureComputer):
 
         # Rolling mean divergence
         start = idx - self._window + 1
-        diffs = binance_ofi[start:idx + 1] - coinbase_ofi[start:idx + 1]
+        diffs = binance_ofi[start : idx + 1] - coinbase_ofi[start : idx + 1]
         div_ma = float(np.mean(diffs))
 
         return {

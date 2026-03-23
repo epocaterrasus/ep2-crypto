@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numba
 import numpy as np
 import structlog
-from numpy.typing import NDArray
 
 from ep2_crypto.backtest.metrics import (
     BacktestResult,
@@ -35,6 +35,9 @@ from ep2_crypto.risk.risk_manager import (
     RiskManager,
     SignalInput,
 )
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = structlog.get_logger(__name__)
 
@@ -236,8 +239,11 @@ class BacktestEngine:
                 )
 
                 decision = risk_mgr.approve_trade(
-                    signal_input, closes[:i + 1], highs[:i + 1],
-                    lows[:i + 1], i,
+                    signal_input,
+                    closes[: i + 1],
+                    highs[: i + 1],
+                    lows[: i + 1],
+                    i,
                 )
 
                 if decision.approved and decision.quantity_btc > 0:
@@ -270,15 +276,18 @@ class BacktestEngine:
             risk_actions: list[RiskAction] = []
             if position_side != 0:
                 risk_actions = risk_mgr.on_bar(
-                    bar_close, bar_high, bar_low, bar_ts,
-                    closes[:i + 1], highs[:i + 1], lows[:i + 1], i,
+                    bar_close,
+                    bar_high,
+                    bar_low,
+                    bar_ts,
+                    closes[: i + 1],
+                    highs[: i + 1],
+                    lows[: i + 1],
+                    i,
                 )
 
             # 3. Handle risk actions (forced exits)
-            force_close = any(
-                a.action == RiskActionType.CLOSE_POSITION
-                for a in risk_actions
-            )
+            force_close = any(a.action == RiskActionType.CLOSE_POSITION for a in risk_actions)
 
             if force_close and position_side != 0:
                 side_str = "long" if position_side > 0 else "short"
@@ -290,8 +299,10 @@ class BacktestEngine:
                 )
                 if exit_result.executed:
                     pnl = self._compute_trade_pnl(
-                        position_side, position_qty,
-                        position_entry_price, exit_result.fill_price,
+                        position_side,
+                        position_qty,
+                        position_entry_price,
+                        exit_result.fill_price,
                     )
                     equity += pnl - exit_result.fee_usd
                     total_fees += exit_result.fee_usd
@@ -300,18 +311,20 @@ class BacktestEngine:
 
                     risk_mgr.on_trade_closed(exit_result.fill_price, bar_ts)
 
-                    trades.append(TradeRecord(
-                        entry_bar=position_entry_bar,
-                        exit_bar=i,
-                        side=side_str,
-                        entry_price=position_entry_price,
-                        exit_price=exit_result.fill_price,
-                        quantity=position_qty,
-                        pnl_usd=pnl,
-                        return_pct=pnl / (position_qty * position_entry_price),
-                        bars_held=i - position_entry_bar,
-                        exit_cost_bps=exit_result.total_cost_bps,
-                    ))
+                    trades.append(
+                        TradeRecord(
+                            entry_bar=position_entry_bar,
+                            exit_bar=i,
+                            side=side_str,
+                            entry_price=position_entry_price,
+                            exit_price=exit_result.fill_price,
+                            quantity=position_qty,
+                            pnl_usd=pnl,
+                            return_pct=pnl / (position_qty * position_entry_price),
+                            bars_held=i - position_entry_bar,
+                            exit_cost_bps=exit_result.total_cost_bps,
+                        )
+                    )
 
                     position_side = 0
                     position_qty = 0.0
@@ -324,7 +337,9 @@ class BacktestEngine:
                     notional = position_qty * bar_close
                     is_long = position_side > 0
                     payment = self._funding.funding_payment(
-                        notional, is_long, float(funding_rates[i]),
+                        notional,
+                        is_long,
+                        float(funding_rates[i]),
                     )
                     equity -= payment
                     total_funding += payment
@@ -333,8 +348,11 @@ class BacktestEngine:
             if position_side != 0 and prev_close > 0:
                 equity_before = equity
                 equity = _update_equity_numba(
-                    equity, position_qty, position_side,
-                    bar_close, prev_close,
+                    equity,
+                    position_qty,
+                    position_side,
+                    bar_close,
+                    prev_close,
                 )
                 if equity_before > 0:
                     per_bar_returns[i] = (equity - equity_before) / equity_before
@@ -359,25 +377,29 @@ class BacktestEngine:
                     )
                     if exit_result.executed:
                         pnl = self._compute_trade_pnl(
-                            position_side, position_qty,
-                            position_entry_price, exit_result.fill_price,
+                            position_side,
+                            position_qty,
+                            position_entry_price,
+                            exit_result.fill_price,
                         )
                         equity += pnl - exit_result.fee_usd
                         total_fees += exit_result.fee_usd
 
                         risk_mgr.on_trade_closed(exit_result.fill_price, bar_ts)
 
-                        trades.append(TradeRecord(
-                            entry_bar=position_entry_bar,
-                            exit_bar=i,
-                            side=side_str,
-                            entry_price=position_entry_price,
-                            exit_price=exit_result.fill_price,
-                            quantity=position_qty,
-                            pnl_usd=pnl,
-                            return_pct=pnl / (position_qty * position_entry_price),
-                            bars_held=i - position_entry_bar,
-                        ))
+                        trades.append(
+                            TradeRecord(
+                                entry_bar=position_entry_bar,
+                                exit_bar=i,
+                                side=side_str,
+                                entry_price=position_entry_price,
+                                exit_price=exit_result.fill_price,
+                                quantity=position_qty,
+                                pnl_usd=pnl,
+                                return_pct=pnl / (position_qty * position_entry_price),
+                                bars_held=i - position_entry_bar,
+                            )
+                        )
 
                         position_side = 0
                         position_qty = 0.0
@@ -399,23 +421,27 @@ class BacktestEngine:
             )
             if exit_result.executed:
                 pnl = self._compute_trade_pnl(
-                    position_side, position_qty,
-                    position_entry_price, exit_result.fill_price,
+                    position_side,
+                    position_qty,
+                    position_entry_price,
+                    exit_result.fill_price,
                 )
                 equity += pnl - exit_result.fee_usd
                 total_fees += exit_result.fee_usd
 
-                trades.append(TradeRecord(
-                    entry_bar=position_entry_bar,
-                    exit_bar=n - 1,
-                    side=side_str,
-                    entry_price=position_entry_price,
-                    exit_price=exit_result.fill_price,
-                    quantity=position_qty,
-                    pnl_usd=pnl,
-                    return_pct=pnl / (position_qty * position_entry_price),
-                    bars_held=n - 1 - position_entry_bar,
-                ))
+                trades.append(
+                    TradeRecord(
+                        entry_bar=position_entry_bar,
+                        exit_bar=n - 1,
+                        side=side_str,
+                        entry_price=position_entry_price,
+                        exit_price=exit_result.fill_price,
+                        quantity=position_qty,
+                        pnl_usd=pnl,
+                        return_pct=pnl / (position_qty * position_entry_price),
+                        bars_held=n - 1 - position_entry_bar,
+                    )
+                )
 
         conn.close()
 

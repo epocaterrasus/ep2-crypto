@@ -35,6 +35,7 @@ def _make_price_data(n: int = 80) -> dict[str, np.ndarray]:
 
 # ---- ROC Tests ----
 
+
 class TestROC:
     def test_output_names(self) -> None:
         roc = ROCComputer()
@@ -49,18 +50,38 @@ class TestROC:
         roc = ROCComputer()
         data = _make_price_data()
         result = roc.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["roc_1"])
 
     def test_golden_dataset(self) -> None:
         """Hand-verified ROC computation."""
         n = 15
-        closes = np.array([
-            100.0, 102.0, 105.0, 103.0, 108.0, 110.0, 107.0,
-            112.0, 115.0, 113.0, 118.0, 120.0, 117.0, 122.0, 125.0,
-        ])
+        closes = np.array(
+            [
+                100.0,
+                102.0,
+                105.0,
+                103.0,
+                108.0,
+                110.0,
+                107.0,
+                112.0,
+                115.0,
+                113.0,
+                118.0,
+                120.0,
+                117.0,
+                122.0,
+                125.0,
+            ]
+        )
 
         roc = ROCComputer()
         ts = np.arange(n, dtype=np.int64) * 60_000
@@ -104,6 +125,7 @@ class TestROC:
 
 # ---- RSI Tests ----
 
+
 class TestRSI:
     def test_output_names(self) -> None:
         rsi = RSIComputer()
@@ -118,8 +140,13 @@ class TestRSI:
         rsi = RSIComputer()
         data = _make_price_data()
         result = rsi.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["rsi"])
 
@@ -151,8 +178,13 @@ class TestRSI:
         rsi = RSIComputer()
         for i in range(rsi.warmup_bars - 1, 80):
             result = rsi.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert 0.0 <= result["rsi"] <= 100.0, f"RSI={result['rsi']} out of bounds at idx={i}"
 
@@ -175,6 +207,7 @@ class TestRSI:
 
 # ---- LinReg Slope Tests ----
 
+
 class TestLinRegSlope:
     def test_output_names(self) -> None:
         lrs = LinRegSlopeComputer()
@@ -189,8 +222,13 @@ class TestLinRegSlope:
         lrs = LinRegSlopeComputer()
         data = _make_price_data()
         result = lrs.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["linreg_slope"])
 
@@ -246,6 +284,7 @@ class TestLinRegSlope:
 
 # ---- Quantile Rank Tests ----
 
+
 class TestQuantileRank:
     def test_output_names(self) -> None:
         qr = QuantileRankComputer()
@@ -260,8 +299,13 @@ class TestQuantileRank:
         qr = QuantileRankComputer()
         data = _make_price_data()
         result = qr.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["quantile_rank"])
 
@@ -293,8 +337,13 @@ class TestQuantileRank:
         qr = QuantileRankComputer(window=60)
         for i in range(qr.warmup_bars - 1, 80):
             result = qr.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert 0.0 <= result["quantile_rank"] <= 1.0
 
@@ -315,9 +364,11 @@ class TestQuantileRank:
 
 # ---- Registry Integration ----
 
+
 class TestMomentumRegistry:
     def test_all_computers_register(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         reg = FeatureRegistry()
         reg.register(ROCComputer())
         reg.register(RSIComputer())
@@ -327,6 +378,7 @@ class TestMomentumRegistry:
 
     def test_compute_all_produces_all_features(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         data = _make_price_data(80)
         reg = FeatureRegistry()
         reg.register(ROCComputer())
@@ -336,12 +388,19 @@ class TestMomentumRegistry:
 
         result = reg.compute_all(
             70,
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
 
         expected_keys = {
-            "roc_1", "roc_3", "roc_6", "roc_12",
+            "roc_1",
+            "roc_3",
+            "roc_6",
+            "roc_12",
             "rsi",
             "linreg_slope",
             "quantile_rank",

@@ -168,9 +168,7 @@ class TestBarStateLogging:
 
 
 class TestQueries:
-    def _insert_trades(
-        self, perf_logger: PerformanceLogger, n: int = 10
-    ) -> list[int]:
+    def _insert_trades(self, perf_logger: PerformanceLogger, n: int = 10) -> list[int]:
         ids = []
         for i in range(n):
             pnl = 10.0 if i % 3 != 0 else -5.0  # ~67% win rate
@@ -196,9 +194,7 @@ class TestQueries:
 
     def test_query_trades_time_range(self, perf_logger: PerformanceLogger) -> None:
         self._insert_trades(perf_logger, 10)
-        trades = perf_logger.query_trades(
-            start_ms=300_000 * 3, end_ms=300_000 * 7
-        )
+        trades = perf_logger.query_trades(start_ms=300_000 * 3, end_ms=300_000 * 7)
         assert all(300_000 * 3 <= t["timestamp_ms"] <= 300_000 * 7 for t in trades)
 
     def test_query_trades_limit(self, perf_logger: PerformanceLogger) -> None:
@@ -214,19 +210,13 @@ class TestQueries:
         states = perf_logger.query_bar_states()
         assert len(states) == 5
 
-    def test_query_bar_states_time_range(
-        self, perf_logger: PerformanceLogger
-    ) -> None:
+    def test_query_bar_states_time_range(self, perf_logger: PerformanceLogger) -> None:
         for i in range(10):
             perf_logger.log_bar_state(
                 BarStateRecord(timestamp_ms=(i + 1) * 300_000, bar_close=50000.0)
             )
-        states = perf_logger.query_bar_states(
-            start_ms=300_000 * 3, end_ms=300_000 * 7
-        )
-        assert all(
-            300_000 * 3 <= s["timestamp_ms"] <= 300_000 * 7 for s in states
-        )
+        states = perf_logger.query_bar_states(start_ms=300_000 * 3, end_ms=300_000 * 7)
+        assert all(300_000 * 3 <= s["timestamp_ms"] <= 300_000 * 7 for s in states)
 
     def test_get_recent_pnl(self, perf_logger: PerformanceLogger) -> None:
         self._insert_trades(perf_logger, 10)
@@ -248,9 +238,7 @@ class TestQueries:
     def test_get_win_rate_empty(self, perf_logger: PerformanceLogger) -> None:
         assert perf_logger.get_win_rate() is None
 
-    def test_get_completed_trade_count(
-        self, perf_logger: PerformanceLogger
-    ) -> None:
+    def test_get_completed_trade_count(self, perf_logger: PerformanceLogger) -> None:
         self._insert_trades(perf_logger, 5)
         assert perf_logger.get_completed_trade_count() == 5
 
@@ -278,9 +266,7 @@ class TestQueries:
         assert latest is not None
         assert latest["timestamp_ms"] == 5 * 300_000
 
-    def test_get_latest_bar_state_empty(
-        self, perf_logger: PerformanceLogger
-    ) -> None:
+    def test_get_latest_bar_state_empty(self, perf_logger: PerformanceLogger) -> None:
         assert perf_logger.get_latest_bar_state() is None
 
     def test_get_cumulative_pnl(self, perf_logger: PerformanceLogger) -> None:
@@ -288,9 +274,7 @@ class TestQueries:
         cum_pnl = perf_logger.get_cumulative_pnl()
         assert isinstance(cum_pnl, float)
 
-    def test_get_cumulative_pnl_empty(
-        self, perf_logger: PerformanceLogger
-    ) -> None:
+    def test_get_cumulative_pnl_empty(self, perf_logger: PerformanceLogger) -> None:
         assert perf_logger.get_cumulative_pnl() == 0.0
 
     def test_get_accuracy(self, perf_logger: PerformanceLogger) -> None:
@@ -322,9 +306,7 @@ class TestEdgeCases:
         stored_features = json.loads(trades[0]["features_json"])
         assert stored_features == features
 
-    def test_meta_info_json_roundtrip(
-        self, perf_logger: PerformanceLogger
-    ) -> None:
+    def test_meta_info_json_roundtrip(self, perf_logger: PerformanceLogger) -> None:
         meta = {"model_version": "v1.2", "retrain_id": 42}
         perf_logger.log_trade(
             TradeRecord(
@@ -341,9 +323,7 @@ class TestEdgeCases:
         stored_meta = json.loads(trades[0]["meta_json"])
         assert stored_meta == meta
 
-    def test_risk_state_json_roundtrip(
-        self, perf_logger: PerformanceLogger
-    ) -> None:
+    def test_risk_state_json_roundtrip(self, perf_logger: PerformanceLogger) -> None:
         risk = {"daily_pnl": -0.01, "kill_switches": ["none"]}
         perf_logger.log_bar_state(
             BarStateRecord(

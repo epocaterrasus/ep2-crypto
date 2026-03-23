@@ -75,9 +75,7 @@ class TestRollingSharpeMonitor:
             assert not monitor.update(0.001)
 
     def test_declining_sharpe_detected(self) -> None:
-        monitor = RollingSharpeMonitor(
-            short_window=20, long_window=100, decline_threshold=0.5
-        )
+        monitor = RollingSharpeMonitor(short_window=20, long_window=100, decline_threshold=0.5)
         # Long good period to build positive baseline
         for _ in range(80):
             monitor.update(0.002)
@@ -90,9 +88,7 @@ class TestRollingSharpeMonitor:
         assert monitor.declining
 
     def test_stable_sharpe_no_decline(self) -> None:
-        monitor = RollingSharpeMonitor(
-            short_window=20, long_window=50, decline_threshold=0.5
-        )
+        monitor = RollingSharpeMonitor(short_window=20, long_window=50, decline_threshold=0.5)
         for _ in range(60):
             monitor.update(0.001)
         assert not monitor.declining
@@ -253,10 +249,8 @@ class TestAlphaDecayMonitor:
         assert state.level >= AlertLevel.WARNING
 
     def test_on_trade_updates_sprt(self) -> None:
-        monitor = AlphaDecayMonitor(
-            sprt_p0=0.55, sprt_p1=0.45, sprt_min_trades=20
-        )
-        for i in range(100):
+        monitor = AlphaDecayMonitor(sprt_p0=0.55, sprt_p1=0.45, sprt_min_trades=20)
+        for _i in range(100):
             state = monitor.on_trade(pnl=-1.0)  # All losses
             if state.sprt_rejected:
                 break
@@ -279,11 +273,13 @@ class TestAlphaDecayMonitor:
         for _ in range(50):
             state = monitor.on_bar(-0.005)
 
-        active = sum([
-            state.cusum_signal,
-            state.sharpe_declining,
-            state.adwin_detected,
-        ])
+        active = sum(
+            [
+                state.cusum_signal,
+                state.sharpe_declining,
+                state.adwin_detected,
+            ]
+        )
         if active >= 3:
             assert state.level >= AlertLevel.STOP
 

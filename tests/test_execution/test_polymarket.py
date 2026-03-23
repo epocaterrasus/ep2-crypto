@@ -17,8 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -30,13 +29,11 @@ from ep2_crypto.execution.polymarket import (
 from ep2_crypto.execution.polymarket_config import PolymarketConfig
 from ep2_crypto.execution.venue import (
     OrderRequest,
-    OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
     VenueType,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -150,9 +147,7 @@ class TestPolymarketConfig:
 
 class TestConnectionLifecycle:
     @pytest.mark.asyncio
-    async def test_connect_success(
-        self, config: PolymarketConfig, mock_client: MagicMock
-    ) -> None:
+    async def test_connect_success(self, config: PolymarketConfig, mock_client: MagicMock) -> None:
         adapter = PolymarketAdapter(config)
         with patch.object(adapter, "_build_client", return_value=mock_client):
             await adapter.connect()
@@ -179,9 +174,7 @@ class TestConnectionLifecycle:
         assert not adapter.is_connected
 
     @pytest.mark.asyncio
-    async def test_connect_already_connected_noop(
-        self, adapter: PolymarketAdapter
-    ) -> None:
+    async def test_connect_already_connected_noop(self, adapter: PolymarketAdapter) -> None:
         # Second connect on already-connected adapter should not raise
         with patch.object(adapter, "_build_client") as mock_build:
             await adapter.connect()
@@ -275,9 +268,7 @@ class TestMarketDiscovery:
         market = adapter._parse_gamma_market(raw)
         assert market.condition_id == "0xcond2"
 
-    def test_parse_gamma_market_missing_tokens_defaults(
-        self, adapter: PolymarketAdapter
-    ) -> None:
+    def test_parse_gamma_market_missing_tokens_defaults(self, adapter: PolymarketAdapter) -> None:
         raw = {
             "conditionId": "0xcond3",
             "questionId": "0xq3",
@@ -292,9 +283,7 @@ class TestMarketDiscovery:
         assert market.current_yes_price == pytest.approx(0.5)
 
     @pytest.mark.asyncio
-    async def test_discover_market_no_results_raises(
-        self, adapter: PolymarketAdapter
-    ) -> None:
+    async def test_discover_market_no_results_raises(self, adapter: PolymarketAdapter) -> None:
         with patch.object(adapter, "_fetch_gamma_markets", return_value=[]):
             with pytest.raises(LookupError, match="No active"):
                 await adapter.discover_market("btc-5min")
@@ -307,9 +296,7 @@ class TestMarketDiscovery:
             result = await adapter.discover_market()
         assert result.condition_id == market.condition_id
 
-    def test_set_active_market(
-        self, adapter: PolymarketAdapter, market: BinaryMarket
-    ) -> None:
+    def test_set_active_market(self, adapter: PolymarketAdapter, market: BinaryMarket) -> None:
         adapter.set_active_market(market)
         assert adapter._active_market == market
 
@@ -321,9 +308,7 @@ class TestMarketDiscovery:
 
 class TestOrderPlacement:
     @pytest.mark.asyncio
-    async def test_place_buy_order_success(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_place_buy_order_success(self, adapter_with_market: PolymarketAdapter) -> None:
         request = OrderRequest(
             side=OrderSide.BUY,
             size=50.0,
@@ -352,7 +337,7 @@ class TestOrderPlacement:
         self, adapter_with_market: PolymarketAdapter, mock_client: MagicMock
     ) -> None:
         request = OrderRequest(side=OrderSide.BUY, size=10.0, order_type=OrderType.MARKET)
-        result = await adapter_with_market.place_order(request)
+        await adapter_with_market.place_order(request)
 
         call_args = mock_client.create_order.call_args[0][0]
         assert call_args["price"] == pytest.approx(0.62)  # current_yes_price
@@ -420,9 +405,7 @@ class TestOrderPlacement:
 
 class TestOrderManagement:
     @pytest.mark.asyncio
-    async def test_cancel_order_success(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_cancel_order_success(self, adapter_with_market: PolymarketAdapter) -> None:
         result = await adapter_with_market.cancel_order("ord-001")
         assert result.status == OrderStatus.CANCELLED
         assert result.order_id == "ord-001"
@@ -442,9 +425,7 @@ class TestOrderManagement:
         assert result.status == OrderStatus.REJECTED
 
     @pytest.mark.asyncio
-    async def test_get_order_filled(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_get_order_filled(self, adapter_with_market: PolymarketAdapter) -> None:
         result = await adapter_with_market.get_order("ord-001")
         assert result.status == OrderStatus.FILLED
         assert result.fill_quantity == pytest.approx(10.0)
@@ -499,9 +480,7 @@ class TestOrderManagement:
 
 class TestPositionAndBalance:
     @pytest.mark.asyncio
-    async def test_get_position_no_active_market(
-        self, adapter: PolymarketAdapter
-    ) -> None:
+    async def test_get_position_no_active_market(self, adapter: PolymarketAdapter) -> None:
         position = await adapter.get_position()
         assert position.side is None
         assert position.size == pytest.approx(0.0)
@@ -527,9 +506,7 @@ class TestPositionAndBalance:
         assert position.cost_basis == pytest.approx(31.0)  # 50 * 0.62
 
     @pytest.mark.asyncio
-    async def test_get_position_net_zero(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_get_position_net_zero(self, adapter_with_market: PolymarketAdapter) -> None:
         from ep2_crypto.execution.polymarket import _PendingOrder
 
         for oid, side in [("o1", OrderSide.BUY), ("o2", OrderSide.SELL)]:
@@ -547,9 +524,7 @@ class TestPositionAndBalance:
         assert position.size == pytest.approx(0.0)
 
     @pytest.mark.asyncio
-    async def test_get_balance_success(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_get_balance_success(self, adapter_with_market: PolymarketAdapter) -> None:
         balance = await adapter_with_market.get_balance()
         assert balance == pytest.approx(500.0)
 
@@ -575,9 +550,7 @@ class TestPositionAndBalance:
 
 class TestOrderBook:
     @pytest.mark.asyncio
-    async def test_get_orderbook_success(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_get_orderbook_success(self, adapter_with_market: PolymarketAdapter) -> None:
         snapshot = await adapter_with_market.get_orderbook()
         assert snapshot.venue == VenueType.POLYMARKET_BINARY
         assert len(snapshot.bids) == 2
@@ -603,9 +576,7 @@ class TestOrderBook:
         assert snapshot.bids == []
 
     @pytest.mark.asyncio
-    async def test_orderbook_mid_price(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_orderbook_mid_price(self, adapter_with_market: PolymarketAdapter) -> None:
         snapshot = await adapter_with_market.get_orderbook()
         # best bid=0.60, best ask=0.62
         assert snapshot.best_bid == pytest.approx(0.60)
@@ -620,9 +591,7 @@ class TestOrderBook:
 
 class TestHealthCheck:
     @pytest.mark.asyncio
-    async def test_health_check_success(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    async def test_health_check_success(self, adapter_with_market: PolymarketAdapter) -> None:
         assert await adapter_with_market.health_check() is True
 
     @pytest.mark.asyncio
@@ -722,16 +691,12 @@ class TestResolutionTracking:
 
 
 class TestTokenResolution:
-    def test_buy_side_maps_to_yes_token(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    def test_buy_side_maps_to_yes_token(self, adapter_with_market: PolymarketAdapter) -> None:
         request = OrderRequest(side=OrderSide.BUY, size=10.0)
         token_id = adapter_with_market._resolve_token_id(request)
         assert token_id == "0xyes001"
 
-    def test_sell_side_maps_to_no_token(
-        self, adapter_with_market: PolymarketAdapter
-    ) -> None:
+    def test_sell_side_maps_to_no_token(self, adapter_with_market: PolymarketAdapter) -> None:
         request = OrderRequest(side=OrderSide.SELL, size=10.0)
         token_id = adapter_with_market._resolve_token_id(request)
         assert token_id == "0xno001"

@@ -7,9 +7,12 @@ All timestamps are stored as INTEGER (Unix milliseconds) for efficient indexing.
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = structlog.get_logger(__name__)
 

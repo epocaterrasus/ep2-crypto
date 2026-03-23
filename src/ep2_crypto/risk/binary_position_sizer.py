@@ -41,8 +41,9 @@ class BinarySizingResult:
     rejection_reason: str | None = None
 
 
-def polymarket_fee(price: float, fee_rate: float = DEFAULT_FEE_RATE,
-                   exponent: float = DEFAULT_FEE_EXPONENT) -> float:
+def polymarket_fee(
+    price: float, fee_rate: float = DEFAULT_FEE_RATE, exponent: float = DEFAULT_FEE_EXPONENT
+) -> float:
     """Calculate Polymarket fee rate for a given share price.
 
     Fee is charged on profits only. The dynamic scaling factor is
@@ -151,9 +152,7 @@ class BinaryPositionSizer:
         if not 0.0 < kelly_fraction <= 1.0:
             raise ValueError(f"kelly_fraction must be in (0, 1], got {kelly_fraction}")
         if not 0.0 < max_bet_fraction <= 1.0:
-            raise ValueError(
-                f"max_bet_fraction must be in (0, 1], got {max_bet_fraction}"
-            )
+            raise ValueError(f"max_bet_fraction must be in (0, 1], got {max_bet_fraction}")
 
         self.kelly_fraction = kelly_fraction
         self.max_bet_fraction = max_bet_fraction
@@ -194,9 +193,7 @@ class BinaryPositionSizer:
             return self._reject("no_edge_model_prob_leq_market_price")
 
         # Compute raw Kelly
-        raw_kelly = binary_kelly(
-            model_prob, market_price, self.fee_rate, self.fee_exponent
-        )
+        raw_kelly = binary_kelly(model_prob, market_price, self.fee_rate, self.fee_exponent)
 
         if raw_kelly <= 0.0:
             return self._reject("negative_kelly_after_fees")
@@ -215,17 +212,13 @@ class BinaryPositionSizer:
 
         # Enforce minimum
         if bet_usd < self.min_bet_usd:
-            return self._reject(
-                f"bet_below_minimum_{bet_usd:.2f}_lt_{self.min_bet_usd:.2f}"
-            )
+            return self._reject(f"bet_below_minimum_{bet_usd:.2f}_lt_{self.min_bet_usd:.2f}")
 
         # Convert to shares
         shares = bet_usd / market_price
 
         # Compute EV and fee
-        ev = expected_value_per_share(
-            model_prob, market_price, self.fee_rate, self.fee_exponent
-        )
+        ev = expected_value_per_share(model_prob, market_price, self.fee_rate, self.fee_exponent)
         fee = polymarket_fee(market_price, self.fee_rate, self.fee_exponent)
 
         result = BinarySizingResult(

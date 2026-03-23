@@ -5,9 +5,11 @@ All features are tested for:
 2. Look-ahead bias: result at index t must equal result when array is truncated at t
 3. Warmup behaviour: NaN returned before warmup_bars - 1
 """
+
 from __future__ import annotations
 
 import math
+
 import numpy as np
 import pytest
 
@@ -18,14 +20,14 @@ from ep2_crypto.features.microstructure import (
     VPINComputer,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_prices(n: int = 200) -> tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
-]:
+
+def _make_prices(
+    n: int = 200,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     ts = np.arange(n, dtype=np.int64) * 300_000
     closes = 30_000.0 + np.cumsum(np.random.default_rng(42).normal(0, 10, n))
     opens = closes - np.abs(np.random.default_rng(7).normal(0, 5, n))
@@ -35,7 +37,9 @@ def _make_prices(n: int = 200) -> tuple[
     return ts, opens, highs, lows, closes, vols
 
 
-def _make_book(n: int = 200, n_levels: int = 12) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _make_book(
+    n: int = 200, n_levels: int = 12
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(99)
     bid_sizes = np.abs(rng.normal(5, 1, (n, n_levels)))
     ask_sizes = np.abs(rng.normal(5, 1, (n, n_levels)))
@@ -50,6 +54,7 @@ def _make_book(n: int = 200, n_levels: int = 12) -> tuple[np.ndarray, np.ndarray
 # OBILevel10Computer
 # ---------------------------------------------------------------------------
 
+
 class TestOBILevel10Computer:
     def test_output_names(self) -> None:
         c = OBILevel10Computer()
@@ -59,8 +64,19 @@ class TestOBILevel10Computer:
         c = OBILevel10Computer()
         ts, opens, highs, lows, closes, vols = _make_prices(5)
         bids, asks, bid_sizes, ask_sizes = _make_book(5)
-        result = c.compute(0, ts, opens, highs, lows, closes, vols,
-                           bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            0,
+            ts,
+            opens,
+            highs,
+            lows,
+            closes,
+            vols,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
+        )
         # warmup_bars=1 so idx=0 is valid
         assert not math.isnan(result["obi_l10"])
 
@@ -77,8 +93,9 @@ class TestOBILevel10Computer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.ones((n, nl)) * 5.0
         ask_sizes = np.ones((n, nl)) * 5.0
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["obi_l10"] == pytest.approx(0.0, abs=1e-10)
 
     def test_golden_all_bids(self) -> None:
@@ -88,8 +105,9 @@ class TestOBILevel10Computer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.ones((n, nl)) * 10.0
         ask_sizes = np.zeros((n, nl))
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["obi_l10"] == pytest.approx(1.0, abs=1e-10)
 
     def test_golden_all_asks(self) -> None:
@@ -99,8 +117,9 @@ class TestOBILevel10Computer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.zeros((n, nl))
         ask_sizes = np.ones((n, nl)) * 10.0
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["obi_l10"] == pytest.approx(-1.0, abs=1e-10)
 
     def test_only_uses_10_levels(self) -> None:
@@ -113,8 +132,9 @@ class TestOBILevel10Computer:
         # Set levels 10-14 to huge values — should not affect result
         bid_sizes[:, 10:] = 1000.0
         ask_sizes[:, 10:] = 0.0
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         # First 10 levels are balanced → OBI should be 0
         assert result["obi_l10"] == pytest.approx(0.0, abs=1e-10)
 
@@ -124,18 +144,39 @@ class TestOBILevel10Computer:
         bids, asks, bid_sizes, ask_sizes = _make_book(n)
         c = OBILevel10Computer()
         idx = 100
-        full = c.compute(idx, ts, opens, highs, lows, closes, vols,
-                         bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes)
-        trunc = c.compute(idx, ts[:idx + 1], opens[:idx + 1], highs[:idx + 1],
-                          lows[:idx + 1], closes[:idx + 1], vols[:idx + 1],
-                          bids=bids[:idx + 1], asks=asks[:idx + 1],
-                          bid_sizes=bid_sizes[:idx + 1], ask_sizes=ask_sizes[:idx + 1])
+        full = c.compute(
+            idx,
+            ts,
+            opens,
+            highs,
+            lows,
+            closes,
+            vols,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
+        )
+        trunc = c.compute(
+            idx,
+            ts[: idx + 1],
+            opens[: idx + 1],
+            highs[: idx + 1],
+            lows[: idx + 1],
+            closes[: idx + 1],
+            vols[: idx + 1],
+            bids=bids[: idx + 1],
+            asks=asks[: idx + 1],
+            bid_sizes=bid_sizes[: idx + 1],
+            ask_sizes=ask_sizes[: idx + 1],
+        )
         assert full["obi_l10"] == pytest.approx(trunc["obi_l10"], abs=1e-10)
 
 
 # ---------------------------------------------------------------------------
 # VPINComputer
 # ---------------------------------------------------------------------------
+
 
 class TestVPINComputer:
     def test_output_names(self) -> None:
@@ -198,14 +239,22 @@ class TestVPINComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         idx = 100
         full = c.compute(idx, ts, opens, highs, lows, closes, vols)
-        trunc = c.compute(idx, ts[:idx + 1], opens[:idx + 1], highs[:idx + 1],
-                          lows[:idx + 1], closes[:idx + 1], vols[:idx + 1])
+        trunc = c.compute(
+            idx,
+            ts[: idx + 1],
+            opens[: idx + 1],
+            highs[: idx + 1],
+            lows[: idx + 1],
+            closes[: idx + 1],
+            vols[: idx + 1],
+        )
         assert full["vpin"] == pytest.approx(trunc["vpin"], abs=1e-10)
 
 
 # ---------------------------------------------------------------------------
 # BookPressureGradientComputer
 # ---------------------------------------------------------------------------
+
 
 class TestBookPressureGradientComputer:
     def test_output_names(self) -> None:
@@ -228,8 +277,9 @@ class TestBookPressureGradientComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.ones((n, nl))
         ask_sizes = np.ones((n, nl))
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert math.isnan(result["bid_pressure_gradient"])
 
     def test_decreasing_bid_profile_negative_slope(self) -> None:
@@ -239,8 +289,9 @@ class TestBookPressureGradientComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.tile(np.linspace(10, 1, nl), (n, 1))
         ask_sizes = np.ones((n, nl)) * 5.0
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["bid_pressure_gradient"] < 0
 
     def test_flat_book_zero_gradient(self) -> None:
@@ -250,8 +301,9 @@ class TestBookPressureGradientComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.ones((n, nl)) * 5.0
         ask_sizes = np.ones((n, nl)) * 5.0
-        result = c.compute(5, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            5, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["net_pressure_gradient"] == pytest.approx(0.0, abs=1e-10)
 
     def test_no_look_ahead_bias(self) -> None:
@@ -260,17 +312,29 @@ class TestBookPressureGradientComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         _, _, bid_sizes, ask_sizes = _make_book(n)
         idx = 100
-        full = c.compute(idx, ts, opens, highs, lows, closes, vols,
-                         bid_sizes=bid_sizes, ask_sizes=ask_sizes)
-        trunc = c.compute(idx, ts[:idx + 1], opens[:idx + 1], highs[:idx + 1],
-                          lows[:idx + 1], closes[:idx + 1], vols[:idx + 1],
-                          bid_sizes=bid_sizes[:idx + 1], ask_sizes=ask_sizes[:idx + 1])
-        assert full["bid_pressure_gradient"] == pytest.approx(trunc["bid_pressure_gradient"], abs=1e-10)
+        full = c.compute(
+            idx, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
+        trunc = c.compute(
+            idx,
+            ts[: idx + 1],
+            opens[: idx + 1],
+            highs[: idx + 1],
+            lows[: idx + 1],
+            closes[: idx + 1],
+            vols[: idx + 1],
+            bid_sizes=bid_sizes[: idx + 1],
+            ask_sizes=ask_sizes[: idx + 1],
+        )
+        assert full["bid_pressure_gradient"] == pytest.approx(
+            trunc["bid_pressure_gradient"], abs=1e-10
+        )
 
 
 # ---------------------------------------------------------------------------
 # DepthWithdrawalComputer
 # ---------------------------------------------------------------------------
+
 
 class TestDepthWithdrawalComputer:
     def test_output_names(self) -> None:
@@ -282,8 +346,9 @@ class TestDepthWithdrawalComputer:
         n = 5
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         _, _, bid_sizes, ask_sizes = _make_book(n)
-        result = c.compute(4, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            4, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert math.isnan(result["depth_withdrawal"])
 
     def test_no_book_returns_nan(self) -> None:
@@ -299,8 +364,9 @@ class TestDepthWithdrawalComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         bid_sizes = np.ones((n, nl)) * 5.0
         ask_sizes = np.ones((n, nl)) * 5.0
-        result = c.compute(10, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            10, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["depth_withdrawal"] == pytest.approx(0.0, abs=1e-10)
 
     def test_golden_full_withdrawal(self) -> None:
@@ -313,8 +379,9 @@ class TestDepthWithdrawalComputer:
         # Set current bar depth to zero
         bid_sizes[10, :] = 0.0
         ask_sizes[10, :] = 0.0
-        result = c.compute(10, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            10, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["depth_withdrawal"] == pytest.approx(1.0, abs=1e-10)
 
     def test_golden_50pct_withdrawal(self) -> None:
@@ -327,8 +394,9 @@ class TestDepthWithdrawalComputer:
         # Current bar has half the depth
         bid_sizes[10, :] = 5.0
         ask_sizes[10, :] = 5.0
-        result = c.compute(10, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            10, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["depth_withdrawal"] == pytest.approx(0.5, abs=1e-10)
 
     def test_negative_withdrawal_is_depth_addition(self) -> None:
@@ -341,8 +409,9 @@ class TestDepthWithdrawalComputer:
         # More depth at current bar
         bid_sizes[10, :] = 10.0
         ask_sizes[10, :] = 10.0
-        result = c.compute(10, ts, opens, highs, lows, closes, vols,
-                           bid_sizes=bid_sizes, ask_sizes=ask_sizes)
+        result = c.compute(
+            10, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
         assert result["depth_withdrawal"] < 0.0
 
     def test_no_look_ahead_bias(self) -> None:
@@ -351,9 +420,18 @@ class TestDepthWithdrawalComputer:
         ts, opens, highs, lows, closes, vols = _make_prices(n)
         _, _, bid_sizes, ask_sizes = _make_book(n)
         idx = 100
-        full = c.compute(idx, ts, opens, highs, lows, closes, vols,
-                         bid_sizes=bid_sizes, ask_sizes=ask_sizes)
-        trunc = c.compute(idx, ts[:idx + 1], opens[:idx + 1], highs[:idx + 1],
-                          lows[:idx + 1], closes[:idx + 1], vols[:idx + 1],
-                          bid_sizes=bid_sizes[:idx + 1], ask_sizes=ask_sizes[:idx + 1])
+        full = c.compute(
+            idx, ts, opens, highs, lows, closes, vols, bid_sizes=bid_sizes, ask_sizes=ask_sizes
+        )
+        trunc = c.compute(
+            idx,
+            ts[: idx + 1],
+            opens[: idx + 1],
+            highs[: idx + 1],
+            lows[: idx + 1],
+            closes[: idx + 1],
+            vols[: idx + 1],
+            bid_sizes=bid_sizes[: idx + 1],
+            ask_sizes=ask_sizes[: idx + 1],
+        )
         assert full["depth_withdrawal"] == pytest.approx(trunc["depth_withdrawal"], abs=1e-10)

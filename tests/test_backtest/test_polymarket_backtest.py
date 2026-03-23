@@ -13,15 +13,13 @@ from __future__ import annotations
 import pytest
 
 from ep2_crypto.backtest.polymarket_backtest import (
-    BinaryBar,
     BinaryBacktestResult,
+    BinaryBar,
     BinaryFeeModel,
-    BinaryTrade,
     PolymarketBacktester,
     comparison_report,
     compute_shares,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -138,8 +136,9 @@ class TestSingleTradePayoff:
             initial_capital=10_000.0,
             bet_fraction=0.002,  # ~$20 notional → ~33 shares at $0.60
         )
-        bar = make_bar(signal=1, open_price=100.0, close_price=101.0,
-                       market_yes=0.60, model_prob=0.70)
+        bar = make_bar(
+            signal=1, open_price=100.0, close_price=101.0, market_yes=0.60, model_prob=0.70
+        )
         result = bt.run([bar])
 
         assert result.total_trades == 1
@@ -158,8 +157,9 @@ class TestSingleTradePayoff:
             initial_capital=10_000.0,
             bet_fraction=0.002,
         )
-        bar = make_bar(signal=1, open_price=100.0, close_price=99.0,
-                       market_yes=0.60, model_prob=0.70)
+        bar = make_bar(
+            signal=1, open_price=100.0, close_price=99.0, market_yes=0.60, model_prob=0.70
+        )
         result = bt.run([bar])
 
         assert result.total_trades == 1
@@ -175,16 +175,18 @@ class TestSingleTradePayoff:
             initial_capital=10_000.0,
             bet_fraction=0.002,
         )
-        bar = make_bar(signal=-1, open_price=100.0, close_price=99.0,
-                       market_no=0.45, model_prob=0.65)
+        bar = make_bar(
+            signal=-1, open_price=100.0, close_price=99.0, market_no=0.45, model_prob=0.65
+        )
         result = bt.run([bar])
         assert result.wins == 1
 
     def test_down_bet_loses_when_price_rises(self) -> None:
         """DOWN bet: signal=-1, price closes higher → LOSS."""
         bt = make_backtester(initial_capital=10_000.0, bet_fraction=0.002)
-        bar = make_bar(signal=-1, open_price=100.0, close_price=101.0,
-                       market_no=0.45, model_prob=0.65)
+        bar = make_bar(
+            signal=-1, open_price=100.0, close_price=101.0, market_no=0.45, model_prob=0.65
+        )
         result = bt.run([bar])
         assert result.losses == 1
 
@@ -279,8 +281,7 @@ class TestAggregateMetrics:
         """All UP signals with price falling."""
         bt = make_backtester(initial_capital=10_000.0, bet_fraction=0.01)
         bars = [
-            make_bar(signal=1, open_price=100.0, close_price=99.0, ts=i * 300_000)
-            for i in range(n)
+            make_bar(signal=1, open_price=100.0, close_price=99.0, ts=i * 300_000) for i in range(n)
         ]
         return bt.run(bars)
 
@@ -355,10 +356,7 @@ class TestAggregateMetrics:
             bet_fraction=1.0,  # 100% of capital
             min_model_prob=0.0,
         )
-        bars = [
-            make_bar(signal=1, open_price=100.0, close_price=99.0, ts=i)
-            for i in range(5)
-        ]
+        bars = [make_bar(signal=1, open_price=100.0, close_price=99.0, ts=i) for i in range(5)]
         result = bt.run(bars)
         assert min(result.equity_curve) >= 0.0
 
@@ -437,10 +435,7 @@ class TestEdgeCases:
     def test_sortino_no_losses(self) -> None:
         """All wins → no downside → Sortino = inf."""
         bt = make_backtester(initial_capital=10_000.0, bet_fraction=0.01)
-        bars = [
-            make_bar(signal=1, open_price=100.0, close_price=101.0, ts=i)
-            for i in range(5)
-        ]
+        bars = [make_bar(signal=1, open_price=100.0, close_price=101.0, ts=i) for i in range(5)]
         result = bt.run(bars)
         assert result.sortino == float("inf") or result.sortino > 0
 

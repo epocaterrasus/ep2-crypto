@@ -194,9 +194,9 @@ def _inv_normal_cdf(p: NDArray[np.float64]) -> NDArray[np.float64]:
     mask_low = p < p_low
     if np.any(mask_low):
         q = np.sqrt(-2.0 * np.log(p[mask_low]))
-        result[mask_low] = (
-            ((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6
-        ) / ((((d1 * q + d2) * q + d3) * q + d4) * q + 1.0)
+        result[mask_low] = (((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6) / (
+            (((d1 * q + d2) * q + d3) * q + d4) * q + 1.0
+        )
 
     # Central region
     mask_mid = (~mask_low) & (p <= p_high)
@@ -204,16 +204,18 @@ def _inv_normal_cdf(p: NDArray[np.float64]) -> NDArray[np.float64]:
         q = p[mask_mid] - 0.5
         r = q * q
         result[mask_mid] = (
-            ((((a1 * r + a2) * r + a3) * r + a4) * r + a5) * r + a6
-        ) * q / (((((b1 * r + b2) * r + b3) * r + b4) * r + b5) * r + 1.0)
+            (((((a1 * r + a2) * r + a3) * r + a4) * r + a5) * r + a6)
+            * q
+            / (((((b1 * r + b2) * r + b3) * r + b4) * r + b5) * r + 1.0)
+        )
 
     # Upper region
     mask_high = p > p_high
     if np.any(mask_high):
         q = np.sqrt(-2.0 * np.log(1.0 - p[mask_high]))
-        result[mask_high] = -(
-            ((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6
-        ) / ((((d1 * q + d2) * q + d3) * q + d4) * q + 1.0)
+        result[mask_high] = -(((((c1 * q + c2) * q + c3) * q + c4) * q + c5) * q + c6) / (
+            (((d1 * q + d2) * q + d3) * q + d4) * q + 1.0
+        )
 
     return result
 

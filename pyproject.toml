@@ -97,8 +97,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ANN", "RUF006"]
-"scripts/**" = ["T20"]
+"tests/**" = ["S101", "S105", "S106", "S110", "ANN", "RUF006"]
+"scripts/**" = ["T20", "S105", "S106"]
+
+[tool.ruff.lint.extend-ignore]
+ignore = ["RUF001", "RUF002", "RUF003"]  # Unicode ambiguous chars (×, etc) are intentional
 
 [tool.mypy]
 python_version = "3.12"

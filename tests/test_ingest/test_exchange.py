@@ -99,13 +99,15 @@ class MockExchange:
             idx = min(self._call_count - 1, len(self._trades) - 1)
             return self._trades[idx]
         ts = 1700000000000 + (self._call_count * 50)
-        return [{
-            "id": str(1000 + self._call_count),
-            "timestamp": ts,
-            "price": 42000.0 + self._call_count,
-            "amount": 0.5,
-            "side": "buy",
-        }]
+        return [
+            {
+                "id": str(1000 + self._call_count),
+                "timestamp": ts,
+                "price": 42000.0 + self._call_count,
+                "amount": 0.5,
+                "side": "buy",
+            }
+        ]
 
     async def close(self) -> None:
         self._closed = True
@@ -154,12 +156,14 @@ class MockExchangeClass:
 async def test_kline_collector_stores_candles(db_repo: Repository) -> None:
     """Kline collector stores received candles to the database."""
     factory = MockExchangeClass()
-    factory.set_candles([
+    factory.set_candles(
         [
-            [1700000000000, 42000.0, 42050.0, 41980.0, 42030.0, 100.5],
-            [1700000060000, 42030.0, 42060.0, 42010.0, 42045.0, 95.2],
-        ],
-    ])
+            [
+                [1700000000000, 42000.0, 42050.0, 41980.0, 42030.0, 100.5],
+                [1700000060000, 42030.0, 42060.0, 42010.0, 42045.0, 95.2],
+            ],
+        ]
+    )
 
     collector = BinanceKlineCollector(
         db_repo,
@@ -305,11 +309,15 @@ async def test_kline_collector_empty_candles_skipped(db_repo: Repository) -> Non
 async def test_depth_collector_stores_orderbook(db_repo: Repository) -> None:
     """Depth collector stores bid/ask snapshots to orderbook table."""
     factory = MockExchangeClass()
-    factory.set_orderbooks([{
-        "timestamp": 1700000000000,
-        "bids": [[42000.0, 1.5], [41999.0, 2.0]],
-        "asks": [[42001.0, 1.2], [42002.0, 1.8]],
-    }])
+    factory.set_orderbooks(
+        [
+            {
+                "timestamp": 1700000000000,
+                "bids": [[42000.0, 1.5], [41999.0, 2.0]],
+                "asks": [[42001.0, 1.2], [42002.0, 1.8]],
+            }
+        ]
+    )
 
     collector = BinanceDepthCollector(
         db_repo,
@@ -334,11 +342,15 @@ async def test_depth_collector_json_serialization(db_repo: Repository) -> None:
     import json
 
     factory = MockExchangeClass()
-    factory.set_orderbooks([{
-        "timestamp": 1700000000000,
-        "bids": [[42000.0, 1.5], [41999.0, 2.0]],
-        "asks": [[42001.0, 1.2], [42002.0, 1.8]],
-    }])
+    factory.set_orderbooks(
+        [
+            {
+                "timestamp": 1700000000000,
+                "bids": [[42000.0, 1.5], [41999.0, 2.0]],
+                "asks": [[42001.0, 1.2], [42002.0, 1.8]],
+            }
+        ]
+    )
 
     collector = BinanceDepthCollector(
         db_repo,
@@ -363,11 +375,15 @@ async def test_depth_collector_json_serialization(db_repo: Repository) -> None:
 async def test_depth_collector_empty_book_skipped(db_repo: Repository) -> None:
     """Empty bid/ask lists don't cause errors."""
     factory = MockExchangeClass()
-    factory.set_orderbooks([{
-        "timestamp": 1700000000000,
-        "bids": [],
-        "asks": [],
-    }])
+    factory.set_orderbooks(
+        [
+            {
+                "timestamp": 1700000000000,
+                "bids": [],
+                "asks": [],
+            }
+        ]
+    )
 
     collector = BinanceDepthCollector(
         db_repo,
@@ -406,10 +422,26 @@ async def test_depth_collector_health(db_repo: Repository) -> None:
 async def test_trade_collector_stores_trades(db_repo: Repository) -> None:
     """Trade collector stores received trades to the database."""
     factory = MockExchangeClass()
-    factory.set_trades([[
-        {"id": "1001", "timestamp": 1700000000000, "price": 42000.0, "amount": 0.5, "side": "buy"},
-        {"id": "1002", "timestamp": 1700000000050, "price": 42001.0, "amount": 1.0, "side": "sell"},
-    ]])
+    factory.set_trades(
+        [
+            [
+                {
+                    "id": "1001",
+                    "timestamp": 1700000000000,
+                    "price": 42000.0,
+                    "amount": 0.5,
+                    "side": "buy",
+                },
+                {
+                    "id": "1002",
+                    "timestamp": 1700000000050,
+                    "price": 42001.0,
+                    "amount": 1.0,
+                    "side": "sell",
+                },
+            ]
+        ]
+    )
 
     collector = BinanceTradeCollector(
         db_repo,
@@ -434,8 +466,11 @@ async def test_trade_collector_deduplicates(db_repo: Repository) -> None:
     """Same trade ID is not stored twice via in-memory dedup."""
     factory = MockExchangeClass()
     trade = {
-        "id": "1001", "timestamp": 1700000000000,
-        "price": 42000.0, "amount": 0.5, "side": "buy",
+        "id": "1001",
+        "timestamp": 1700000000000,
+        "price": 42000.0,
+        "amount": 0.5,
+        "side": "buy",
     }
     factory.set_trades([[trade], [trade]])
 

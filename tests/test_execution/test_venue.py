@@ -20,7 +20,6 @@ from ep2_crypto.execution.venue import (
     VenueType,
 )
 
-
 # ---------------------------------------------------------------------------
 # Concrete test adapter (minimal implementation)
 # ---------------------------------------------------------------------------
@@ -154,9 +153,7 @@ class TestFakeAdapterContract:
             order_type=OrderType.LIMIT_POST_ONLY,
             price=0.50,
         )
-        result = asyncio.get_event_loop().run_until_complete(
-            adapter.place_order(request)
-        )
+        result = asyncio.get_event_loop().run_until_complete(adapter.place_order(request))
         assert result.is_filled
         assert result.is_terminal
         assert result.order_id == "fake-001"
@@ -164,9 +161,7 @@ class TestFakeAdapterContract:
 
     def test_cancel_order(self) -> None:
         adapter = FakeAdapter()
-        result = asyncio.get_event_loop().run_until_complete(
-            adapter.cancel_order("fake-001")
-        )
+        result = asyncio.get_event_loop().run_until_complete(adapter.cancel_order("fake-001"))
         assert result.status == OrderStatus.CANCELLED
         assert result.is_terminal
 

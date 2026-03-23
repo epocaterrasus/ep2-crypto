@@ -70,16 +70,12 @@ def _generate_synthetic_data(
         probs = probs / probs.sum()
         primary_probas[i] = probs
 
-    primary_predictions = np.array(
-        [np.argmax(p) - 1 for p in primary_probas], dtype=np.int8
-    )
+    primary_predictions = np.array([np.argmax(p) - 1 for p in primary_probas], dtype=np.int8)
 
     # Is_profitable: did the primary model's prediction match truth?
     is_profitable = (primary_predictions == y_true).astype(np.int8)
 
-    regime_labels = rng.choice([0, 1, 2], size=n_samples, p=[0.5, 0.3, 0.2]).astype(
-        np.int8
-    )
+    regime_labels = rng.choice([0, 1, 2], size=n_samples, p=[0.5, 0.3, 0.2]).astype(np.int8)
 
     return {
         "features": features,
@@ -117,9 +113,7 @@ class TestEndToEndPipeline:
         ml.fit(meta_feats, data["is_profitable"])
 
         # Calibrate conformal predictor
-        cf = ConformalPredictor(ConformalConfig(
-            alpha=0.1, min_calibration_size=100
-        ))
+        cf = ConformalPredictor(ConformalConfig(alpha=0.1, min_calibration_size=100))
         cf.calibrate(data["primary_probas"], data["y_true"])
 
         # Set up gating pipeline
@@ -218,13 +212,15 @@ class TestEndToEndPipeline:
         pipeline.set_meta_labeler(ml)
 
         # Set up position sizer
-        sizer = ConfidencePositionSizer(ConfidencePositionConfig(
-            kelly_fraction=0.25,
-            max_position_pct=0.05,
-            min_confidence=0.3,
-            bayesian=False,
-            min_trades_for_kelly=1,
-        ))
+        sizer = ConfidencePositionSizer(
+            ConfidencePositionConfig(
+                kelly_fraction=0.25,
+                max_position_pct=0.05,
+                min_confidence=0.3,
+                bayesian=False,
+                min_trades_for_kelly=1,
+            )
+        )
 
         equity = 100_000.0
         price = 65_000.0
@@ -301,8 +297,7 @@ class TestEndToEndPipeline:
                     pass
                 else:
                     assert d.reason == "disabled", (
-                        f"Gate {d.gate_id.name} should be disabled when "
-                        f"only {field} is enabled"
+                        f"Gate {d.gate_id.name} should be disabled when only {field} is enabled"
                     )
 
 
@@ -318,9 +313,7 @@ class TestAcceptanceCriteria:
         """Conformal prediction filters out ambiguous predictions."""
         data = _generate_synthetic_data(n_samples=300, signal_strength=0.1)
 
-        cf = ConformalPredictor(ConformalConfig(
-            alpha=0.1, min_calibration_size=100
-        ))
+        cf = ConformalPredictor(ConformalConfig(alpha=0.1, min_calibration_size=100))
         cf.calibrate(data["primary_probas"], data["y_true"])
 
         should_trade, _directions = cf.gate(data["primary_probas"])
@@ -332,12 +325,14 @@ class TestAcceptanceCriteria:
 
     def test_position_sizing_never_exceeds_cap(self) -> None:
         """Position sizing never exceeds max position cap."""
-        sizer = ConfidencePositionSizer(ConfidencePositionConfig(
-            max_position_pct=0.05,
-            bayesian=False,
-            min_trades_for_kelly=1,
-            min_confidence=0.0,
-        ))
+        sizer = ConfidencePositionSizer(
+            ConfidencePositionConfig(
+                max_position_pct=0.05,
+                bayesian=False,
+                min_trades_for_kelly=1,
+                min_confidence=0.0,
+            )
+        )
 
         # Try extreme inputs
         for confidence in [0.5, 0.8, 0.99, 1.0]:
@@ -388,9 +383,8 @@ class TestAcceptanceCriteria:
 
         # Progressive reduction
         for i in range(2, len(multipliers) - 1):
-            assert (
-                multipliers[i] < multipliers[i - 1]
-                or multipliers[i] == pytest.approx(multipliers[i - 1])
+            assert multipliers[i] < multipliers[i - 1] or multipliers[i] == pytest.approx(
+                multipliers[i - 1]
             )
 
         # 15% DD → halt (0.0)

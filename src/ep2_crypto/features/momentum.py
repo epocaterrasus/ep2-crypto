@@ -102,15 +102,15 @@ class RSIComputer(FeatureComputer):
             return {"rsi": float("nan")}
 
         # Compute price changes from start
-        changes = np.diff(closes[:idx + 1])
+        changes = np.diff(closes[: idx + 1])
 
         # Wilder's smoothing: initialize with SMA, then EMA
         gains = np.where(changes > 0, changes, 0.0)
         losses = np.where(changes < 0, -changes, 0.0)
 
         # Initial average (SMA of first window)
-        avg_gain = float(np.mean(gains[:self._window]))
-        avg_loss = float(np.mean(losses[:self._window]))
+        avg_gain = float(np.mean(gains[: self._window]))
+        avg_loss = float(np.mean(losses[: self._window]))
 
         # Wilder's EMA for subsequent values
         alpha = 1.0 / self._window
@@ -165,7 +165,7 @@ class LinRegSlopeComputer(FeatureComputer):
             return {"linreg_slope": float("nan")}
 
         start = idx - self._window + 1
-        y = closes[start:idx + 1]
+        y = closes[start : idx + 1]
         x = np.arange(self._window, dtype=np.float64)
 
         # Linear regression via covariance
@@ -223,7 +223,7 @@ class QuantileRankComputer(FeatureComputer):
             return {"quantile_rank": float("nan")}
 
         start = idx - self._window + 1
-        window_data = closes[start:idx + 1]
+        window_data = closes[start : idx + 1]
         current = float(closes[idx])
 
         # Count values less than current

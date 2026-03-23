@@ -74,8 +74,13 @@ class TestERFeature:
         comp = ERFeatureComputer(window=10)
         data = _make_regime_data()
         result = comp.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["er_10"])
 
@@ -84,8 +89,13 @@ class TestERFeature:
         comp = ERFeatureComputer(window=10)
         data = _make_trending_data()
         result = comp.compute(
-            50, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            50,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert result["er_10"] > 0.9, f"ER on trend = {result['er_10']}"
 
@@ -94,8 +104,13 @@ class TestERFeature:
         comp = ERFeatureComputer(window=10)
         data = _make_choppy_data()
         result = comp.compute(
-            50, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            50,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert result["er_10"] < 0.2, f"ER on chop = {result['er_10']}"
 
@@ -105,8 +120,13 @@ class TestERFeature:
         data = _make_regime_data()
         for i in range(comp.warmup_bars - 1, len(data["closes"])):
             result = comp.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             if np.isfinite(result["er_10"]):
                 assert 0.0 <= result["er_10"] <= 1.0
@@ -116,8 +136,13 @@ class TestERFeature:
         comp = ERFeatureComputer(window=10)
         data = _make_regime_data()
         result = comp.compute(
-            50, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            50,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isfinite(result["er_10"])
         assert np.isfinite(result["er_20"])
@@ -140,8 +165,13 @@ class TestGARCHFeature:
         comp = GARCHFeatureComputer()
         data = _make_regime_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["garch_vol"])
 
@@ -150,8 +180,13 @@ class TestGARCHFeature:
         comp = GARCHFeatureComputer()
         data = _make_regime_data()
         result = comp.compute(
-            50, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            50,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert result["garch_vol"] > 0
 
@@ -162,12 +197,22 @@ class TestGARCHFeature:
         high_vol = _make_regime_data(volatility=0.005)
 
         r_low = comp.compute(
-            50, low_vol["timestamps"], low_vol["opens"], low_vol["highs"],
-            low_vol["lows"], low_vol["closes"], low_vol["volumes"],
+            50,
+            low_vol["timestamps"],
+            low_vol["opens"],
+            low_vol["highs"],
+            low_vol["lows"],
+            low_vol["closes"],
+            low_vol["volumes"],
         )
         r_high = comp.compute(
-            50, high_vol["timestamps"], high_vol["opens"], high_vol["highs"],
-            high_vol["lows"], high_vol["closes"], high_vol["volumes"],
+            50,
+            high_vol["timestamps"],
+            high_vol["opens"],
+            high_vol["highs"],
+            high_vol["lows"],
+            high_vol["closes"],
+            high_vol["volumes"],
         )
         assert r_high["garch_vol"] > r_low["garch_vol"]
 
@@ -176,8 +221,13 @@ class TestGARCHFeature:
         comp = GARCHFeatureComputer()
         data = _make_regime_data()
         result = comp.compute(
-            50, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            50,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert result["garch_vol_ratio"] > 0
         assert result["garch_vol_ratio"] < 100  # Shouldn't be extreme
@@ -188,8 +238,13 @@ class TestGARCHFeature:
         data = _make_regime_data()
         for i in range(comp.warmup_bars - 1, len(data["closes"])):
             result = comp.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert np.isfinite(result["garch_vol"]), f"garch_vol not finite at {i}"
             assert np.isfinite(result["garch_vol_ratio"]), f"garch_vol_ratio not finite at {i}"
@@ -212,8 +267,13 @@ class TestHMMFeature:
         comp = HMMFeatureComputer()
         data = _make_regime_data()
         result = comp.compute(
-            15, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            15,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["hmm_high_vol_prob"])
 
@@ -223,8 +283,13 @@ class TestHMMFeature:
         data = _make_regime_data()
         for i in range(comp.warmup_bars - 1, len(data["closes"])):
             result = comp.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert 0.0 <= result["hmm_high_vol_prob"] <= 1.0, (
                 f"Prob={result['hmm_high_vol_prob']} at idx={i}"
@@ -236,8 +301,13 @@ class TestHMMFeature:
         data = _make_regime_data()
         for i in range(comp.warmup_bars, len(data["closes"])):
             result = comp.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert result["hmm_regime_change"] >= 0.0
 
@@ -258,8 +328,13 @@ class TestHMMFeature:
         }
         comp = HMMFeatureComputer(vol_window=20, smooth_window=10)
         result = comp.compute(
-            50, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            50,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         # Should be roughly centered around 0.5 for uniform vol
         assert 0.2 <= result["hmm_high_vol_prob"] <= 0.8
@@ -270,8 +345,13 @@ class TestHMMFeature:
         data = _make_regime_data()
         for i in range(comp.warmup_bars, len(data["closes"])):
             result = comp.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
             )
             assert np.isfinite(result["hmm_high_vol_prob"])
             assert np.isfinite(result["hmm_regime_change"])

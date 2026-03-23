@@ -12,7 +12,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
 # Empirical BTC 5-min statistics (2023-2024 calibration)
 BTC_5MIN_ANNUAL_VOL = 0.65  # ~65% annualized volatility
 BTC_5MIN_BAR_VOL = BTC_5MIN_ANNUAL_VOL / np.sqrt(365.25 * 288)  # per-bar vol
@@ -51,10 +50,7 @@ def generate_synthetic_btc(
     bar_drift = annual_drift / (365.25 * 288)
 
     # Regime-switching volatility
-    if regime_switching:
-        vol_multiplier = _generate_regime_vol(n_bars, rng)
-    else:
-        vol_multiplier = np.ones(n_bars)
+    vol_multiplier = _generate_regime_vol(n_bars, rng) if regime_switching else np.ones(n_bars)
 
     # Fat-tailed innovations (Student-t with df=5 gives excess kurtosis ~6)
     innovations = rng.standard_t(df=5, size=n_bars)
@@ -90,14 +86,16 @@ def generate_synthetic_btc(
         freq="5min",
     )
 
-    df = pd.DataFrame({
-        "timestamp": timestamps,
-        "open": open_prices,
-        "high": high_prices,
-        "low": low_prices,
-        "close": close_prices,
-        "volume": volume,
-    })
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": open_prices,
+            "high": high_prices,
+            "low": low_prices,
+            "close": close_prices,
+            "volume": volume,
+        }
+    )
 
     # Add auxiliary columns for strategies that need them
     df["funding_rate"] = _generate_funding_rate(n_bars, close_prices, rng)
@@ -148,7 +146,9 @@ def _generate_funding_rate(
         # Funding correlated with recent returns
         lookback = min(i, update_interval)
         if lookback > 0:
-            recent_return = (close_prices[i] - close_prices[i - lookback]) / close_prices[i - lookback]
+            recent_return = (close_prices[i] - close_prices[i - lookback]) / close_prices[
+                i - lookback
+            ]
             base_funding = recent_return * 0.01  # Scaled down
         else:
             base_funding = 0.0

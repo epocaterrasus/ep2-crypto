@@ -62,13 +62,15 @@ class MockCcxtExchange:
         self._call_count += 1
         await asyncio.sleep(0.01)
         ts = 1700000000000 + (self._call_count * 50)
-        return [{
-            "id": str(1000 + self._call_count),
-            "timestamp": ts,
-            "price": 42000.0,
-            "amount": 0.5,
-            "side": "buy",
-        }]
+        return [
+            {
+                "id": str(1000 + self._call_count),
+                "timestamp": ts,
+                "price": 42000.0,
+                "amount": 0.5,
+                "side": "buy",
+            }
+        ]
 
     async def close(self) -> None:
         pass
@@ -117,16 +119,18 @@ class MockLiqWs:
         self._msg_index = 0
         self._messages = [
             json.dumps({"op": "subscribe", "success": True}),
-            json.dumps({
-                "topic": "allLiquidation.BTCUSDT",
-                "data": {
-                    "updatedTime": 1700000000000,
-                    "symbol": "BTCUSDT",
-                    "side": "Buy",
-                    "price": "42000.0",
-                    "size": "1.5",
-                },
-            }),
+            json.dumps(
+                {
+                    "topic": "allLiquidation.BTCUSDT",
+                    "data": {
+                        "updatedTime": 1700000000000,
+                        "symbol": "BTCUSDT",
+                        "side": "Buy",
+                        "price": "42000.0",
+                        "size": "1.5",
+                    },
+                }
+            ),
         ]
 
     async def send(self, msg: str) -> None:
@@ -159,24 +163,36 @@ async def test_full_ingestion_pipeline(db_repo: Repository) -> None:
 
     # Create all collectors
     kline = BinanceKlineCollector(
-        db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+        db_repo,
+        symbol="BTC/USDT:USDT",
+        exchange_class=ccxt_factory,
     )
     depth = BinanceDepthCollector(
-        db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+        db_repo,
+        symbol="BTC/USDT:USDT",
+        exchange_class=ccxt_factory,
     )
     trades = BinanceTradeCollector(
-        db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+        db_repo,
+        symbol="BTC/USDT:USDT",
+        exchange_class=ccxt_factory,
     )
     oi = BybitOICollector(
-        db_repo, symbol="BTCUSDT", poll_interval_s=0.02,
+        db_repo,
+        symbol="BTCUSDT",
+        poll_interval_s=0.02,
         exchange_class=bybit_factory,
     )
     funding = BybitFundingCollector(
-        db_repo, symbol="BTCUSDT", poll_interval_s=0.02,
+        db_repo,
+        symbol="BTCUSDT",
+        poll_interval_s=0.02,
         exchange_class=bybit_factory,
     )
     liquidation = BybitLiquidationCollector(
-        db_repo, symbol="BTCUSDT", ws_connector=liq_ws_connector,
+        db_repo,
+        symbol="BTCUSDT",
+        ws_connector=liq_ws_connector,
     )
 
     # Wire up orchestrator
@@ -221,10 +237,14 @@ async def test_health_check_all_collectors(db_repo: Repository) -> None:
     bybit_factory = MockBybitRestClass()
 
     kline = BinanceKlineCollector(
-        db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+        db_repo,
+        symbol="BTC/USDT:USDT",
+        exchange_class=ccxt_factory,
     )
     oi = BybitOICollector(
-        db_repo, symbol="BTCUSDT", poll_interval_s=0.02,
+        db_repo,
+        symbol="BTCUSDT",
+        poll_interval_s=0.02,
         exchange_class=bybit_factory,
     )
 
@@ -259,13 +279,19 @@ async def test_clean_shutdown_all_stopped(db_repo: Repository) -> None:
 
     collectors = [
         BinanceKlineCollector(
-            db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+            db_repo,
+            symbol="BTC/USDT:USDT",
+            exchange_class=ccxt_factory,
         ),
         BinanceDepthCollector(
-            db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+            db_repo,
+            symbol="BTC/USDT:USDT",
+            exchange_class=ccxt_factory,
         ),
         BinanceTradeCollector(
-            db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+            db_repo,
+            symbol="BTC/USDT:USDT",
+            exchange_class=ccxt_factory,
         ),
     ]
 
@@ -292,7 +318,9 @@ async def test_no_duplicate_records(db_repo: Repository) -> None:
     ccxt_factory = MockCcxtExchangeClass()
 
     kline = BinanceKlineCollector(
-        db_repo, symbol="BTC/USDT:USDT", exchange_class=ccxt_factory,
+        db_repo,
+        symbol="BTC/USDT:USDT",
+        exchange_class=ccxt_factory,
     )
 
     orch = Orchestrator()

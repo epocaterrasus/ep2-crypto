@@ -13,14 +13,12 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from ep2_crypto.backtest.engine import BacktestConfig, BacktestEngine
 from ep2_crypto.backtest.metrics import (
     BARS_PER_DAY,
     BARS_PER_YEAR,
     BacktestResult,
-    compute_backtest_result,
     cost_sensitivity,
     find_breakeven_cost,
 )
@@ -32,7 +30,7 @@ from ep2_crypto.backtest.walk_forward import (
     WalkForwardValidator,
 )
 from ep2_crypto.benchmarks.engine import BacktestEngine as BenchmarkEngine
-from ep2_crypto.benchmarks.strategies import FundingRateCarry, get_default_benchmark_suite
+from ep2_crypto.benchmarks.strategies import FundingRateCarry
 
 
 def _generate_data(
@@ -84,10 +82,12 @@ class TestFullPipeline:
     def test_30_day_backtest_runs(self) -> None:
         """Backtest on 30+ days of data should complete without errors."""
         data = _generate_data(n_days=30)
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data)
 
         assert isinstance(result, BacktestResult)
@@ -97,10 +97,12 @@ class TestFullPipeline:
     def test_60_day_backtest_runs(self) -> None:
         """Longer backtest should also work."""
         data = _generate_data(n_days=60)
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data)
         assert result.total_trades >= 0
 
@@ -112,10 +114,12 @@ class TestCostsAlwaysPresent:
     def test_no_zero_cost_mode(self) -> None:
         """Every trade must incur costs — no free execution."""
         data = _generate_data(n_days=30)
-        engine = BacktestEngine(BacktestConfig(
-            initial_equity=50_000.0,
-            confidence_threshold=0.5,
-        ))
+        engine = BacktestEngine(
+            BacktestConfig(
+                initial_equity=50_000.0,
+                confidence_threshold=0.5,
+            )
+        )
         result = engine.run(**data)
         if result.total_trades > 0:
             assert result.total_fee_usd > 0, "Fees must be > 0 when trades occur"
@@ -225,14 +229,16 @@ class TestBenchmarkIntegration:
         """Funding rate carry should run as a benchmark."""
         rng = np.random.default_rng(42)
         n = 500
-        df = pd.DataFrame({
-            "open": rng.uniform(99000, 101000, n),
-            "high": rng.uniform(100000, 102000, n),
-            "low": rng.uniform(98000, 100000, n),
-            "close": 100_000.0 * np.cumprod(1 + rng.normal(0, 0.001, n)),
-            "volume": rng.uniform(100, 500, n),
-            "funding_rate": rng.normal(0.0001, 0.00005, n),
-        })
+        df = pd.DataFrame(
+            {
+                "open": rng.uniform(99000, 101000, n),
+                "high": rng.uniform(100000, 102000, n),
+                "low": rng.uniform(98000, 100000, n),
+                "close": 100_000.0 * np.cumprod(1 + rng.normal(0, 0.001, n)),
+                "volume": rng.uniform(100, 500, n),
+                "funding_rate": rng.normal(0.0001, 0.00005, n),
+            }
+        )
         engine = BenchmarkEngine()
         strategy = FundingRateCarry()
         metrics, _, _ = engine.run_strategy(strategy, df)
@@ -257,7 +263,9 @@ class TestCostSensitivityIntegration:
         rng = np.random.default_rng(42)
         returns = rng.normal(0.0001, 0.001, size=10000)
         results = cost_sensitivity(
-            returns, n_trades=1000, n_bars=10000,
+            returns,
+            n_trades=1000,
+            n_bars=10000,
             cost_levels_bps=[0, 4, 8, 16, 32, 64],
         )
         be = find_breakeven_cost(results)

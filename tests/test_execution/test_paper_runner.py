@@ -8,7 +8,6 @@ from ep2_crypto.execution.paper_exchange import PaperExchange
 from ep2_crypto.execution.paper_runner import PaperRunner, TradeSignal
 from ep2_crypto.execution.venue import OrderBookLevel, OrderBookSnapshot, OrderSide, VenueType
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

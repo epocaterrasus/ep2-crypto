@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import numpy as np
-import pytest
-
 from ep2_crypto.backtest.walk_forward import (
     BARS_PER_DAY,
-    AuditResult,
     Fold,
     WalkForwardAuditor,
     WalkForwardConfig,
@@ -204,8 +200,9 @@ class TestWalkForwardAuditor:
     def test_overlap_detected(self) -> None:
         """Audit should detect train/test overlap."""
         bad_folds = [
-            Fold(fold_idx=0, train_start=0, train_end=200,
-                 test_start=190, test_end=300),  # overlap!
+            Fold(
+                fold_idx=0, train_start=0, train_end=200, test_start=190, test_end=300
+            ),  # overlap!
         ]
         auditor = WalkForwardAuditor()
         result = auditor.audit(bad_folds)
@@ -215,8 +212,9 @@ class TestWalkForwardAuditor:
     def test_insufficient_purge_detected(self) -> None:
         """Audit should detect insufficient purge gap."""
         bad_folds = [
-            Fold(fold_idx=0, train_start=0, train_end=4032,
-                 test_start=4035, test_end=4320),  # only 3-bar gap
+            Fold(
+                fold_idx=0, train_start=0, train_end=4032, test_start=4035, test_end=4320
+            ),  # only 3-bar gap
         ]
         auditor = WalkForwardAuditor(WalkForwardConfig(purge_bars=18))
         result = auditor.audit(bad_folds)
@@ -225,8 +223,7 @@ class TestWalkForwardAuditor:
     def test_temporal_violation_detected(self) -> None:
         """Audit should detect train_end > test_start."""
         bad_folds = [
-            Fold(fold_idx=0, train_start=0, train_end=5000,
-                 test_start=4000, test_end=5000),
+            Fold(fold_idx=0, train_start=0, train_end=5000, test_start=4000, test_end=5000),
         ]
         auditor = WalkForwardAuditor()
         result = auditor.audit(bad_folds)
@@ -235,10 +232,10 @@ class TestWalkForwardAuditor:
     def test_duplicate_test_detected(self) -> None:
         """Audit should detect duplicate test indices across folds."""
         bad_folds = [
-            Fold(fold_idx=0, train_start=0, train_end=4032,
-                 test_start=4050, test_end=4338),
-            Fold(fold_idx=1, train_start=288, train_end=4320,
-                 test_start=4050, test_end=4338),  # same test!
+            Fold(fold_idx=0, train_start=0, train_end=4032, test_start=4050, test_end=4338),
+            Fold(
+                fold_idx=1, train_start=288, train_end=4320, test_start=4050, test_end=4338
+            ),  # same test!
         ]
         auditor = WalkForwardAuditor()
         result = auditor.audit(bad_folds)

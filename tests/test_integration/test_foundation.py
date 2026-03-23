@@ -49,25 +49,35 @@ class TestFoundationIntegration:
 
         # 5. Insert order book snapshot
         repo.insert_orderbook(
-            1000, "BTC/USDT",
-            "[67000.0, 66999.5]", "[1.0, 2.5]",
-            "[67001.0, 67001.5]", "[0.8, 1.2]",
-            67000.5, 1.0,
+            1000,
+            "BTC/USDT",
+            "[67000.0, 66999.5]",
+            "[1.0, 2.5]",
+            "[67001.0, 67001.5]",
+            "[0.8, 1.2]",
+            67000.5,
+            1.0,
         )
 
         # 6. Insert trades
-        repo.insert_trades_batch([
-            (1000, "BTC/USDT", 67000.5, 0.1, 0, "t1"),
-            (1050, "BTC/USDT", 67001.0, 0.05, 1, "t2"),
-        ])
+        repo.insert_trades_batch(
+            [
+                (1000, "BTC/USDT", 67000.5, 0.1, 0, "t1"),
+                (1050, "BTC/USDT", 67001.0, 0.05, 1, "t2"),
+            ]
+        )
 
         # 7. Insert funding rate
         repo.insert_funding_rate(1000, "BTC/USDT", 0.0001, 67000.0, 66998.0)
 
         # 8. Insert prediction
         repo.insert_prediction(
-            1000, "BTC/USDT", "up", 0.68,
-            calibrated_prob_up=0.62, model_version="v0.1",
+            1000,
+            "BTC/USDT",
+            "up",
+            0.68,
+            calibrated_prob_up=0.62,
+            model_version="v0.1",
         )
 
         # 9. Query and verify everything

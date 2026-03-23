@@ -11,13 +11,16 @@ callback.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    import sqlite3
 
 logger = structlog.get_logger(__name__)
 
@@ -25,6 +28,7 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
+
 
 class PositionSide(Enum):
     LONG = "long"
@@ -90,6 +94,7 @@ CREATE TABLE IF NOT EXISTS risk_position (
 # ---------------------------------------------------------------------------
 # PositionTracker
 # ---------------------------------------------------------------------------
+
 
 class PositionTracker:
     """Tracks a single open position with real-time mark-to-market.

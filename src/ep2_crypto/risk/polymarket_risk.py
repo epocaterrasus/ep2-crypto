@@ -14,16 +14,20 @@ Key differences from perps risk management:
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import structlog
 
 from ep2_crypto.risk.binary_position_sizer import BinaryPositionSizer, BinarySizingResult
-from ep2_crypto.risk.config import RiskConfig
 from ep2_crypto.risk.drawdown_gate import DrawdownGate
 from ep2_crypto.risk.kill_switches import KillSwitchManager, SwitchName
+
+if TYPE_CHECKING:
+    import sqlite3
+
+    from ep2_crypto.risk.config import RiskConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -292,9 +296,7 @@ class PolymarketRiskAdapter:
         self._kill_switches.check_max_drawdown(dd, equity=self._equity)
 
         # Consecutive losses
-        self._kill_switches.check_consecutive_losses(
-            self._consecutive_losses, equity=self._equity
-        )
+        self._kill_switches.check_consecutive_losses(self._consecutive_losses, equity=self._equity)
 
     def _reject(self, signal: BinarySignal, reason: str) -> BinaryTradeDecision:
         logger.debug(

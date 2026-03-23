@@ -70,7 +70,7 @@ class SlippageEstimator:
             return 0.0
 
         participation = notional_usd / self.base_depth_usd
-        impact = self.impact_coefficient * (participation ** self.impact_exponent)
+        impact = self.impact_coefficient * (participation**self.impact_exponent)
 
         vol_mult = 1.0
         if self.normal_vol_5m > 0:
@@ -243,9 +243,7 @@ class FundingAccumulator:
 
         for day_offset in range(-1, 2):
             for hour in self.settlement_hours:
-                settle_day = curr_dt.replace(
-                    hour=hour, minute=0, second=0, microsecond=0
-                )
+                settle_day = curr_dt.replace(hour=hour, minute=0, second=0, microsecond=0)
                 from datetime import timedelta
 
                 settle_day = settle_day + timedelta(days=day_offset)
@@ -365,9 +363,7 @@ class ExecutionSimulator:
         actual_notional = actual_quantity * price
 
         # 2. Slippage
-        slip_bps = self.slippage.estimate(
-            actual_notional, realized_vol_5m, self._slippage_rng
-        )
+        slip_bps = self.slippage.estimate(actual_notional, realized_vol_5m, self._slippage_rng)
 
         # 3. Latency
         lat_ms = self.latency.sample_latency_ms(self._latency_rng)
@@ -418,9 +414,7 @@ class ExecutionSimulator:
         notional = quantity * price
 
         # Slippage
-        slip_bps = self.slippage.estimate(
-            notional, realized_vol_5m, self._slippage_rng
-        )
+        slip_bps = self.slippage.estimate(notional, realized_vol_5m, self._slippage_rng)
 
         # Fees
         fee_bps = self.fees.exit_fee_bps(is_taker)

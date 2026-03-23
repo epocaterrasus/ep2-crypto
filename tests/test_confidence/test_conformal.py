@@ -128,9 +128,7 @@ class TestCalibration:
         y_encoded = y_true.astype(np.int32) + 1
         expected_scores = 1.0 - probas[np.arange(len(probas)), y_encoded]
 
-        np.testing.assert_allclose(
-            predictor._state.scores, expected_scores, rtol=1e-10
-        )
+        np.testing.assert_allclose(predictor._state.scores, expected_scores, rtol=1e-10)
 
     def test_calibration_returns_metrics(
         self, predictor: ConformalPredictor, rng: np.random.Generator
@@ -150,9 +148,7 @@ class TestCalibration:
         assert 0.0 <= metrics["empirical_coverage"] <= 1.0
         assert 0.0 <= metrics["quantile_threshold"] <= 1.0
 
-    def test_calibration_coverage_near_target(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_calibration_coverage_near_target(self, rng: np.random.Generator) -> None:
         """Empirical coverage should be close to 1 - alpha."""
         config = ConformalConfig(alpha=0.1, min_calibration_size=100)
         pred = ConformalPredictor(config=config)
@@ -352,9 +348,7 @@ class TestAdaptiveAlpha:
         assert isinstance(new_alpha, float)
         assert 0.01 <= new_alpha <= 0.50
 
-    def test_update_alpha_bounded(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_update_alpha_bounded(self, rng: np.random.Generator) -> None:
         """Alpha should stay within [0.01, 0.50] bounds."""
         config = ConformalConfig(alpha=0.1, adaptive=True, adaptive_lr=0.5)
         pred = ConformalPredictor(config=config)
@@ -368,9 +362,7 @@ class TestAdaptiveAlpha:
             alpha = pred.update_alpha(new_probas, new_y)
             assert 0.01 <= alpha <= 0.50
 
-    def test_update_alpha_noop_when_not_adaptive(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_update_alpha_noop_when_not_adaptive(self, rng: np.random.Generator) -> None:
         """When adaptive=False, alpha should not change."""
         config = ConformalConfig(alpha=0.15, adaptive=False)
         pred = ConformalPredictor(config=config)
@@ -384,9 +376,7 @@ class TestAdaptiveAlpha:
 
         assert updated_alpha == original_alpha
 
-    def test_alpha_adjusts_toward_target_coverage(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_alpha_adjusts_toward_target_coverage(self, rng: np.random.Generator) -> None:
         """Over many updates, alpha should steer coverage toward target."""
         config = ConformalConfig(alpha=0.1, adaptive=True, adaptive_lr=0.05)
         pred = ConformalPredictor(config=config)
@@ -410,9 +400,7 @@ class TestAdaptiveAlpha:
 
 
 class TestModelExtremes:
-    def test_perfect_model_mostly_singletons(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_perfect_model_mostly_singletons(self, rng: np.random.Generator) -> None:
         """A perfect model should produce mostly singleton prediction sets."""
         pred = ConformalPredictor(ConformalConfig(alpha=0.1, min_calibration_size=100))
 
@@ -426,9 +414,7 @@ class TestModelExtremes:
         singleton_rate = sum(1 for s in pred_sets if len(s) == 1) / len(pred_sets)
         assert singleton_rate > 0.9, f"Expected >90% singletons, got {singleton_rate:.2%}"
 
-    def test_perfect_model_high_trade_rate(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_perfect_model_high_trade_rate(self, rng: np.random.Generator) -> None:
         """A perfect model with UP/DOWN predictions should have high trade rate."""
         pred = ConformalPredictor(ConformalConfig(alpha=0.1, min_calibration_size=100))
 
@@ -448,9 +434,7 @@ class TestModelExtremes:
         trade_rate = should_trade.sum() / n_test
         assert trade_rate > 0.8, f"Expected >80% trade rate, got {trade_rate:.2%}"
 
-    def test_random_model_many_abstentions(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_random_model_many_abstentions(self, rng: np.random.Generator) -> None:
         """A random model should produce many multi-class sets → abstentions."""
         pred = ConformalPredictor(ConformalConfig(alpha=0.1, min_calibration_size=100))
 
@@ -490,9 +474,7 @@ class TestPersistence:
         assert loaded._state.quantile_threshold == pytest.approx(
             predictor._state.quantile_threshold
         )
-        assert loaded._state.current_alpha == pytest.approx(
-            predictor._state.current_alpha
-        )
+        assert loaded._state.current_alpha == pytest.approx(predictor._state.current_alpha)
         np.testing.assert_allclose(loaded._state.scores, predictor._state.scores)
 
     def test_save_load_produces_same_gate(
@@ -517,9 +499,7 @@ class TestPersistence:
         np.testing.assert_array_equal(orig_trade, loaded_trade)
         np.testing.assert_array_equal(orig_dir, loaded_dir)
 
-    def test_save_uncalibrated_raises(
-        self, predictor: ConformalPredictor, tmp_path: Path
-    ) -> None:
+    def test_save_uncalibrated_raises(self, predictor: ConformalPredictor, tmp_path: Path) -> None:
         with pytest.raises(RuntimeError, match="not calibrated"):
             predictor.save(tmp_path / "conformal")
 
@@ -566,9 +546,7 @@ class TestErrorHandling:
         with pytest.raises(RuntimeError, match="not calibrated"):
             predictor.update_alpha(probas, y_true)
 
-    def test_min_calibration_size_enforced(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_min_calibration_size_enforced(self, rng: np.random.Generator) -> None:
         config = ConformalConfig(min_calibration_size=100)
         pred = ConformalPredictor(config=config)
 
@@ -589,9 +567,7 @@ class TestErrorHandling:
         with pytest.raises(ValueError, match="Expected 3 classes"):
             predictor.calibrate(probas, y_true)
 
-    def test_is_calibrated_false_initially(
-        self, predictor: ConformalPredictor
-    ) -> None:
+    def test_is_calibrated_false_initially(self, predictor: ConformalPredictor) -> None:
         assert not predictor.is_calibrated
 
 

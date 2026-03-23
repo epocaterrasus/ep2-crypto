@@ -39,9 +39,9 @@ logger = structlog.get_logger(__name__)
 class MarketRegime(IntEnum):
     """Unified market regime classification."""
 
-    LOW_VOL = 0     # Quiet, range-bound market
-    NORMAL = 1      # Typical conditions
-    HIGH_VOL = 2    # Volatile, potentially trending
+    LOW_VOL = 0  # Quiet, range-bound market
+    NORMAL = 1  # Typical conditions
+    HIGH_VOL = 2  # Volatile, potentially trending
 
 
 @dataclass(frozen=True)

@@ -124,10 +124,12 @@ def _create_exchange(exchange_class: Any, exchange_config: dict[str, Any]) -> An
 
     import ccxt.pro as ccxtpro
 
-    return ccxtpro.binanceusdm({
-        "enableRateLimit": True,
-        **exchange_config,
-    })
+    return ccxtpro.binanceusdm(
+        {
+            "enableRateLimit": True,
+            **exchange_config,
+        }
+    )
 
 
 class BinanceDepthCollector(BaseCollector):
@@ -173,7 +175,8 @@ class BinanceDepthCollector(BaseCollector):
             try:
                 orderbook = await asyncio.wait_for(
                     self._exchange.watch_order_book(
-                        self._symbol, limit=self._depth_limit,
+                        self._symbol,
+                        limit=self._depth_limit,
                     ),
                     timeout=60.0,
                 )
@@ -194,8 +197,8 @@ class BinanceDepthCollector(BaseCollector):
 
     def _process_orderbook(self, orderbook: dict[str, Any]) -> None:
         """Extract and store top N bid/ask levels."""
-        bids = orderbook.get("bids", [])[:self._depth_limit]
-        asks = orderbook.get("asks", [])[:self._depth_limit]
+        bids = orderbook.get("bids", [])[: self._depth_limit]
+        asks = orderbook.get("asks", [])[: self._depth_limit]
 
         if not bids or not asks:
             return
@@ -300,14 +303,16 @@ class BinanceTradeCollector(BaseCollector):
             if self._last_trade_id is not None and trade_id == self._last_trade_id:
                 continue
 
-            rows.append((
-                int(trade["timestamp"]),
-                self._symbol,
-                float(trade["price"]),
-                float(trade["amount"]),
-                int(trade.get("side", "") == "sell"),  # is_buyer_maker
-                trade_id,
-            ))
+            rows.append(
+                (
+                    int(trade["timestamp"]),
+                    self._symbol,
+                    float(trade["price"]),
+                    float(trade["amount"]),
+                    int(trade.get("side", "") == "sell"),  # is_buyer_maker
+                    trade_id,
+                )
+            )
 
         if rows:
             self._repository.insert_trades_batch(rows)

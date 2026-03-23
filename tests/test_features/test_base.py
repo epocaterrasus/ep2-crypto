@@ -76,7 +76,9 @@ class MultiOutputFeature(FeatureComputer):
         return ["multi_a", "multi_b"]
 
 
-def _make_arrays(n: int = 20) -> tuple[
+def _make_arrays(
+    n: int = 20,
+) -> tuple[
     NDArray[np.int64],
     NDArray[np.float64],
     NDArray[np.float64],

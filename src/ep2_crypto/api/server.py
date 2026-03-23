@@ -26,6 +26,7 @@ STALENESS_WARN_S = 600  # 10 minutes
 
 # ── Response Models ──────────────────────────────────────────────────────────
 
+
 class PredictionResponse(BaseModel):
     """Response for GET /predict."""
 
@@ -83,6 +84,7 @@ class RegimeResponse(BaseModel):
 
 # ── Application State ────────────────────────────────────────────────────────
 
+
 @dataclass
 class AppState:
     """Mutable application state shared across the API.
@@ -129,6 +131,7 @@ def _staleness(last_ms: int) -> tuple[float, bool]:
 
 # ── App Factory ──────────────────────────────────────────────────────────────
 
+
 def create_app(state: AppState | None = None) -> FastAPI:
     """Create the FastAPI application.
 
@@ -165,12 +168,14 @@ def create_app(state: AppState | None = None) -> FastAPI:
         s: AppState = app.state.ep2  # type: ignore[attr-defined]
         checks = []
         for dep in s.dependency_checks:
-            checks.append(HealthCheck(
-                name=dep.get("name", "unknown"),
-                status=dep.get("status", "down"),
-                latency_ms=dep.get("latency_ms"),
-                message=dep.get("message"),
-            ))
+            checks.append(
+                HealthCheck(
+                    name=dep.get("name", "unknown"),
+                    status=dep.get("status", "down"),
+                    latency_ms=dep.get("latency_ms"),
+                    message=dep.get("message"),
+                )
+            )
 
         # If no dependency checks configured, report degraded
         if not checks:

@@ -24,6 +24,7 @@ from ep2_crypto.risk.risk_manager import RiskManager, SignalInput
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _prices(n: int = 100, base: float = 67000.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(42)
     closes = base + np.cumsum(rng.normal(0, 50, n))
@@ -43,6 +44,7 @@ def _signal(
 # ---------------------------------------------------------------------------
 # Property: Position size NEVER exceeds 5% of equity
 # ---------------------------------------------------------------------------
+
 
 @given(
     confidence=st.floats(min_value=0.01, max_value=1.0),
@@ -66,7 +68,9 @@ def test_position_size_never_exceeds_cap(
         confidence,
         equity,
         67000.0,
-        highs, lows, closes,
+        highs,
+        lows,
+        closes,
         current_idx=99,
         drawdown_multiplier=dd_mult,
         win_rate=win_rate,
@@ -84,6 +88,7 @@ def test_position_size_never_exceeds_cap(
 # ---------------------------------------------------------------------------
 # Property: After kill switch trigger, ZERO trades approved
 # ---------------------------------------------------------------------------
+
 
 @given(
     confidence=st.floats(min_value=0.01, max_value=1.0),
@@ -121,6 +126,7 @@ def test_kill_switch_blocks_all_trades(
 # Property: Drawdown multiplier always in [0, 1]
 # ---------------------------------------------------------------------------
 
+
 @given(
     equity_changes=st.lists(
         st.floats(min_value=-0.20, max_value=0.10),
@@ -139,14 +145,13 @@ def test_drawdown_multiplier_always_bounded(
     for change in equity_changes:
         equity = max(1.0, equity * (1 + change))
         mult = gate.update(equity)
-        assert 0.0 <= mult <= 1.0, (
-            f"Multiplier {mult} out of [0, 1] bounds at equity {equity}"
-        )
+        assert 0.0 <= mult <= 1.0, f"Multiplier {mult} out of [0, 1] bounds at equity {equity}"
 
 
 # ---------------------------------------------------------------------------
 # Property: Kelly fraction always non-negative
 # ---------------------------------------------------------------------------
+
 
 @given(
     win_rate=st.floats(min_value=0.0, max_value=1.0),
@@ -160,8 +165,13 @@ def test_kelly_fraction_never_negative(
     sizer = PositionSizer()
     closes, highs, lows = _prices()
     result = sizer.compute(
-        "long", 0.80, 50_000.0, 67000.0,
-        highs, lows, closes,
+        "long",
+        0.80,
+        50_000.0,
+        67000.0,
+        highs,
+        lows,
+        closes,
         current_idx=99,
         win_rate=win_rate,
         payoff_ratio=payoff,
@@ -172,6 +182,7 @@ def test_kelly_fraction_never_negative(
 # ---------------------------------------------------------------------------
 # Property: Risk per trade never exceeds max_risk_per_trade
 # ---------------------------------------------------------------------------
+
 
 @given(
     confidence=st.floats(min_value=0.01, max_value=1.0),
@@ -187,8 +198,13 @@ def test_risk_per_trade_never_exceeds_cap(
     sizer = PositionSizer(max_risk_per_trade=0.01)
     closes, highs, lows = _prices()
     result = sizer.compute(
-        "long", confidence, equity, 67000.0,
-        highs, lows, closes,
+        "long",
+        confidence,
+        equity,
+        67000.0,
+        highs,
+        lows,
+        closes,
         current_idx=99,
         win_rate=win_rate,
         payoff_ratio=1.0,

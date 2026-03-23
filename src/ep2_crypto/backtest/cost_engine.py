@@ -28,7 +28,6 @@ import logging
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 import numpy as np
 
@@ -38,6 +37,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Enums & Constants
 # ---------------------------------------------------------------------------
+
 
 class OrderSide(Enum):
     BUY = "buy"
@@ -71,9 +71,11 @@ BPS = 1e-4  # 1 bps = 0.01% = 0.0001
 # 1. Fee Model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class VIPTier:
     """Fee rates for a specific VIP tier."""
+
     tier: int
     maker_rate: float  # as decimal (e.g., 0.0002 for 2 bps)
     taker_rate: float
@@ -114,17 +116,14 @@ class FeeModel:
     Supports dynamic tier inference from projected volume,
     BNB discount, and referral rebates.
     """
+
     exchange: Exchange = Exchange.BINANCE
     vip_tier: int = 0
     bnb_discount: bool = False  # 10% off on Binance
     referral_rebate_pct: float = 0.0  # 0-0.10 (10% max)
 
     def _get_tier_data(self) -> VIPTier:
-        tiers = (
-            BINANCE_VIP_TIERS
-            if self.exchange == Exchange.BINANCE
-            else BYBIT_VIP_TIERS
-        )
+        tiers = BINANCE_VIP_TIERS if self.exchange == Exchange.BINANCE else BYBIT_VIP_TIERS
         for tier in tiers:
             if tier.tier == self.vip_tier:
                 return tier
@@ -139,11 +138,7 @@ class FeeModel:
         referral_rebate_pct: float = 0.0,
     ) -> FeeModel:
         """Infer VIP tier from projected 30-day trading volume."""
-        tiers = (
-            BINANCE_VIP_TIERS
-            if exchange == Exchange.BINANCE
-            else BYBIT_VIP_TIERS
-        )
+        tiers = BINANCE_VIP_TIERS if exchange == Exchange.BINANCE else BYBIT_VIP_TIERS
         best_tier = 0
         for tier in tiers:
             if monthly_volume >= tier.min_volume_30d:
@@ -173,7 +168,7 @@ class FeeModel:
             rate *= 0.90
 
         # Referral rebate
-        rate *= (1.0 - self.referral_rebate_pct)
+        rate *= 1.0 - self.referral_rebate_pct
 
         return rate
 
@@ -192,10 +187,7 @@ class FeeModel:
         exit_type: OrderType = OrderType.MARKET,
     ) -> float:
         """Calculate total round-trip fee in USD."""
-        return (
-            self.calculate_fee(notional, entry_type)
-            + self.calculate_fee(notional, exit_type)
-        )
+        return self.calculate_fee(notional, entry_type) + self.calculate_fee(notional, exit_type)
 
     def round_trip_fee_bps(
         self,
@@ -203,9 +195,7 @@ class FeeModel:
         exit_type: OrderType = OrderType.MARKET,
     ) -> float:
         """Calculate round-trip fee in basis points."""
-        return (
-            self.get_fee_rate(entry_type) + self.get_fee_rate(exit_type)
-        ) / BPS
+        return (self.get_fee_rate(entry_type) + self.get_fee_rate(exit_type)) / BPS
 
 
 # ---------------------------------------------------------------------------
@@ -215,10 +205,30 @@ class FeeModel:
 # Typical BTCUSDT perp depth at 10 bps from mid, by hour (USD millions)
 # Based on Amberdata research, BTC/FDUSD Binance 2025
 HOURLY_DEPTH_PROFILE = {
-    0: 3.45, 1: 3.40, 2: 3.30, 3: 3.30, 4: 3.30, 5: 3.35,
-    6: 3.45, 7: 3.55, 8: 3.68, 9: 3.78, 10: 3.78, 11: 3.86,
-    12: 3.78, 13: 3.68, 14: 3.61, 15: 3.55, 16: 3.45, 17: 3.30,
-    18: 3.23, 19: 3.13, 20: 2.97, 21: 2.71, 22: 2.90, 23: 3.13,
+    0: 3.45,
+    1: 3.40,
+    2: 3.30,
+    3: 3.30,
+    4: 3.30,
+    5: 3.35,
+    6: 3.45,
+    7: 3.55,
+    8: 3.68,
+    9: 3.78,
+    10: 3.78,
+    11: 3.86,
+    12: 3.78,
+    13: 3.68,
+    14: 3.61,
+    15: 3.55,
+    16: 3.45,
+    17: 3.30,
+    18: 3.23,
+    19: 3.13,
+    20: 2.97,
+    21: 2.71,
+    22: 2.90,
+    23: 3.13,
 }
 
 # Mean depth for normalization
@@ -237,6 +247,7 @@ class SlippageModel:
     Where:
         impact = impact_coefficient * (order_size / book_depth) ^ impact_exponent
     """
+
     # Base parameters
     impact_coefficient: float = 1.0  # calibrated impact scaling
     impact_exponent: float = 0.5  # square-root by default
@@ -262,9 +273,7 @@ class SlippageModel:
         # Inverse relationship: less depth = more slippage
         return _MEAN_DEPTH / depth_at_hour
 
-    def classify_volatility_regime(
-        self, realized_vol: float
-    ) -> VolatilityRegime:
+    def classify_volatility_regime(self, realized_vol: float) -> VolatilityRegime:
         """Classify current volatility into a regime."""
         ratio = realized_vol / self.normal_vol_5m if self.normal_vol_5m > 0 else 1.0
         if ratio < 0.5:
@@ -310,7 +319,7 @@ class SlippageModel:
         # Result is in "fraction" units; multiply by 1e4 to get bps
         impact = (
             self.impact_coefficient
-            * (participation_rate ** self.impact_exponent)
+            * (participation_rate**self.impact_exponent)
             * 10.0  # scaling factor calibrated so $50K ~ 1-2 bps
         )
 
@@ -328,15 +337,14 @@ class SlippageModel:
         hour_utc: int = 12,
     ) -> float:
         """Estimate slippage in USD."""
-        bps = self.estimate_slippage_bps(
-            order_size_usd, spread_bps, realized_vol_5m, hour_utc
-        )
+        bps = self.estimate_slippage_bps(order_size_usd, spread_bps, realized_vol_5m, hour_utc)
         return order_size_usd * bps * BPS
 
 
 # ---------------------------------------------------------------------------
 # 3. Market Impact Model (Almgren-Chriss / Square-Root Law)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class MarketImpactModel:
@@ -353,6 +361,7 @@ class MarketImpactModel:
         - Bouchaud et al., "The Square-Root Law of Market Impact"
         - Almgren & Chriss (2000)
     """
+
     # Square-root law parameters
     y_prefactor: float = 1.0  # dimensionless, empirically ~1.0
     daily_volume_usd: float = 20e9  # avg daily volume ($20B for BTCUSDT perp)
@@ -392,18 +401,14 @@ class MarketImpactModel:
         """Temporary component of impact (decays after execution)."""
         return self.total_impact_bps(order_size_usd) * (1 - self.permanent_fraction)
 
-    def temporary_impact_at_time(
-        self, order_size_usd: float, minutes_after: float
-    ) -> float:
+    def temporary_impact_at_time(self, order_size_usd: float, minutes_after: float) -> float:
         """
         Temporary impact remaining after `minutes_after` minutes.
 
         Decays exponentially with configurable half-life.
         """
         temp = self.temporary_impact_bps(order_size_usd)
-        decay = math.exp(
-            -math.log(2) * minutes_after / self.temporary_decay_halflife_min
-        )
+        decay = math.exp(-math.log(2) * minutes_after / self.temporary_decay_halflife_min)
         return temp * decay
 
     def impact_cost_usd(self, order_size_usd: float) -> float:
@@ -425,6 +430,7 @@ class MarketImpactModel:
 # 4. Funding Rate Model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FundingRateModel:
     """
@@ -433,6 +439,7 @@ class FundingRateModel:
     Uses empirical distribution parameters from BitMEX Q3 2025 report
     and Binance historical data.
     """
+
     # Empirical parameters (Binance BTC, per 8h period)
     mean_rate: float = 0.000057  # 0.0057% per 8h
     std_rate: float = 0.000039  # 0.0039% per 8h
@@ -496,9 +503,7 @@ class FundingRateModel:
         Returns:
             Expected funding cost in USD (positive = cost, negative = income).
         """
-        n_payments = self.funding_payments_in_period(
-            entry_hour_utc, duration_hours
-        )
+        n_payments = self.funding_payments_in_period(entry_hour_utc, duration_hours)
         if n_payments == 0:
             return 0.0
 
@@ -522,9 +527,7 @@ class FundingRateModel:
         entry_hour_utc: float = 0.0,
     ) -> float:
         """Expected funding cost in basis points."""
-        cost_frac = self.expected_funding_cost(
-            1.0, is_long, duration_hours, entry_hour_utc
-        )
+        cost_frac = self.expected_funding_cost(1.0, is_long, duration_hours, entry_hour_utc)
         return cost_frac / BPS
 
     def annualized_funding_rate(self) -> float:
@@ -537,6 +540,7 @@ class FundingRateModel:
 # 5. Spread Model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SpreadModel:
     """
@@ -546,6 +550,7 @@ class SpreadModel:
     BTCUSDT perp on Binance: tick size = $0.10
     At BTC=$100K: min spread = 0.1 bps
     """
+
     base_spread_bps: float = 0.2  # typical median spread
     volatility_sensitivity: float = 0.5  # how much spread tracks vol (0-1)
     normal_vol_5m: float = 0.001  # baseline 5-min vol
@@ -553,12 +558,34 @@ class SpreadModel:
 
     # Spread multiplier by hour (relative to average)
     # Derived from inverse of depth profile
-    _SPREAD_HOURLY: dict[int, float] = field(default_factory=lambda: {
-        0: 1.00, 1: 1.00, 2: 1.02, 3: 1.02, 4: 1.02, 5: 1.00,
-        6: 0.98, 7: 0.95, 8: 0.92, 9: 0.90, 10: 0.88, 11: 0.85,
-        12: 0.87, 13: 0.88, 14: 0.90, 15: 0.92, 16: 0.95, 17: 1.00,
-        18: 1.02, 19: 1.05, 20: 1.10, 21: 1.20, 22: 1.12, 23: 1.05,
-    })
+    _SPREAD_HOURLY: dict[int, float] = field(
+        default_factory=lambda: {
+            0: 1.00,
+            1: 1.00,
+            2: 1.02,
+            3: 1.02,
+            4: 1.02,
+            5: 1.00,
+            6: 0.98,
+            7: 0.95,
+            8: 0.92,
+            9: 0.90,
+            10: 0.88,
+            11: 0.85,
+            12: 0.87,
+            13: 0.88,
+            14: 0.90,
+            15: 0.92,
+            16: 0.95,
+            17: 1.00,
+            18: 1.02,
+            19: 1.05,
+            20: 1.10,
+            21: 1.20,
+            22: 1.12,
+            23: 1.05,
+        }
+    )
 
     def estimate_spread_bps(
         self,
@@ -602,6 +629,7 @@ class SpreadModel:
 # 6. Opportunity Cost Model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OpportunityCostModel:
     """
@@ -610,6 +638,7 @@ class OpportunityCostModel:
     Capital sitting on an exchange at 0% yield has an implicit cost
     equal to the risk-free rate it could earn elsewhere.
     """
+
     annual_risk_free_rate: float = 0.045  # 4.5% (stablecoin lending / T-bills)
     leverage: float = 1.0  # effective leverage (reduces capital needed)
 
@@ -640,6 +669,7 @@ class OpportunityCostModel:
 # 7. Maker/Taker Fill Probability Model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MakerTakerModel:
     """
@@ -650,6 +680,7 @@ class MakerTakerModel:
     - Adverse selection cost on maker fills
     - Expected blended fee rate
     """
+
     # Fill probability parameters
     maker_fill_prob_patient: float = 0.85  # mean-reversion, no urgency
     maker_fill_prob_moderate: float = 0.60  # some urgency
@@ -715,9 +746,11 @@ class MakerTakerModel:
 # 8. Transaction Cost Engine (Combines All Components)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TradeDetails:
     """Input details for a single trade."""
+
     side: OrderSide
     notional_usd: float
     order_type: OrderType = OrderType.MARKET
@@ -725,13 +758,14 @@ class TradeDetails:
     holding_hours: float = 0.0  # expected hold duration (for funding/opp cost)
     hour_utc: int = 12
     realized_vol_5m: float = 0.001
-    current_spread_bps: Optional[float] = None  # if None, model estimates it
+    current_spread_bps: float | None = None  # if None, model estimates it
     is_long_position: bool = True  # for funding direction
 
 
 @dataclass
 class CostBreakdown:
     """Detailed breakdown of all cost components."""
+
     fee_bps: float
     spread_bps: float
     slippage_bps: float
@@ -781,14 +815,13 @@ class TransactionCostEngine:
         cost = engine.estimate_trade_cost(trade_details)
         print(f"Total cost: {cost.total_bps:.1f} bps = ${cost.total_usd:.2f}")
     """
+
     fee_model: FeeModel = field(default_factory=FeeModel)
     slippage_model: SlippageModel = field(default_factory=SlippageModel)
     market_impact_model: MarketImpactModel = field(default_factory=MarketImpactModel)
     funding_model: FundingRateModel = field(default_factory=FundingRateModel)
     spread_model: SpreadModel = field(default_factory=SpreadModel)
-    opportunity_cost_model: OpportunityCostModel = field(
-        default_factory=OpportunityCostModel
-    )
+    opportunity_cost_model: OpportunityCostModel = field(default_factory=OpportunityCostModel)
     maker_taker_model: MakerTakerModel = field(default_factory=MakerTakerModel)
 
     # Master switches for disabling components in sensitivity analysis
@@ -835,9 +868,7 @@ class TransactionCostEngine:
             effective_spread = (
                 trade.current_spread_bps
                 if trade.current_spread_bps is not None
-                else self.spread_model.estimate_spread_bps(
-                    trade.realized_vol_5m, trade.hour_utc
-                )
+                else self.spread_model.estimate_spread_bps(trade.realized_vol_5m, trade.hour_utc)
             )
             slippage_bps_val = self.slippage_model.estimate_slippage_bps(
                 trade.notional_usd,
@@ -850,9 +881,7 @@ class TransactionCostEngine:
         # 4. Market impact
         impact_bps_val = 0.0
         if self.include_market_impact:
-            impact_bps_val = self.market_impact_model.total_impact_bps(
-                trade.notional_usd
-            )
+            impact_bps_val = self.market_impact_model.total_impact_bps(trade.notional_usd)
         impact_usd = notional * impact_bps_val * BPS
 
         # 5. Funding (only for positions held across funding boundaries)
@@ -879,19 +908,18 @@ class TransactionCostEngine:
         opp_usd = notional * opp_bps_val * BPS
 
         # Volatility regime classification
-        vol_regime = self.slippage_model.classify_volatility_regime(
-            trade.realized_vol_5m
-        )
+        vol_regime = self.slippage_model.classify_volatility_regime(trade.realized_vol_5m)
 
         # Total
         total_bps = (
-            fee_bps + spread_bps_val + slippage_bps_val
-            + impact_bps_val + funding_bps_val + opp_bps_val
+            fee_bps
+            + spread_bps_val
+            + slippage_bps_val
+            + impact_bps_val
+            + funding_bps_val
+            + opp_bps_val
         )
-        total_usd = (
-            fee_usd + spread_usd + slippage_usd
-            + impact_usd + funding_usd + opp_usd
-        )
+        total_usd = fee_usd + spread_usd + slippage_usd + impact_usd + funding_usd + opp_usd
 
         return CostBreakdown(
             fee_bps=fee_bps,
@@ -926,27 +954,31 @@ class TransactionCostEngine:
 
         Convenience method that creates entry and exit trades and sums costs.
         """
-        entry = self.estimate_trade_cost(TradeDetails(
-            side=OrderSide.BUY if is_long else OrderSide.SELL,
-            notional_usd=notional_usd,
-            order_type=entry_type,
-            is_entry=True,
-            holding_hours=holding_hours,
-            hour_utc=hour_utc,
-            realized_vol_5m=realized_vol_5m,
-            is_long_position=is_long,
-        ))
+        entry = self.estimate_trade_cost(
+            TradeDetails(
+                side=OrderSide.BUY if is_long else OrderSide.SELL,
+                notional_usd=notional_usd,
+                order_type=entry_type,
+                is_entry=True,
+                holding_hours=holding_hours,
+                hour_utc=hour_utc,
+                realized_vol_5m=realized_vol_5m,
+                is_long_position=is_long,
+            )
+        )
 
-        exit_trade = self.estimate_trade_cost(TradeDetails(
-            side=OrderSide.SELL if is_long else OrderSide.BUY,
-            notional_usd=notional_usd,
-            order_type=exit_type,
-            is_entry=False,
-            holding_hours=0.0,  # funding already counted on entry
-            hour_utc=(hour_utc + int(holding_hours)) % 24,
-            realized_vol_5m=realized_vol_5m,
-            is_long_position=is_long,
-        ))
+        exit_trade = self.estimate_trade_cost(
+            TradeDetails(
+                side=OrderSide.SELL if is_long else OrderSide.BUY,
+                notional_usd=notional_usd,
+                order_type=exit_type,
+                is_entry=False,
+                holding_hours=0.0,  # funding already counted on entry
+                hour_utc=(hour_utc + int(holding_hours)) % 24,
+                realized_vol_5m=realized_vol_5m,
+                is_long_position=is_long,
+            )
+        )
 
         return CostBreakdown(
             fee_bps=entry.fee_bps + exit_trade.fee_bps,
@@ -956,11 +988,16 @@ class TransactionCostEngine:
             funding_bps=entry.funding_bps,  # only counted once
             opportunity_cost_bps=entry.opportunity_cost_bps,
             total_bps=(
-                entry.fee_bps + exit_trade.fee_bps
-                + entry.spread_bps + exit_trade.spread_bps
-                + entry.slippage_bps + exit_trade.slippage_bps
-                + entry.market_impact_bps + exit_trade.market_impact_bps
-                + entry.funding_bps + entry.opportunity_cost_bps
+                entry.fee_bps
+                + exit_trade.fee_bps
+                + entry.spread_bps
+                + exit_trade.spread_bps
+                + entry.slippage_bps
+                + exit_trade.slippage_bps
+                + entry.market_impact_bps
+                + exit_trade.market_impact_bps
+                + entry.funding_bps
+                + entry.opportunity_cost_bps
             ),
             fee_usd=entry.fee_usd + exit_trade.fee_usd,
             spread_usd=entry.spread_usd + exit_trade.spread_usd,
@@ -969,11 +1006,16 @@ class TransactionCostEngine:
             funding_usd=entry.funding_usd,
             opportunity_cost_usd=entry.opportunity_cost_usd,
             total_usd=(
-                entry.fee_usd + exit_trade.fee_usd
-                + entry.spread_usd + exit_trade.spread_usd
-                + entry.slippage_usd + exit_trade.slippage_usd
-                + entry.market_impact_usd + exit_trade.market_impact_usd
-                + entry.funding_usd + entry.opportunity_cost_usd
+                entry.fee_usd
+                + exit_trade.fee_usd
+                + entry.spread_usd
+                + exit_trade.spread_usd
+                + entry.slippage_usd
+                + exit_trade.slippage_usd
+                + entry.market_impact_usd
+                + exit_trade.market_impact_usd
+                + entry.funding_usd
+                + entry.opportunity_cost_usd
             ),
             volatility_regime=entry.volatility_regime,
         )
@@ -982,6 +1024,7 @@ class TransactionCostEngine:
 # ---------------------------------------------------------------------------
 # 9. Sensitivity Analysis Tools
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class BreakEvenAnalysis:
@@ -1066,7 +1109,7 @@ def cost_sensitivity_sweep(
     engine: TransactionCostEngine,
     notional_usd: float = 50_000,
     holding_hours: float = 2.0,
-    cost_multipliers: Optional[list[float]] = None,
+    cost_multipliers: list[float] | None = None,
 ) -> list[dict[str, float]]:
     """
     Sweep cost assumptions from optimistic to pessimistic.
@@ -1093,12 +1136,14 @@ def cost_sensitivity_sweep(
     )
 
     for mult in cost_multipliers:
-        results.append({
-            "multiplier": mult,
-            "total_bps": base.total_bps * mult,
-            "total_usd": base.total_usd * mult,
-            "label": _multiplier_label(mult),
-        })
+        results.append(
+            {
+                "multiplier": mult,
+                "total_bps": base.total_bps * mult,
+                "total_usd": base.total_usd * mult,
+                "label": _multiplier_label(mult),
+            }
+        )
 
     return results
 
@@ -1118,6 +1163,7 @@ def _multiplier_label(mult: float) -> str:
 # ---------------------------------------------------------------------------
 # Preset Configurations
 # ---------------------------------------------------------------------------
+
 
 def conservative_engine(
     exchange: Exchange = Exchange.BINANCE,

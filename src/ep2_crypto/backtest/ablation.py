@@ -15,21 +15,24 @@ Usage::
 from __future__ import annotations
 
 import dataclasses
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
-from numpy.typing import NDArray
 
 from ep2_crypto.backtest.engine import BacktestConfig, BacktestEngine
-from ep2_crypto.backtest.metrics import BacktestResult
 from ep2_crypto.risk.config import RiskConfig
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from ep2_crypto.backtest.metrics import BacktestResult
 
 logger = structlog.get_logger(__name__)
 
 
-class AblationVariant(str, Enum):
+class AblationVariant(StrEnum):
     """Which component is removed in this ablation run."""
 
     FULL = "full"
@@ -200,7 +203,9 @@ class AblationStudy:
                 signals=sigs,
                 confidences=confs,
                 funding_rates=funding_rates,
-                regime_labels=regime_labels if variant != AblationVariant.NO_REGIME_FILTER else None,
+                regime_labels=regime_labels
+                if variant != AblationVariant.NO_REGIME_FILTER
+                else None,
             )
             results.append(_make_variant_result(variant, result))
             logger.info(

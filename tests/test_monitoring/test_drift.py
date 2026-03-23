@@ -102,10 +102,12 @@ class TestFeatureDriftDetector:
 
     def test_set_references_batch(self, detector: FeatureDriftDetector) -> None:
         rng = np.random.default_rng(42)
-        detector.set_references_batch({
-            "obi": rng.normal(0, 1, 500),
-            "rsi": rng.uniform(20, 80, 500),
-        })
+        detector.set_references_batch(
+            {
+                "obi": rng.normal(0, 1, 500),
+                "rsi": rng.uniform(20, 80, 500),
+            }
+        )
         assert detector.feature_names == ["obi", "rsi"]
 
     def test_update_adds_to_buffer(self, detector: FeatureDriftDetector) -> None:
@@ -126,9 +128,7 @@ class TestFeatureDriftDetector:
         assert not report.is_drifted
         assert report.psi < 0.2
 
-    def test_drift_detected_different_distribution(
-        self, detector: FeatureDriftDetector
-    ) -> None:
+    def test_drift_detected_different_distribution(self, detector: FeatureDriftDetector) -> None:
         rng = np.random.default_rng(42)
         detector.set_reference("obi", rng.normal(0, 1, 500))
         for val in rng.normal(5, 1, 300):
@@ -138,42 +138,48 @@ class TestFeatureDriftDetector:
         assert report.psi > 0.2
         assert report.severity in ("significant", "critical")
 
-    def test_unknown_feature_returns_safe_report(
-        self, detector: FeatureDriftDetector
-    ) -> None:
+    def test_unknown_feature_returns_safe_report(self, detector: FeatureDriftDetector) -> None:
         report = detector.compute_drift("nonexistent")
         assert report.psi == 0.0
         assert not report.is_drifted
 
     def test_compute_all_drift(self, detector: FeatureDriftDetector) -> None:
         rng = np.random.default_rng(42)
-        detector.set_references_batch({
-            "obi": rng.normal(0, 1, 500),
-            "rsi": rng.uniform(20, 80, 500),
-            "vol": rng.lognormal(0, 0.5, 500),
-        })
+        detector.set_references_batch(
+            {
+                "obi": rng.normal(0, 1, 500),
+                "rsi": rng.uniform(20, 80, 500),
+                "vol": rng.lognormal(0, 0.5, 500),
+            }
+        )
         # Same distribution for all
         for _ in range(200):
-            detector.update({
-                "obi": float(rng.normal(0, 1)),
-                "rsi": float(rng.uniform(20, 80)),
-                "vol": float(rng.lognormal(0, 0.5)),
-            })
+            detector.update(
+                {
+                    "obi": float(rng.normal(0, 1)),
+                    "rsi": float(rng.uniform(20, 80)),
+                    "vol": float(rng.lognormal(0, 0.5)),
+                }
+            )
         reports = detector.compute_all_drift()
         assert len(reports) == 3
         assert all(not r.is_drifted for r in reports)
 
     def test_get_drifted_features(self, detector: FeatureDriftDetector) -> None:
         rng = np.random.default_rng(42)
-        detector.set_references_batch({
-            "stable": rng.normal(0, 1, 500),
-            "drifted": rng.normal(0, 1, 500),
-        })
+        detector.set_references_batch(
+            {
+                "stable": rng.normal(0, 1, 500),
+                "drifted": rng.normal(0, 1, 500),
+            }
+        )
         for _ in range(300):
-            detector.update({
-                "stable": float(rng.normal(0, 1)),
-                "drifted": float(rng.normal(5, 1)),
-            })
+            detector.update(
+                {
+                    "stable": float(rng.normal(0, 1)),
+                    "drifted": float(rng.normal(5, 1)),
+                }
+            )
         detector.compute_all_drift()
         drifted = detector.get_drifted_features()
         assert "drifted" in drifted
@@ -203,15 +209,19 @@ class TestFeatureDriftDetector:
 
     def test_reset_buffer_single(self, detector: FeatureDriftDetector) -> None:
         rng = np.random.default_rng(42)
-        detector.set_references_batch({
-            "obi": rng.normal(0, 1, 500),
-            "rsi": rng.uniform(20, 80, 500),
-        })
+        detector.set_references_batch(
+            {
+                "obi": rng.normal(0, 1, 500),
+                "rsi": rng.uniform(20, 80, 500),
+            }
+        )
         for _ in range(100):
-            detector.update({
-                "obi": float(rng.normal(0, 1)),
-                "rsi": float(rng.uniform(20, 80)),
-            })
+            detector.update(
+                {
+                    "obi": float(rng.normal(0, 1)),
+                    "rsi": float(rng.uniform(20, 80)),
+                }
+            )
         detector.reset_buffer("obi")
         obi_report = detector.compute_drift("obi")
         rsi_report = detector.compute_drift("rsi")
@@ -220,15 +230,19 @@ class TestFeatureDriftDetector:
 
     def test_reset_buffer_all(self, detector: FeatureDriftDetector) -> None:
         rng = np.random.default_rng(42)
-        detector.set_references_batch({
-            "obi": rng.normal(0, 1, 500),
-            "rsi": rng.uniform(20, 80, 500),
-        })
+        detector.set_references_batch(
+            {
+                "obi": rng.normal(0, 1, 500),
+                "rsi": rng.uniform(20, 80, 500),
+            }
+        )
         for _ in range(100):
-            detector.update({
-                "obi": float(rng.normal(0, 1)),
-                "rsi": float(rng.uniform(20, 80)),
-            })
+            detector.update(
+                {
+                    "obi": float(rng.normal(0, 1)),
+                    "rsi": float(rng.uniform(20, 80)),
+                }
+            )
         detector.reset_buffer()
         for name in detector.feature_names:
             report = detector.compute_drift(name)
@@ -239,15 +253,19 @@ class TestDailyDriftSummary:
     def test_generate_report_no_drift(self) -> None:
         rng = np.random.default_rng(42)
         detector = FeatureDriftDetector(n_bins=10, window_size=500)
-        detector.set_references_batch({
-            "obi": rng.normal(0, 1, 500),
-            "rsi": rng.uniform(20, 80, 500),
-        })
+        detector.set_references_batch(
+            {
+                "obi": rng.normal(0, 1, 500),
+                "rsi": rng.uniform(20, 80, 500),
+            }
+        )
         for _ in range(200):
-            detector.update({
-                "obi": float(rng.normal(0, 1)),
-                "rsi": float(rng.uniform(20, 80)),
-            })
+            detector.update(
+                {
+                    "obi": float(rng.normal(0, 1)),
+                    "rsi": float(rng.uniform(20, 80)),
+                }
+            )
         summary = detector.generate_daily_report(timestamp_ms=1_000_000)
         assert summary.total_features == 2
         assert summary.drifted_features == 0
@@ -257,15 +275,19 @@ class TestDailyDriftSummary:
     def test_generate_report_with_drift(self) -> None:
         rng = np.random.default_rng(42)
         detector = FeatureDriftDetector(n_bins=10, window_size=500)
-        detector.set_references_batch({
-            "stable": rng.normal(0, 1, 500),
-            "drifted": rng.normal(0, 1, 500),
-        })
+        detector.set_references_batch(
+            {
+                "stable": rng.normal(0, 1, 500),
+                "drifted": rng.normal(0, 1, 500),
+            }
+        )
         for _ in range(300):
-            detector.update({
-                "stable": float(rng.normal(0, 1)),
-                "drifted": float(rng.normal(5, 1)),
-            })
+            detector.update(
+                {
+                    "stable": float(rng.normal(0, 1)),
+                    "drifted": float(rng.normal(5, 1)),
+                }
+            )
         summary = detector.generate_daily_report(timestamp_ms=2_000_000)
         assert summary.drifted_features >= 1
         assert summary.any_alert

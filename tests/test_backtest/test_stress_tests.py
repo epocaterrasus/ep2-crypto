@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
+from ep2_crypto.backtest.metrics import BacktestResult
 from ep2_crypto.backtest.stress_tests import (
     HistoricalScenario,
     HistoricalStressScenario,
@@ -13,16 +13,15 @@ from ep2_crypto.backtest.stress_tests import (
     StressTestRunner,
     SyntheticScenario,
     SyntheticStressScenario,
+    _closes_to_ohlcv,
     _evaluate_stress_result,
     _make_crash_path,
-    _closes_to_ohlcv,
 )
-from ep2_crypto.backtest.metrics import BacktestResult
-
 
 # ---------------------------------------------------------------------------
 # Helper: build a minimal BacktestResult stub
 # ---------------------------------------------------------------------------
+
 
 def _stub_result(
     max_drawdown: float = 0.05,
@@ -31,10 +30,12 @@ def _stub_result(
     total_return: float = 0.10,
 ) -> BacktestResult:
     import numpy as np
+
     from ep2_crypto.backtest.metrics import compute_backtest_result
+
     rng = np.random.default_rng(0)
     returns = rng.normal(0.0002, 0.002, 500)
-    result = compute_backtest_result(returns)
+    compute_backtest_result(returns)
     # Patch drawdown and trades (we only care about these for pass/fail)
     return BacktestResult(
         sharpe_ratio=sharpe,
@@ -68,22 +69,26 @@ def _stub_result(
 # Price path generators
 # ---------------------------------------------------------------------------
 
+
 class TestMakeCrashPath:
     def test_output_shape(self):
-        closes = _make_crash_path(n_bars=200, start_price=30_000.0,
-                                   crash_fraction=0.30, crash_start=50, crash_end=130)
+        closes = _make_crash_path(
+            n_bars=200, start_price=30_000.0, crash_fraction=0.30, crash_start=50, crash_end=130
+        )
         assert len(closes) == 200
 
     def test_crash_reduces_price(self):
-        closes = _make_crash_path(n_bars=300, start_price=30_000.0,
-                                   crash_fraction=0.40, crash_start=50, crash_end=200)
+        closes = _make_crash_path(
+            n_bars=300, start_price=30_000.0, crash_fraction=0.40, crash_start=50, crash_end=200
+        )
         pre_crash = closes[49]
         post_crash = closes[200]
         assert post_crash < pre_crash * 0.80  # at least 20% drop
 
     def test_no_negative_prices(self):
-        closes = _make_crash_path(n_bars=200, start_price=30_000.0,
-                                   crash_fraction=0.99, crash_start=10, crash_end=100)
+        closes = _make_crash_path(
+            n_bars=200, start_price=30_000.0, crash_fraction=0.99, crash_start=10, crash_end=100
+        )
         assert np.all(closes > 0)
 
     def test_reproducible_with_seed(self):
@@ -102,12 +107,12 @@ class TestClosesToOHLCV:
 
     def test_high_ge_close(self):
         closes = np.full(50, 30_000.0)
-        o, h, l, c, v, ts = _closes_to_ohlcv(closes)
+        _o, h, _l, c, _v, _ts = _closes_to_ohlcv(closes)
         assert np.all(h >= c * 0.99)
 
     def test_low_le_close(self):
         closes = np.full(50, 30_000.0)
-        o, h, l, c, v, ts = _closes_to_ohlcv(closes)
+        _o, _h, l, c, _v, _ts = _closes_to_ohlcv(closes)
         assert np.all(l <= c * 1.01)
 
     def test_timestamps_monotonically_increasing(self):
@@ -120,6 +125,7 @@ class TestClosesToOHLCV:
 # HistoricalStressScenario
 # ---------------------------------------------------------------------------
 
+
 class TestHistoricalStressScenario:
     def setup_method(self):
         self.gen = HistoricalStressScenario()
@@ -130,7 +136,7 @@ class TestHistoricalStressScenario:
             assert len(result) == 9  # 6 OHLCV + 2 signals + meta
 
     def test_covid_crash_depth(self):
-        _, _, _, closes, _, _, _, _, meta = self.gen.generate(
+        _, _, _, closes, _, _, _, _, _meta = self.gen.generate(
             HistoricalScenario.COVID_CRASH_MAR2020, seed=0
         )
         peak = closes[:300].max()
@@ -138,7 +144,7 @@ class TestHistoricalStressScenario:
         assert (peak - trough) / peak > 0.30  # at least 30% drop
 
     def test_ftx_crash_moderate_depth(self):
-        _, _, _, closes, _, _, _, _, meta = self.gen.generate(
+        _, _, _, closes, _, _, _, _, _meta = self.gen.generate(
             HistoricalScenario.FTX_COLLAPSE_NOV2022, seed=0
         )
         peak = closes[:600].max()
@@ -158,7 +164,7 @@ class TestHistoricalStressScenario:
         assert np.allclose(r1[3], r2[3])  # closes match
 
     def test_outputs_have_no_nan(self):
-        opens, highs, lows, closes, volumes, ts, sigs, confs, _ = self.gen.generate(
+        opens, highs, lows, closes, volumes, _ts, _sigs, _confs, _ = self.gen.generate(
             HistoricalScenario.COVID_CRASH_MAR2020, seed=0
         )
         for arr in (opens, highs, lows, closes, volumes):
@@ -169,13 +175,14 @@ class TestHistoricalStressScenario:
 # SyntheticStressScenario
 # ---------------------------------------------------------------------------
 
+
 class TestSyntheticStressScenario:
     def setup_method(self):
         self.gen = SyntheticStressScenario()
 
     def test_zero_vol_produces_flat_window(self):
-        opens, highs, lows, closes, volumes, ts, sigs, confs = (
-            self.gen.zero_volatility_48h(seed=0)
+        _opens, _highs, _lows, closes, _volumes, _ts, _sigs, _confs = self.gen.zero_volatility_48h(
+            seed=0
         )
         zero_window = closes[200:776]
         vol = np.std(np.diff(np.log(zero_window)))
@@ -228,6 +235,7 @@ class TestSyntheticStressScenario:
 # _evaluate_stress_result
 # ---------------------------------------------------------------------------
 
+
 class TestEvaluateStressResult:
     def test_low_dd_passes(self):
         result = _stub_result(max_drawdown=0.05, total_trades=50)
@@ -242,8 +250,9 @@ class TestEvaluateStressResult:
     def test_kill_switch_fired_high_dd_still_can_pass(self):
         # Kill switch fires early (few trades) + moderate DD <= threshold + buffer
         result = _stub_result(max_drawdown=0.18, total_trades=5)
-        sr = _evaluate_stress_result("test", result, n_bars=600,
-                                      max_allowed_dd=0.20, kill_switch_dd_threshold=0.15)
+        sr = _evaluate_stress_result(
+            "test", result, n_bars=600, max_allowed_dd=0.20, kill_switch_dd_threshold=0.15
+        )
         assert sr.passed
 
     def test_result_contains_scenario_name(self):
@@ -272,6 +281,7 @@ class TestEvaluateStressResult:
 # ---------------------------------------------------------------------------
 # StressReport
 # ---------------------------------------------------------------------------
+
 
 class TestStressReport:
     def _make_report(self) -> StressReport:
@@ -323,6 +333,7 @@ class TestStressReport:
 # StressTestRunner — historical (fast: run one scenario only)
 # ---------------------------------------------------------------------------
 
+
 class TestStressTestRunnerHistorical:
     def setup_method(self):
         self.runner = StressTestRunner(initial_equity=50_000.0, seed=42)
@@ -345,16 +356,19 @@ class TestStressTestRunnerHistorical:
         assert r.passed
 
     def test_multiple_historical_scenarios(self):
-        results = self.runner.run_historical([
-            HistoricalScenario.CHINA_BAN_MAY2021,
-            HistoricalScenario.ATH_CORRECTION_MAR2024,
-        ])
+        results = self.runner.run_historical(
+            [
+                HistoricalScenario.CHINA_BAN_MAY2021,
+                HistoricalScenario.ATH_CORRECTION_MAR2024,
+            ]
+        )
         assert len(results) == 2
 
 
 # ---------------------------------------------------------------------------
 # StressTestRunner — synthetic (fast: run zero-vol + broken-model)
 # ---------------------------------------------------------------------------
+
 
 class TestStressTestRunnerSynthetic:
     def setup_method(self):
@@ -387,6 +401,7 @@ class TestStressTestRunnerSynthetic:
 # ---------------------------------------------------------------------------
 # StressTestRunner — run_all (just verify structure, not all scenarios)
 # ---------------------------------------------------------------------------
+
 
 class TestStressTestRunnerRunAll:
     def test_run_all_returns_stress_report(self):

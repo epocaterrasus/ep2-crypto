@@ -95,8 +95,12 @@ class TestTruncationBias:
             # Compute on full data
             full_result = pipeline.compute(
                 test_idx,
-                data_full["timestamps"], data_full["opens"], data_full["highs"],
-                data_full["lows"], data_full["closes"], data_full["volumes"],
+                data_full["timestamps"],
+                data_full["opens"],
+                data_full["highs"],
+                data_full["lows"],
+                data_full["closes"],
+                data_full["volumes"],
                 **_get_kwargs(data_full),
             )
 
@@ -104,8 +108,12 @@ class TestTruncationBias:
             data_trunc = _truncate(data_full, test_idx + 1)
             trunc_result = pipeline.compute(
                 test_idx,
-                data_trunc["timestamps"], data_trunc["opens"], data_trunc["highs"],
-                data_trunc["lows"], data_trunc["closes"], data_trunc["volumes"],
+                data_trunc["timestamps"],
+                data_trunc["opens"],
+                data_trunc["highs"],
+                data_trunc["lows"],
+                data_trunc["closes"],
+                data_trunc["volumes"],
                 **_get_kwargs(data_trunc),
             )
 
@@ -136,8 +144,12 @@ class TestShuffleBias:
         # Compute on original data
         original = pipeline.compute(
             test_idx,
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             **_get_kwargs(data),
         )
 
@@ -154,14 +166,25 @@ class TestShuffleBias:
 
         shuffled_result = pipeline.compute(
             test_idx,
-            shuffled["timestamps"], shuffled["opens"], shuffled["highs"],
-            shuffled["lows"], shuffled["closes"], shuffled["volumes"],
+            shuffled["timestamps"],
+            shuffled["opens"],
+            shuffled["highs"],
+            shuffled["lows"],
+            shuffled["closes"],
+            shuffled["volumes"],
             **_get_kwargs(shuffled),
         )
 
         # Point-in-time features (OBI, microprice, session) should NOT change
-        point_features = ["obi_l3", "obi_l5", "microprice", "microprice_mid_dev",
-                          "session_asia", "session_europe", "session_us"]
+        point_features = [
+            "obi_l3",
+            "obi_l5",
+            "microprice",
+            "microprice_mid_dev",
+            "session_asia",
+            "session_europe",
+            "session_us",
+        ]
         for key in point_features:
             if key in original and not np.isnan(original[key]):
                 assert original[key] == pytest.approx(shuffled_result[key], abs=1e-10), (
@@ -170,14 +193,24 @@ class TestShuffleBias:
 
         # Windowed features SHOULD change because they depend on temporal sequence
         windowed_features = [
-            "ofi_l1", "ofi_l3", "tfi_6bar", "kyle_lambda",
+            "ofi_l1",
+            "ofi_l3",
+            "tfi_6bar",
+            "kyle_lambda",
             # Sprint 4 windowed features
-            "vol_delta_5bar", "vwap_deviation", "vol_roc_3",
-            "realized_vol_short", "ewma_vol", "rsi", "linreg_slope",
+            "vol_delta_5bar",
+            "vwap_deviation",
+            "vol_roc_3",
+            "realized_vol_short",
+            "ewma_vol",
+            "rsi",
+            "linreg_slope",
             "quantile_rank",
             # Sprint 5 windowed features
-            "eth_btc_ratio_roc6", "lead_lag_corr_1",
-            "er_10", "garch_vol",
+            "eth_btc_ratio_roc6",
+            "lead_lag_corr_1",
+            "er_10",
+            "garch_vol",
         ]
         changed_count = 0
         for key in windowed_features:
@@ -206,8 +239,12 @@ class TestShuffleBias:
         for i in range(warmup, 198):
             result = pipeline.compute(
                 i,
-                data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
                 **_get_kwargs(data),
             )
             if np.isfinite(result["obi_l3"]):

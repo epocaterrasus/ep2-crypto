@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from ep2_crypto.backtest.metrics import (
     BARS_PER_YEAR,
@@ -143,14 +142,14 @@ class TestMaxDrawdown:
     def test_monotonically_increasing(self) -> None:
         """No drawdown if equity only goes up."""
         equity = np.linspace(1.0, 2.0, 100)
-        max_dd, duration, avg_dd = max_drawdown_info(equity)
+        max_dd, duration, _avg_dd = max_drawdown_info(equity)
         assert max_dd == 0.0
         assert duration == 0
 
     def test_known_drawdown(self) -> None:
         """Equity 1.0 → 1.5 → 1.2 → 1.6: drawdown = (1.5-1.2)/1.5 = 20%."""
         equity = np.array([1.0, 1.25, 1.5, 1.3, 1.2, 1.4, 1.6])
-        max_dd, duration, avg_dd = max_drawdown_info(equity)
+        max_dd, duration, _avg_dd = max_drawdown_info(equity)
         assert abs(max_dd - 0.2) < 0.001
         # Duration: bars 3,4 are in drawdown from peak at bar 2
         assert duration >= 2
@@ -266,7 +265,9 @@ class TestCostSensitivity:
         rng = np.random.default_rng(42)
         returns = rng.normal(0.0001, 0.001, size=10000)
         results = cost_sensitivity(
-            returns, n_trades=1000, n_bars=10000,
+            returns,
+            n_trades=1000,
+            n_bars=10000,
             cost_levels_bps=[0, 2, 4, 8, 16, 32, 64],
         )
         be = find_breakeven_cost(results)
@@ -303,11 +304,15 @@ class TestComputeBacktestResult:
         returns = rng.normal(0.0001, 0.001, size=5000)
         trades = [
             TradeRecord(
-                entry_bar=i * 10, exit_bar=i * 10 + 5,
-                side="long", entry_price=100_000.0,
+                entry_bar=i * 10,
+                exit_bar=i * 10 + 5,
+                side="long",
+                entry_price=100_000.0,
                 exit_price=100_000.0 * (1 + rng.normal(0.001, 0.005)),
-                quantity=0.01, pnl_usd=rng.normal(5, 50),
-                return_pct=rng.normal(0.001, 0.005), bars_held=5,
+                quantity=0.01,
+                pnl_usd=rng.normal(5, 50),
+                return_pct=rng.normal(0.001, 0.005),
+                bars_held=5,
             )
             for i in range(100)
         ]

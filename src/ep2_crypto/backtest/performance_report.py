@@ -27,16 +27,14 @@ Usage::
 from __future__ import annotations
 
 import dataclasses
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
-from numpy.typing import NDArray
 
 from ep2_crypto.backtest.metrics import (
     BARS_PER_DAY,
-    SQRT_BARS_PER_YEAR,
     cost_sensitivity,
     find_breakeven_cost,
     lo_corrected_sharpe,
@@ -51,6 +49,9 @@ from ep2_crypto.backtest.validation import (
     walk_forward_stability,
 )
 
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
 logger = structlog.get_logger(__name__)
 
 
@@ -58,7 +59,8 @@ logger = structlog.get_logger(__name__)
 # Deployment verdict
 # ---------------------------------------------------------------------------
 
-class Verdict(str, Enum):
+
+class Verdict(StrEnum):
     DEPLOY = "DEPLOY"
     CAUTION = "CAUTION"
     DO_NOT_DEPLOY = "DO_NOT_DEPLOY"
@@ -67,6 +69,7 @@ class Verdict(str, Enum):
 # ---------------------------------------------------------------------------
 # Monte Carlo ruin
 # ---------------------------------------------------------------------------
+
 
 @dataclasses.dataclass(frozen=True)
 class MonteCarloRuin:
@@ -78,11 +81,11 @@ class MonteCarloRuin:
 
     n_paths: int
     n_trades_per_path: int
-    ruin_threshold: float          # e.g. 0.20 for 20% drawdown
-    ruin_probability: float        # P(max_drawdown > ruin_threshold)
+    ruin_threshold: float  # e.g. 0.20 for 20% drawdown
+    ruin_probability: float  # P(max_drawdown > ruin_threshold)
     median_max_drawdown: float
     p95_max_drawdown: float
-    passed: bool                   # ruin_probability < 0.05
+    passed: bool  # ruin_probability < 0.05
 
     def summary(self) -> str:
         status = "PASS" if self.passed else "FAIL"
@@ -156,6 +159,7 @@ def run_monte_carlo_ruin(
 # Performance Report
 # ---------------------------------------------------------------------------
 
+
 @dataclasses.dataclass
 class PerformanceReport:
     """Consolidated OOS performance report.
@@ -165,17 +169,17 @@ class PerformanceReport:
 
     # Core Sharpe
     sharpe_lo_corrected: float
-    sharpe_ci_lower: float         # 95% bootstrap lower bound
+    sharpe_ci_lower: float  # 95% bootstrap lower bound
     sharpe_ci_upper: float
     sharpe_std: float
 
     # Statistical tests
-    dsr: float                     # Deflated Sharpe Ratio (> 0.95 = pass)
-    psr: float                     # Probabilistic Sharpe Ratio
+    dsr: float  # Deflated Sharpe Ratio (> 0.95 = pass)
+    psr: float  # Probabilistic Sharpe Ratio
     permutation_p_value: float
 
     # Walk-forward stability
-    wf_stability_cv: float         # CV of fold Sharpes (< 0.5 = pass)
+    wf_stability_cv: float  # CV of fold Sharpes (< 0.5 = pass)
     wf_stability_pct_positive: float
 
     # Cost analysis
@@ -239,13 +243,13 @@ class PerformanceReport:
 
     def to_markdown(self) -> str:
         lines = [
-            f"# Performance Report",
-            f"",
+            "# Performance Report",
+            "",
             f"**Verdict**: {self.verdict.value} ({self.criteria_passed}/{self.criteria_total} criteria)",
-            f"",
-            f"## Statistical Tests",
-            f"| Metric | Value | Pass? |",
-            f"|--------|-------|-------|",
+            "",
+            "## Statistical Tests",
+            "| Metric | Value | Pass? |",
+            "|--------|-------|-------|",
             f"| OOS Sharpe (Lo) | {self.sharpe_lo_corrected:.3f} | — |",
             f"| 95% CI lower | {self.sharpe_ci_lower:.3f} | {'✅' if self.sharpe_ci_lower > 0 else '❌'} |",
             f"| DSR | {self.dsr:.4f} | {'✅' if self.dsr > 0.95 else '❌'} |",
@@ -254,13 +258,13 @@ class PerformanceReport:
             f"| WF stability CV | {self.wf_stability_cv:.3f} | {'✅' if self.wf_stability_cv < 0.5 else '❌'} |",
             f"| Break-even cost | {self.breakeven_cost_bps:.1f} bps | {'✅' if self.breakeven_cost_bps > 15 else '❌'} |",
             f"| Monte Carlo P(ruin) | {self.monte_carlo.ruin_probability:.2%} | {'✅' if self.monte_carlo.passed else '❌'} |",
-            f"",
-            f"## Regime Breakdown",
+            "",
+            "## Regime Breakdown",
         ]
         if self.regime_breakdown:
             lines += [
-                f"| Regime | Sharpe | Return | Max DD | Bars |",
-                f"|--------|--------|--------|--------|------|",
+                "| Regime | Sharpe | Return | Max DD | Bars |",
+                "|--------|--------|--------|--------|------|",
             ]
             for rid, stats in sorted(self.regime_breakdown.items()):
                 lines.append(
@@ -280,6 +284,7 @@ class PerformanceReport:
 # ---------------------------------------------------------------------------
 # PerformanceReporter
 # ---------------------------------------------------------------------------
+
 
 class PerformanceReporter:
     """Build a PerformanceReport from OOS returns and optional metadata.
@@ -345,6 +350,7 @@ class PerformanceReporter:
         # ----- DSR / PSR -----
         dsr = deflated_sharpe_ratio(returns, n_trials=n_trials)
         from ep2_crypto.backtest.validation import probabilistic_sharpe_ratio
+
         psr = probabilistic_sharpe_ratio(returns)
 
         # ----- Validation suite -----

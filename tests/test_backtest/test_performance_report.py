@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from ep2_crypto.backtest.performance_report import (
     MonteCarloRuin,
@@ -13,10 +12,10 @@ from ep2_crypto.backtest.performance_report import (
     run_monte_carlo_ruin,
 )
 
-
 # ---------------------------------------------------------------------------
 # Synthetic return generators
 # ---------------------------------------------------------------------------
+
 
 def _good_returns(n: int = 5000, seed: int = 0) -> np.ndarray:
     """Returns with a genuine edge: Sharpe ~ 2 after costs."""
@@ -39,6 +38,7 @@ def _bad_returns(n: int = 5000, seed: int = 0) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # MonteCarloRuin
 # ---------------------------------------------------------------------------
+
 
 class TestRunMonteCarloRuin:
     def test_positive_edge_low_ruin_prob(self):
@@ -72,8 +72,9 @@ class TestRunMonteCarloRuin:
 
     def test_passed_flag_matches_threshold(self):
         trade_returns = np.full(100, 0.005)  # guaranteed no ruin
-        mc = run_monte_carlo_ruin(trade_returns, n_paths=200, n_trades_per_path=50,
-                                   ruin_threshold=0.20)
+        mc = run_monte_carlo_ruin(
+            trade_returns, n_paths=200, n_trades_per_path=50, ruin_threshold=0.20
+        )
         assert mc.passed  # 0% ruin probability
 
     def test_summary_string_not_empty(self):
@@ -92,6 +93,7 @@ class TestRunMonteCarloRuin:
 # ---------------------------------------------------------------------------
 # PerformanceReporter._score_criteria
 # ---------------------------------------------------------------------------
+
 
 class TestScoreCriteria:
     def test_all_pass(self):
@@ -122,13 +124,13 @@ class TestScoreCriteria:
 
     def test_partial_pass(self):
         passed, total = PerformanceReporter._score_criteria(
-            sharpe_ci_lower=0.1,   # pass
-            dsr=0.96,              # pass
-            psr=0.50,              # fail
-            permutation_p=0.50,    # fail
-            wf_cv=0.3,             # pass
-            breakeven_bps=5.0,     # fail
-            mc_ruin_passed=True,   # pass
+            sharpe_ci_lower=0.1,  # pass
+            dsr=0.96,  # pass
+            psr=0.50,  # fail
+            permutation_p=0.50,  # fail
+            wf_cv=0.3,  # pass
+            breakeven_bps=5.0,  # fail
+            mc_ruin_passed=True,  # pass
         )
         assert passed == 4
         assert total == 7
@@ -137,6 +139,7 @@ class TestScoreCriteria:
 # ---------------------------------------------------------------------------
 # PerformanceReporter._compute_verdict
 # ---------------------------------------------------------------------------
+
 
 class TestComputeVerdict:
     def test_deploy_at_6_of_7(self):
@@ -161,6 +164,7 @@ class TestComputeVerdict:
 # ---------------------------------------------------------------------------
 # PerformanceReporter.generate — minimal runs (fast)
 # ---------------------------------------------------------------------------
+
 
 class TestPerformanceReporterGenerate:
     """Uses small bootstrap/MC to keep tests fast."""
@@ -227,7 +231,7 @@ class TestPerformanceReporterGenerate:
         assert 0.0 <= report.monte_carlo.ruin_probability <= 1.0
 
     def test_regime_breakdown_when_labels_provided(self):
-        rng = np.random.default_rng(0)
+        np.random.default_rng(0)
         n = 2000
         r = _good_returns(n)
         labels = (np.arange(n) // (n // 3)).astype(np.int32)
@@ -271,8 +275,15 @@ class TestPerformanceReporterGenerate:
         r = _good_returns(n=2000)
         report = self._reporter().generate(r)
         d = report.to_dict()
-        for field in ("sharpe_lo_corrected", "dsr", "psr", "max_drawdown",
-                      "verdict", "criteria_passed", "criteria_total"):
+        for field in (
+            "sharpe_lo_corrected",
+            "dsr",
+            "psr",
+            "max_drawdown",
+            "verdict",
+            "criteria_passed",
+            "criteria_total",
+        ):
             assert field in d
 
     def test_summary_contains_verdict(self):

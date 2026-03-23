@@ -145,13 +145,11 @@ class VolatilityGuard:
             can_trade = False
             if vol_ann < self._min_vol:
                 rejection_reason = (
-                    f"Volatility too low: {vol_ann:.4f} annualized "
-                    f"< minimum {self._min_vol:.4f}"
+                    f"Volatility too low: {vol_ann:.4f} annualized < minimum {self._min_vol:.4f}"
                 )
             else:
                 rejection_reason = (
-                    f"Volatility too high: {vol_ann:.4f} annualized "
-                    f"> maximum {self._max_vol:.4f}"
+                    f"Volatility too high: {vol_ann:.4f} annualized > maximum {self._max_vol:.4f}"
                 )
 
         if self._enforce_hours and not in_hours:

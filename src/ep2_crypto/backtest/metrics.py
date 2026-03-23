@@ -14,12 +14,14 @@ Annualization: sqrt(105,120) for 24/7 crypto. NEVER sqrt(252).
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import structlog
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = structlog.get_logger(__name__)
 
@@ -237,9 +239,7 @@ def max_drawdown_info(
         return 0.0, 0, 0.0
 
     running_max = np.maximum.accumulate(equity_curve)
-    dd_series = (equity_curve - running_max) / np.where(
-        running_max > 0, running_max, 1.0
-    )
+    dd_series = (equity_curve - running_max) / np.where(running_max > 0, running_max, 1.0)
 
     max_dd = float(abs(dd_series.min()))
 
@@ -427,12 +427,14 @@ def cost_sensitivity(
         except (OverflowError, FloatingPointError):
             ann = float("inf") if cum > 0 else float("-inf")
 
-        results.append({
-            "cost_bps": cost_bps,
-            "sharpe": sharpe,
-            "total_return": cum,
-            "annualized_return": ann,
-        })
+        results.append(
+            {
+                "cost_bps": cost_bps,
+                "sharpe": sharpe,
+                "total_return": cum,
+                "annualized_return": ann,
+            }
+        )
 
     return results
 

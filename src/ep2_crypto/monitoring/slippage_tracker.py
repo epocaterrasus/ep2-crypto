@@ -63,10 +63,7 @@ def _compute_stats(records: list[SlippageRecord]) -> SlippageStats:
     expected = [r.expected_bps for r in records]
     actual = [r.actual_bps for r in records]
     sorted_actual = sorted(actual)
-    ratios = [
-        a / e if e > 0 else 0.0
-        for a, e in zip(actual, expected, strict=True)
-    ]
+    ratios = [a / e if e > 0 else 0.0 for a, e in zip(actual, expected, strict=True)]
 
     return SlippageStats(
         count=len(records),
@@ -191,7 +188,7 @@ class SlippageTracker:
             if size_usd <= threshold:
                 if i == 0:
                     return f"<={threshold}"
-                return f"{self._size_buckets[i-1]}-{threshold}"
+                return f"{self._size_buckets[i - 1]}-{threshold}"
         return f">{self._size_buckets[-1]}"
 
     @property

@@ -68,8 +68,8 @@ class VolumeDeltaComputer(FeatureComputer):
 
         # 5-bar delta
         start = idx - 4
-        signed_sum = float(np.sum(trade_sizes[start:idx + 1] * trade_sides[start:idx + 1]))
-        total_sum = float(np.sum(np.abs(trade_sizes[start:idx + 1])))
+        signed_sum = float(np.sum(trade_sizes[start : idx + 1] * trade_sides[start : idx + 1]))
+        total_sum = float(np.sum(np.abs(trade_sizes[start : idx + 1])))
         result["vol_delta_5bar"] = signed_sum / total_sum if total_sum > 0 else 0.0
         result["vol_delta_5bar_raw"] = signed_sum
 
@@ -119,8 +119,10 @@ class VWAPComputer(FeatureComputer):
             return nan_result
 
         start = idx - self._window + 1
-        typical_price = (highs[start:idx + 1] + lows[start:idx + 1] + closes[start:idx + 1]) / 3.0
-        vol_slice = volumes[start:idx + 1]
+        typical_price = (
+            highs[start : idx + 1] + lows[start : idx + 1] + closes[start : idx + 1]
+        ) / 3.0
+        vol_slice = volumes[start : idx + 1]
         total_vol = float(np.sum(vol_slice))
 
         if total_vol <= 0:

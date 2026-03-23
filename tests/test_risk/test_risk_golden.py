@@ -23,6 +23,7 @@ from ep2_crypto.risk.risk_manager import RiskManager, SignalInput
 # Helper: price arrays
 # ---------------------------------------------------------------------------
 
+
 def _prices(n: int = 300, base: float = 67000.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(42)
     closes = base + np.cumsum(rng.normal(0, 50, n))
@@ -62,13 +63,14 @@ def _rm(conn: sqlite3.Connection, equity: float = 50_000.0, **overrides: object)
 # Golden: Convex drawdown formula at exact percentages
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "dd_pct, expected_mult",
     [
         (0.0, 1.0),
-        (3.0, math.pow(1.0 - 0.03 / 0.15, CONVEX_K)),   # ~0.7155
-        (5.0, math.pow(1.0 - 0.05 / 0.15, CONVEX_K)),   # ~0.5443
-        (8.0, math.pow(1.0 - 0.08 / 0.15, CONVEX_K)),   # ~0.3200
+        (3.0, math.pow(1.0 - 0.03 / 0.15, CONVEX_K)),  # ~0.7155
+        (5.0, math.pow(1.0 - 0.05 / 0.15, CONVEX_K)),  # ~0.5443
+        (8.0, math.pow(1.0 - 0.08 / 0.15, CONVEX_K)),  # ~0.3200
         (10.0, math.pow(1.0 - 0.10 / 0.15, CONVEX_K)),  # ~0.1925
         (12.0, math.pow(1.0 - 0.12 / 0.15, CONVEX_K)),  # ~0.0894
         (15.0, 0.0),
@@ -89,14 +91,15 @@ def test_golden_convex_drawdown(dd_pct: float, expected_mult: float) -> None:
 # Golden: Kelly fraction computation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "win_rate, payoff, expected_kelly",
     [
-        (0.55, 1.0, 0.10),   # f = (0.55*1 - 0.45)/1 = 0.10
-        (0.52, 1.0, 0.04),   # f = (0.52 - 0.48)/1 = 0.04
-        (0.60, 1.5, 0.3333), # f = (0.60*1.5 - 0.40)/1.5 = 0.3333
-        (0.50, 1.0, 0.0),    # no edge
-        (0.45, 1.0, 0.0),    # negative edge -> 0
+        (0.55, 1.0, 0.10),  # f = (0.55*1 - 0.45)/1 = 0.10
+        (0.52, 1.0, 0.04),  # f = (0.52 - 0.48)/1 = 0.04
+        (0.60, 1.5, 0.3333),  # f = (0.60*1.5 - 0.40)/1.5 = 0.3333
+        (0.50, 1.0, 0.0),  # no edge
+        (0.45, 1.0, 0.0),  # negative edge -> 0
         (0.55, 2.0, 0.325),  # f = (0.55*2 - 0.45)/2 = 0.325
     ],
     ids=["55/1.0", "52/1.0", "60/1.5", "50/1.0", "45/1.0", "55/2.0"],
@@ -104,10 +107,15 @@ def test_golden_convex_drawdown(dd_pct: float, expected_mult: float) -> None:
 def test_golden_kelly_fraction(win_rate: float, payoff: float, expected_kelly: float) -> None:
     sizer = PositionSizer()
     result = sizer.compute(
-        "long", 0.80, 50_000.0, 67000.0,
-        *_prices()[1::-1], _prices()[0],  # highs, lows, closes
+        "long",
+        0.80,
+        50_000.0,
+        67000.0,
+        *_prices()[1::-1],
+        _prices()[0],  # highs, lows, closes
         current_idx=299,
-        win_rate=win_rate, payoff_ratio=payoff,
+        win_rate=win_rate,
+        payoff_ratio=payoff,
     )
     if expected_kelly <= 0:
         assert result.rejected
@@ -119,6 +127,7 @@ def test_golden_kelly_fraction(win_rate: float, payoff: float, expected_kelly: f
 # ---------------------------------------------------------------------------
 # Golden: Full approve_trade decisions
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "equity, confidence, direction, should_approve, reason_contains",
@@ -136,8 +145,12 @@ def test_golden_kelly_fraction(win_rate: float, payoff: float, expected_kelly: f
         (0.0, 0.80, "long", False, ""),
     ],
     ids=[
-        "normal_long", "normal_short", "low_conf",
-        "zero_conf", "invalid_dir", "zero_equity",
+        "normal_long",
+        "normal_short",
+        "low_conf",
+        "zero_conf",
+        "invalid_dir",
+        "zero_equity",
     ],
 )
 def test_golden_approve_trade(
@@ -167,24 +180,30 @@ def test_golden_approve_trade(
 # Golden: Kill switch exact thresholds
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "switch, check_value, should_trigger",
     [
-        ("daily_loss", -0.029, False),   # Just below 3%
-        ("daily_loss", -0.030, True),    # Exactly 3%
-        ("daily_loss", -0.031, True),    # Just above 3%
+        ("daily_loss", -0.029, False),  # Just below 3%
+        ("daily_loss", -0.030, True),  # Exactly 3%
+        ("daily_loss", -0.031, True),  # Just above 3%
         ("weekly_loss", -0.049, False),  # Below 5%
-        ("weekly_loss", -0.050, True),   # Exactly 5%
+        ("weekly_loss", -0.050, True),  # Exactly 5%
         ("max_drawdown", 0.149, False),  # Below 15%
-        ("max_drawdown", 0.150, True),   # Exactly 15%
-        ("consecutive_loss", 14, False), # Below 15
+        ("max_drawdown", 0.150, True),  # Exactly 15%
+        ("consecutive_loss", 14, False),  # Below 15
         ("consecutive_loss", 15, True),  # Exactly 15
     ],
     ids=[
-        "daily_below", "daily_exact", "daily_above",
-        "weekly_below", "weekly_exact",
-        "dd_below", "dd_exact",
-        "consec_below", "consec_exact",
+        "daily_below",
+        "daily_exact",
+        "daily_above",
+        "weekly_below",
+        "weekly_exact",
+        "dd_below",
+        "dd_exact",
+        "consec_below",
+        "consec_exact",
     ],
 )
 def test_golden_kill_switch_thresholds(
@@ -220,25 +239,36 @@ def test_golden_kill_switch_thresholds(
 # Golden: Position size never exceeds 5% cap
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "equity, confidence, win_rate, payoff",
     [
-        (100_000.0, 1.0, 0.80, 2.0),   # Very high edge
-        (100_000.0, 1.0, 0.70, 1.5),   # High edge
-        (50_000.0, 0.95, 0.60, 1.2),   # Moderate edge
-        (10_000.0, 0.80, 0.55, 1.0),   # Small account
+        (100_000.0, 1.0, 0.80, 2.0),  # Very high edge
+        (100_000.0, 1.0, 0.70, 1.5),  # High edge
+        (50_000.0, 0.95, 0.60, 1.2),  # Moderate edge
+        (10_000.0, 0.80, 0.55, 1.0),  # Small account
     ],
     ids=["high_edge_100k", "med_edge_100k", "mod_edge_50k", "small_10k"],
 )
 def test_golden_position_cap(
-    equity: float, confidence: float, win_rate: float, payoff: float,
+    equity: float,
+    confidence: float,
+    win_rate: float,
+    payoff: float,
 ) -> None:
     sizer = PositionSizer()
     closes, highs, lows = _prices()
     result = sizer.compute(
-        "long", confidence, equity, 67000.0,
-        highs, lows, closes, current_idx=299,
-        win_rate=win_rate, payoff_ratio=payoff,
+        "long",
+        confidence,
+        equity,
+        67000.0,
+        highs,
+        lows,
+        closes,
+        current_idx=299,
+        win_rate=win_rate,
+        payoff_ratio=payoff,
     )
     assert not result.rejected
     assert result.position_fraction <= 0.05 + 1e-9
@@ -249,6 +279,7 @@ def test_golden_position_cap(
 # Golden: Stop loss direction
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "direction, price",
     [("long", 67000.0), ("short", 67000.0)],
@@ -258,8 +289,14 @@ def test_golden_stop_direction(direction: str, price: float) -> None:
     sizer = PositionSizer()
     closes, highs, lows = _prices(base=price)
     result = sizer.compute(
-        direction, 0.80, 50_000.0, price,
-        highs, lows, closes, current_idx=299,
+        direction,
+        0.80,
+        50_000.0,
+        price,
+        highs,
+        lows,
+        closes,
+        current_idx=299,
     )
     assert not result.rejected
     if direction == "long":

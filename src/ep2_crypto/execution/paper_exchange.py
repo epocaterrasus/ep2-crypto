@@ -102,9 +102,7 @@ class FillSimulator:
 
     taker_fee_bps: float = TAKER_FEE_BPS
     slippage_noise_bps: float = 0.5
-    rng: np.random.Generator = field(
-        default_factory=lambda: np.random.default_rng(42)
-    )
+    rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(42))
 
     def simulate(
         self,

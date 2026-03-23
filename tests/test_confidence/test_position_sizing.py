@@ -86,9 +86,7 @@ class TestKellyComputation:
         assert result.quarter_kelly == pytest.approx(0.025, abs=1e-9)
         assert result.bayesian_kelly is None
 
-    def test_kelly_asymmetric_payoff(
-        self, non_bayesian_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_kelly_asymmetric_payoff(self, non_bayesian_sizer: ConfidencePositionSizer) -> None:
         """Kelly with 50% WR and 2:1 payoff = (0.5*2 - 0.5)/2 = 0.25."""
         result = non_bayesian_sizer.compute_kelly(
             win_rate=0.50, avg_win=200.0, avg_loss=100.0, n_trades=50
@@ -96,9 +94,7 @@ class TestKellyComputation:
         assert result.raw_kelly == pytest.approx(0.25, abs=1e-9)
         assert result.quarter_kelly == pytest.approx(0.0625, abs=1e-9)
 
-    def test_kelly_losing_strategy(
-        self, non_bayesian_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_kelly_losing_strategy(self, non_bayesian_sizer: ConfidencePositionSizer) -> None:
         """Kelly with 40% WR and 1:1 payoff = negative => 0."""
         result = non_bayesian_sizer.compute_kelly(
             win_rate=0.40, avg_win=100.0, avg_loss=100.0, n_trades=100
@@ -106,9 +102,7 @@ class TestKellyComputation:
         assert result.raw_kelly == 0.0
         assert result.quarter_kelly == 0.0
 
-    def test_kelly_breakeven(
-        self, non_bayesian_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_kelly_breakeven(self, non_bayesian_sizer: ConfidencePositionSizer) -> None:
         """Kelly with 50% WR and 1:1 payoff = 0 (no edge)."""
         result = non_bayesian_sizer.compute_kelly(
             win_rate=0.50, avg_win=100.0, avg_loss=100.0, n_trades=100
@@ -116,9 +110,7 @@ class TestKellyComputation:
         assert result.raw_kelly == 0.0
         assert result.quarter_kelly == 0.0
 
-    def test_kelly_zero_avg_loss(
-        self, non_bayesian_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_kelly_zero_avg_loss(self, non_bayesian_sizer: ConfidencePositionSizer) -> None:
         """Zero avg_loss should return zero Kelly safely."""
         result = non_bayesian_sizer.compute_kelly(
             win_rate=0.55, avg_win=100.0, avg_loss=0.0, n_trades=100
@@ -126,9 +118,7 @@ class TestKellyComputation:
         assert result.raw_kelly == 0.0
         assert result.quarter_kelly == 0.0
 
-    def test_kelly_100_pct_win_rate(
-        self, non_bayesian_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_kelly_100_pct_win_rate(self, non_bayesian_sizer: ConfidencePositionSizer) -> None:
         """100% win rate: f = (1.0*1 - 0)/1 = 1.0."""
         result = non_bayesian_sizer.compute_kelly(
             win_rate=1.0, avg_win=100.0, avg_loss=100.0, n_trades=50
@@ -136,9 +126,7 @@ class TestKellyComputation:
         assert result.raw_kelly == pytest.approx(1.0, abs=1e-9)
         assert result.quarter_kelly == pytest.approx(0.25, abs=1e-9)
 
-    def test_kelly_0_pct_win_rate(
-        self, non_bayesian_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_kelly_0_pct_win_rate(self, non_bayesian_sizer: ConfidencePositionSizer) -> None:
         """0% win rate: f = (0*1 - 1)/1 = -1 => clamped to 0."""
         result = non_bayesian_sizer.compute_kelly(
             win_rate=0.0, avg_win=100.0, avg_loss=100.0, n_trades=50
@@ -155,9 +143,7 @@ class TestKellyComputation:
 class TestBayesianKelly:
     """Test Bayesian Kelly adjustments using Beta posterior."""
 
-    def test_bayesian_more_conservative(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_bayesian_more_conservative(self, default_sizer: ConfidencePositionSizer) -> None:
         """Bayesian Kelly should be <= standard quarter-Kelly due to
         penalization by posterior uncertainty."""
         result = default_sizer.compute_kelly(
@@ -187,13 +173,9 @@ class TestBayesianKelly:
         )
         assert result.bayesian_kelly is not None
         # With 10000 trades, posterior stddev is tiny; bayesian ≈ quarter
-        assert result.bayesian_kelly == pytest.approx(
-            result.quarter_kelly, abs=0.005
-        )
+        assert result.bayesian_kelly == pytest.approx(result.quarter_kelly, abs=0.005)
 
-    def test_bayesian_single_trade(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_bayesian_single_trade(self, default_sizer: ConfidencePositionSizer) -> None:
         """Single trade: extremely high uncertainty, very conservative."""
         result = default_sizer.compute_kelly(
             win_rate=1.0, avg_win=100.0, avg_loss=100.0, n_trades=1
@@ -253,9 +235,7 @@ class TestComputeSize:
         assert result.position_btc == pytest.approx(0.028, abs=1e-6)
         assert result.capped is False
 
-    def test_higher_confidence_larger_size(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_higher_confidence_larger_size(self, default_sizer: ConfidencePositionSizer) -> None:
         """Higher confidence should produce larger position."""
         kelly = self._make_kelly_result(bayesian=0.020)
         result_low = default_sizer.compute_size(
@@ -267,9 +247,7 @@ class TestComputeSize:
         assert result_high.position_fraction > result_low.position_fraction
         assert result_high.position_usd > result_low.position_usd
 
-    def test_max_cap_enforcement(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_max_cap_enforcement(self, default_sizer: ConfidencePositionSizer) -> None:
         """Position should never exceed max_position_pct (5%)."""
         # Large Kelly that would exceed 5%
         kelly = self._make_kelly_result(bayesian=0.10)
@@ -282,9 +260,7 @@ class TestComputeSize:
         assert result.position_usd == pytest.approx(5_000.0, abs=1e-6)
         assert result.confidence_scaled_kelly == pytest.approx(0.09, abs=1e-9)
 
-    def test_min_confidence_rejection(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_min_confidence_rejection(self, default_sizer: ConfidencePositionSizer) -> None:
         """Below min_confidence (0.55), trade should be rejected."""
         kelly = self._make_kelly_result(bayesian=0.020)
         result = default_sizer.compute_size(
@@ -296,9 +272,7 @@ class TestComputeSize:
         assert result.position_usd == 0.0
         assert result.position_btc == 0.0
 
-    def test_exact_min_confidence_rejected(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_exact_min_confidence_rejected(self, default_sizer: ConfidencePositionSizer) -> None:
         """Confidence exactly at min threshold is below (strict less-than)."""
         kelly = self._make_kelly_result(bayesian=0.020)
         result = default_sizer.compute_size(
@@ -306,9 +280,7 @@ class TestComputeSize:
         )
         assert result.rejection_reason is not None
 
-    def test_at_min_confidence_accepted(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_at_min_confidence_accepted(self, default_sizer: ConfidencePositionSizer) -> None:
         """Confidence exactly at min threshold should pass."""
         kelly = self._make_kelly_result(bayesian=0.020)
         result = default_sizer.compute_size(
@@ -316,9 +288,7 @@ class TestComputeSize:
         )
         assert result.rejection_reason is None
 
-    def test_zero_kelly_rejection(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_zero_kelly_rejection(self, default_sizer: ConfidencePositionSizer) -> None:
         """Zero Kelly (no edge) should be rejected."""
         kelly = self._make_kelly_result(raw=0.0, quarter=0.0, bayesian=0.0)
         result = default_sizer.compute_size(
@@ -327,9 +297,7 @@ class TestComputeSize:
         assert result.rejection_reason is not None
         assert "non-positive" in result.rejection_reason.lower()
 
-    def test_negative_equity_rejection(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_negative_equity_rejection(self, default_sizer: ConfidencePositionSizer) -> None:
         kelly = self._make_kelly_result(bayesian=0.020)
         result = default_sizer.compute_size(
             kelly, composite_confidence=0.70, equity=-1000.0, price=50_000.0
@@ -337,9 +305,7 @@ class TestComputeSize:
         assert result.rejection_reason is not None
         assert "equity" in result.rejection_reason.lower()
 
-    def test_zero_price_rejection(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_zero_price_rejection(self, default_sizer: ConfidencePositionSizer) -> None:
         kelly = self._make_kelly_result(bayesian=0.020)
         result = default_sizer.compute_size(
             kelly, composite_confidence=0.70, equity=100_000.0, price=0.0
@@ -405,9 +371,7 @@ class TestOnlineStats:
         assert stats["avg_win"] == pytest.approx(150.0, abs=1e-9)  # (100+200)/2
         assert stats["avg_loss"] == pytest.approx(60.0, abs=1e-9)  # (50+70)/2
 
-    def test_running_win_rate_updates(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_running_win_rate_updates(self, default_sizer: ConfidencePositionSizer) -> None:
         """Win rate should update correctly as trades accumulate."""
         for _ in range(3):
             default_sizer.update_stats(is_profitable=True, pnl=10.0)
@@ -462,9 +426,7 @@ class TestEndToEnd:
         assert result.position_usd > 0
         assert result.position_btc > 0
 
-    def test_losing_strategy_pipeline(
-        self, default_sizer: ConfidencePositionSizer
-    ) -> None:
+    def test_losing_strategy_pipeline(self, default_sizer: ConfidencePositionSizer) -> None:
         """Losing strategy should be rejected at sizing stage."""
         kelly = default_sizer.compute_kelly(
             win_rate=0.40, avg_win=100.0, avg_loss=100.0, n_trades=200
@@ -503,9 +465,7 @@ class TestEndToEnd:
             bayesian=False,
         )
         sizer = ConfidencePositionSizer(config)
-        kelly = sizer.compute_kelly(
-            win_rate=0.55, avg_win=100.0, avg_loss=100.0, n_trades=100
-        )
+        kelly = sizer.compute_kelly(win_rate=0.55, avg_win=100.0, avg_loss=100.0, n_trades=100)
         # Half-Kelly: 0.10 * 0.5 = 0.05
         assert kelly.quarter_kelly == pytest.approx(0.05, abs=1e-9)
         assert kelly.bayesian_kelly is None

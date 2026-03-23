@@ -133,7 +133,7 @@ class RollingSharpeMonitor:
             self._declining = False
             return False
 
-        short_sharpe = self._compute_sharpe(list(self._returns)[-self._short_window:])
+        short_sharpe = self._compute_sharpe(list(self._returns)[-self._short_window :])
         long_sharpe = self._compute_sharpe(list(self._returns))
 
         if long_sharpe > 0 and short_sharpe < long_sharpe * self._decline_threshold:
@@ -357,18 +357,14 @@ class AlphaDecayMonitor:
         sprt_p1: float = 0.48,
         sprt_min_trades: int = 50,
     ) -> None:
-        self.cusum = CUSUMDetector(
-            threshold=cusum_threshold, drift=cusum_drift
-        )
+        self.cusum = CUSUMDetector(threshold=cusum_threshold, drift=cusum_drift)
         self.rolling_sharpe = RollingSharpeMonitor(
             short_window=sharpe_short_window,
             long_window=sharpe_long_window,
             decline_threshold=sharpe_decline_threshold,
         )
         self.adwin = ADWINDetector(delta=adwin_delta)
-        self.sprt = SPRTMonitor(
-            p0=sprt_p0, p1=sprt_p1, min_trades=sprt_min_trades
-        )
+        self.sprt = SPRTMonitor(p0=sprt_p0, p1=sprt_p1, min_trades=sprt_min_trades)
         self._state = AlphaDecayState()
 
     def on_bar(self, bar_return: float) -> AlphaDecayState:

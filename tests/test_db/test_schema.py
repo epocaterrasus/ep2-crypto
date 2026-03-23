@@ -5,7 +5,6 @@ import sqlite3
 from ep2_crypto.db.schema import (
     ALL_TABLES,
     INDEXES,
-    PRAGMA_SETTINGS,
     create_tables,
 )
 
@@ -39,9 +38,9 @@ class TestCreateTables:
 
     def test_table_count_matches(self):
         conn = create_tables(":memory:")
-        count = conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
-        ).fetchone()[0]
+        count = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()[
+            0
+        ]
         assert count == len(EXPECTED_TABLES)
         conn.close()
 
@@ -77,9 +76,9 @@ class TestCreateTables:
         for table_ddl in ALL_TABLES:
             conn.execute(table_ddl)
         conn.commit()
-        count = conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
-        ).fetchone()[0]
+        count = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()[
+            0
+        ]
         assert count == len(EXPECTED_TABLES)
         conn.close()
 
@@ -95,7 +94,7 @@ class TestCreateTables:
                 "INSERT INTO ohlcv VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (1000, "BTC/USDT", "5m", 100.0, 101.0, 99.0, 100.5, 10.0, 1005.0, 50),
             )
-            assert False, "Should have raised IntegrityError"
+            raise AssertionError("Should have raised IntegrityError")
         except sqlite3.IntegrityError:
             pass
         conn.close()

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import structlog
 
-from ep2_crypto.execution.venue import VenueAdapter, VenueType
+if TYPE_CHECKING:
+    from ep2_crypto.execution.venue import VenueAdapter, VenueType
 
 logger = structlog.get_logger(__name__)
 

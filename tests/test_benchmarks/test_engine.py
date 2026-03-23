@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -12,7 +11,6 @@ from ep2_crypto.benchmarks.strategies import (
     BuyAndHold,
     OracleStrategy,
     SimpleMomentum,
-    get_default_benchmark_suite,
 )
 
 

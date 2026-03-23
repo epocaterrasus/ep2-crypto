@@ -30,9 +30,7 @@ def default_thresholds() -> dict[str, float]:
 
 
 @pytest.fixture
-def manager(
-    conn: sqlite3.Connection, default_thresholds: dict[str, float]
-) -> KillSwitchManager:
+def manager(conn: sqlite3.Connection, default_thresholds: dict[str, float]) -> KillSwitchManager:
     return KillSwitchManager(conn, default_thresholds)
 
 

@@ -18,13 +18,11 @@ Two main entry points:
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
-import numpy as np
 import structlog
 
 from ep2_crypto.risk.config import RiskConfig
@@ -39,6 +37,9 @@ from ep2_crypto.risk.position_tracker import PositionSide, PositionState, Positi
 from ep2_crypto.risk.volatility_guard import VolatilityGuard, VolatilityGuardState
 
 if TYPE_CHECKING:
+    import sqlite3
+
+    import numpy as np
     from numpy.typing import NDArray
 
 logger = structlog.get_logger(__name__)
@@ -47,6 +48,7 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
+
 
 class RiskActionType(Enum):
     NONE = "none"
@@ -133,6 +135,7 @@ CREATE TABLE IF NOT EXISTS risk_events (
 # ---------------------------------------------------------------------------
 # RiskManager
 # ---------------------------------------------------------------------------
+
 
 class RiskManager:
     """Orchestrates all risk components.
@@ -264,23 +267,18 @@ class RiskManager:
         # Step 1: Kill switches
         if self._kill_switches.any_triggered():
             triggered = self._kill_switches.get_triggered_names()
-            return self._reject_trade(
-                signal,
-                f"Kill switch(es) triggered: {', '.join(triggered)}"
-            )
+            return self._reject_trade(signal, f"Kill switch(es) triggered: {', '.join(triggered)}")
 
         # Step 2: Max trades per day
         if self._trades_today >= self._config.max_trades_per_day:
             return self._reject_trade(
                 signal,
                 f"Max trades per day reached ({self._trades_today}/"
-                f"{self._config.max_trades_per_day})"
+                f"{self._config.max_trades_per_day})",
             )
 
         # Step 3: Volatility guard
-        vol_state = self._vol_guard.check(
-            closes, current_idx, signal.timestamp_ms
-        )
+        vol_state = self._vol_guard.check(closes, current_idx, signal.timestamp_ms)
         if not vol_state.can_trade:
             decision = self._reject_trade(
                 signal,
@@ -448,11 +446,13 @@ class RiskManager:
         self._check_all_kill_switches()
         if self._kill_switches.any_triggered() and pos.is_open:
             triggered = self._kill_switches.get_triggered_names()
-            actions.append(RiskAction(
-                action=RiskActionType.CLOSE_POSITION,
-                reason=f"Kill switch triggered: {', '.join(triggered)}",
-                urgency="immediate",
-            ))
+            actions.append(
+                RiskAction(
+                    action=RiskActionType.CLOSE_POSITION,
+                    reason=f"Kill switch triggered: {', '.join(triggered)}",
+                    urgency="immediate",
+                )
+            )
             return actions
 
         if not pos.is_open:
@@ -460,37 +460,35 @@ class RiskManager:
 
         # 5. Check max holding period
         if pos.bars_held >= self._sizer.max_holding_bars:
-            actions.append(RiskAction(
-                action=RiskActionType.CLOSE_POSITION,
-                reason=(
-                    f"Max holding period exceeded: {pos.bars_held} bars "
-                    f">= {self._sizer.max_holding_bars}"
-                ),
-                urgency="high",
-            ))
+            actions.append(
+                RiskAction(
+                    action=RiskActionType.CLOSE_POSITION,
+                    reason=(
+                        f"Max holding period exceeded: {pos.bars_held} bars "
+                        f">= {self._sizer.max_holding_bars}"
+                    ),
+                    urgency="high",
+                )
+            )
             return actions
 
         # 6. Check stop loss
         if self._last_stop_price > 0:
-            long_stopped = (
-                pos.side == PositionSide.LONG
-                and bar_low <= self._last_stop_price
-            )
-            short_stopped = (
-                pos.side == PositionSide.SHORT
-                and bar_high >= self._last_stop_price
-            )
+            long_stopped = pos.side == PositionSide.LONG and bar_low <= self._last_stop_price
+            short_stopped = pos.side == PositionSide.SHORT and bar_high >= self._last_stop_price
             stopped = long_stopped or short_stopped
 
             if stopped:
-                actions.append(RiskAction(
-                    action=RiskActionType.CLOSE_POSITION,
-                    reason=(
-                        f"Stop loss hit: stop={self._last_stop_price:.2f}, "
-                        f"bar_low={bar_low:.2f}, bar_high={bar_high:.2f}"
-                    ),
-                    urgency="immediate",
-                ))
+                actions.append(
+                    RiskAction(
+                        action=RiskActionType.CLOSE_POSITION,
+                        reason=(
+                            f"Stop loss hit: stop={self._last_stop_price:.2f}, "
+                            f"bar_low={bar_low:.2f}, bar_high={bar_high:.2f}"
+                        ),
+                        urgency="immediate",
+                    )
+                )
                 return actions
 
         return actions
@@ -626,4 +624,3 @@ class RiskManager:
             ),
         )
         self._conn.commit()
-

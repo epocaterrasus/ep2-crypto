@@ -102,11 +102,13 @@ class AdaptiveThresholdConfig:
     """Configuration for adaptive confidence threshold."""
 
     base_threshold: float = 0.60
-    regime_adjustments: dict[int, float] = field(default_factory=lambda: {
-        0: 0.0,   # Trending: no adjustment
-        1: 0.05,  # Choppy: raise threshold
-        2: 0.0,   # Neutral: no adjustment
-    })
+    regime_adjustments: dict[int, float] = field(
+        default_factory=lambda: {
+            0: 0.0,  # Trending: no adjustment
+            1: 0.05,  # Choppy: raise threshold
+            2: 0.0,  # Neutral: no adjustment
+        }
+    )
     min_threshold: float = 0.50
     max_threshold: float = 0.80
 
@@ -134,9 +136,7 @@ class GatingConfig:
     signal_filters: SignalFilterConfig = field(default_factory=SignalFilterConfig)
 
     # Adaptive threshold
-    adaptive_threshold: AdaptiveThresholdConfig = field(
-        default_factory=AdaptiveThresholdConfig
-    )
+    adaptive_threshold: AdaptiveThresholdConfig = field(default_factory=AdaptiveThresholdConfig)
 
     # Drawdown gate thresholds (DD% -> position multiplier)
     drawdown_start_pct: float = 3.0  # Start reducing at 3% DD
@@ -234,14 +234,16 @@ class ConfidenceGatingPipeline:
         decision = self._gate_calibration(primary_probas)
         decisions.append(decision)
         if decision.passed and self._calibrator is not None:
-            calibrated = self._calibrator.calibrate(
-                primary_probas.reshape(1, -1)
-            )[0]
+            calibrated = self._calibrator.calibrate(primary_probas.reshape(1, -1))[0]
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # Gate 2: Meta-labeling
@@ -254,9 +256,13 @@ class ConfidenceGatingPipeline:
             composite_confidence *= meta_prob
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # Gate 3: Ensemble agreement
@@ -265,12 +271,16 @@ class ConfidenceGatingPipeline:
         if decision.passed:
             # Low variance → high agreement → boost confidence
             agreement = max(0.0, 1.0 - decision.value / self._config.max_ensemble_variance)
-            composite_confidence *= (0.5 + 0.5 * agreement)
+            composite_confidence *= 0.5 + 0.5 * agreement
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # Gate 4: Conformal prediction
@@ -281,9 +291,13 @@ class ConfidenceGatingPipeline:
             direction = conf_direction
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # Gate 5: Signal filters
@@ -291,21 +305,27 @@ class ConfidenceGatingPipeline:
         decisions.append(decision)
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # Gate 6: Adaptive threshold
-        decision = self._gate_adaptive_threshold(
-            composite_confidence, market_ctx.regime_label
-        )
+        decision = self._gate_adaptive_threshold(composite_confidence, market_ctx.regime_label)
         decisions.append(decision)
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # Gate 7: Drawdown
@@ -314,9 +334,13 @@ class ConfidenceGatingPipeline:
         dd_multiplier = decision.value
         if not decision.passed:
             return self._build_result(
-                decisions, direction=0, confidence=0.0,
-                calibrated=calibrated, meta_prob=meta_prob,
-                conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+                decisions,
+                direction=0,
+                confidence=0.0,
+                calibrated=calibrated,
+                meta_prob=meta_prob,
+                conformal_size=conformal_set_size,
+                dd_mult=dd_multiplier,
             )
 
         # All gates passed
@@ -331,31 +355,38 @@ class ConfidenceGatingPipeline:
         )
 
         return self._build_result(
-            decisions, direction=direction,
+            decisions,
+            direction=direction,
             confidence=composite_confidence,
-            calibrated=calibrated, meta_prob=meta_prob,
-            conformal_size=conformal_set_size, dd_mult=dd_multiplier,
+            calibrated=calibrated,
+            meta_prob=meta_prob,
+            conformal_size=conformal_set_size,
+            dd_mult=dd_multiplier,
         )
 
     # -- Individual gate implementations ------------------------------------
 
-    def _gate_calibration(
-        self, probas: NDArray[np.float64]
-    ) -> GateDecision:
+    def _gate_calibration(self, probas: NDArray[np.float64]) -> GateDecision:
         """Gate 1: Isotonic calibration."""
         if not self._config.enable_calibration:
             return GateDecision(
-                gate_id=GateID.CALIBRATION, passed=True,
-                reason="disabled", value=1.0,
+                gate_id=GateID.CALIBRATION,
+                passed=True,
+                reason="disabled",
+                value=1.0,
             )
         if self._calibrator is None or not self._calibrator.is_fitted:
             return GateDecision(
-                gate_id=GateID.CALIBRATION, passed=True,
-                reason="no_calibrator_available", value=1.0,
+                gate_id=GateID.CALIBRATION,
+                passed=True,
+                reason="no_calibrator_available",
+                value=1.0,
             )
         return GateDecision(
-            gate_id=GateID.CALIBRATION, passed=True,
-            reason="calibrated", value=1.0,
+            gate_id=GateID.CALIBRATION,
+            passed=True,
+            reason="calibrated",
+            value=1.0,
         )
 
     def _gate_meta_labeling(
@@ -368,13 +399,17 @@ class ConfidenceGatingPipeline:
         """Gate 2: Meta-labeling profitability prediction."""
         if not self._config.enable_meta_labeling:
             return GateDecision(
-                gate_id=GateID.META_LABELING, passed=True,
-                reason="disabled", value=1.0,
+                gate_id=GateID.META_LABELING,
+                passed=True,
+                reason="disabled",
+                value=1.0,
             )
         if self._meta_labeler is None or not self._meta_labeler.is_fitted:
             return GateDecision(
-                gate_id=GateID.META_LABELING, passed=True,
-                reason="no_meta_labeler_available", value=1.0,
+                gate_id=GateID.META_LABELING,
+                passed=True,
+                reason="no_meta_labeler_available",
+                value=1.0,
             )
 
         meta_features = self._meta_labeler.create_meta_features(
@@ -397,8 +432,10 @@ class ConfidenceGatingPipeline:
         )
 
         return GateDecision(
-            gate_id=GateID.META_LABELING, passed=passed,
-            reason=reason, value=prob_profitable,
+            gate_id=GateID.META_LABELING,
+            passed=passed,
+            reason=reason,
+            value=prob_profitable,
         )
 
     def _gate_ensemble_agreement(
@@ -407,13 +444,17 @@ class ConfidenceGatingPipeline:
         """Gate 3: Ensemble agreement (low variance = agreement)."""
         if not self._config.enable_ensemble_agreement:
             return GateDecision(
-                gate_id=GateID.ENSEMBLE_AGREEMENT, passed=True,
-                reason="disabled", value=0.0,
+                gate_id=GateID.ENSEMBLE_AGREEMENT,
+                passed=True,
+                reason="disabled",
+                value=0.0,
             )
         if ensemble_probas is None or len(ensemble_probas) < 2:
             return GateDecision(
-                gate_id=GateID.ENSEMBLE_AGREEMENT, passed=True,
-                reason="insufficient_models", value=0.0,
+                gate_id=GateID.ENSEMBLE_AGREEMENT,
+                passed=True,
+                reason="insufficient_models",
+                value=0.0,
             )
 
         # Stack (n_models, 3) and compute mean variance across classes
@@ -431,13 +472,13 @@ class ConfidenceGatingPipeline:
         )
 
         return GateDecision(
-            gate_id=GateID.ENSEMBLE_AGREEMENT, passed=passed,
-            reason=reason, value=variance,
+            gate_id=GateID.ENSEMBLE_AGREEMENT,
+            passed=passed,
+            reason=reason,
+            value=variance,
         )
 
-    def _gate_conformal(
-        self, calibrated_probas: NDArray[np.float64]
-    ) -> tuple[GateDecision, int]:
+    def _gate_conformal(self, calibrated_probas: NDArray[np.float64]) -> tuple[GateDecision, int]:
         """Gate 4: Conformal prediction (singleton set required).
 
         Returns:
@@ -447,23 +488,25 @@ class ConfidenceGatingPipeline:
         if not self._config.enable_conformal:
             return (
                 GateDecision(
-                    gate_id=GateID.CONFORMAL, passed=True,
-                    reason="disabled", value=1.0,
+                    gate_id=GateID.CONFORMAL,
+                    passed=True,
+                    reason="disabled",
+                    value=1.0,
                 ),
                 0,
             )
         if self._conformal is None or not self._conformal.is_calibrated:
             return (
                 GateDecision(
-                    gate_id=GateID.CONFORMAL, passed=True,
-                    reason="no_conformal_available", value=1.0,
+                    gate_id=GateID.CONFORMAL,
+                    passed=True,
+                    reason="no_conformal_available",
+                    value=1.0,
                 ),
                 0,
             )
 
-        should_trade, pred_direction = self._conformal.gate(
-            calibrated_probas.reshape(1, -1)
-        )
+        should_trade, pred_direction = self._conformal.gate(calibrated_probas.reshape(1, -1))
         trade = bool(should_trade[0])
         direction = int(pred_direction[0])
         sets = self._conformal.predict_sets(calibrated_probas.reshape(1, -1))
@@ -480,8 +523,10 @@ class ConfidenceGatingPipeline:
 
         return (
             GateDecision(
-                gate_id=GateID.CONFORMAL, passed=trade,
-                reason=reason, value=float(set_size),
+                gate_id=GateID.CONFORMAL,
+                passed=trade,
+                reason=reason,
+                value=float(set_size),
             ),
             direction,
         )
@@ -490,34 +535,41 @@ class ConfidenceGatingPipeline:
         """Gate 5: Signal filters (vol range, regime stability)."""
         if not self._config.enable_signal_filters:
             return GateDecision(
-                gate_id=GateID.SIGNAL_FILTERS, passed=True,
-                reason="disabled", value=1.0,
+                gate_id=GateID.SIGNAL_FILTERS,
+                passed=True,
+                reason="disabled",
+                value=1.0,
             )
 
         sf = self._config.signal_filters
 
         if ctx.volatility_ann < sf.min_volatility_ann:
             return GateDecision(
-                gate_id=GateID.SIGNAL_FILTERS, passed=False,
+                gate_id=GateID.SIGNAL_FILTERS,
+                passed=False,
                 reason=f"vol={ctx.volatility_ann:.1f}%<{sf.min_volatility_ann}%",
                 value=ctx.volatility_ann,
             )
         if ctx.volatility_ann > sf.max_volatility_ann:
             return GateDecision(
-                gate_id=GateID.SIGNAL_FILTERS, passed=False,
+                gate_id=GateID.SIGNAL_FILTERS,
+                passed=False,
                 reason=f"vol={ctx.volatility_ann:.1f}%>{sf.max_volatility_ann}%",
                 value=ctx.volatility_ann,
             )
         if ctx.regime_probability < sf.min_regime_stability:
             return GateDecision(
-                gate_id=GateID.SIGNAL_FILTERS, passed=False,
+                gate_id=GateID.SIGNAL_FILTERS,
+                passed=False,
                 reason=f"regime_prob={ctx.regime_probability:.2f}<{sf.min_regime_stability}",
                 value=ctx.regime_probability,
             )
 
         return GateDecision(
-            gate_id=GateID.SIGNAL_FILTERS, passed=True,
-            reason="passed", value=ctx.volatility_ann,
+            gate_id=GateID.SIGNAL_FILTERS,
+            passed=True,
+            reason="passed",
+            value=ctx.volatility_ann,
         )
 
     def _gate_adaptive_threshold(
@@ -526,21 +578,18 @@ class ConfidenceGatingPipeline:
         """Gate 6: Adaptive confidence threshold (regime-dependent)."""
         if not self._config.enable_adaptive_threshold:
             return GateDecision(
-                gate_id=GateID.ADAPTIVE_THRESHOLD, passed=True,
-                reason="disabled", value=current_confidence,
+                gate_id=GateID.ADAPTIVE_THRESHOLD,
+                passed=True,
+                reason="disabled",
+                value=current_confidence,
             )
 
         at = self._config.adaptive_threshold
         adjustment = at.regime_adjustments.get(regime_label, 0.0)
-        threshold = np.clip(
-            at.base_threshold + adjustment, at.min_threshold, at.max_threshold
-        )
+        threshold = np.clip(at.base_threshold + adjustment, at.min_threshold, at.max_threshold)
 
         passed = current_confidence >= threshold
-        reason = (
-            "passed" if passed
-            else f"conf={current_confidence:.3f}<threshold={threshold:.3f}"
-        )
+        reason = "passed" if passed else f"conf={current_confidence:.3f}<threshold={threshold:.3f}"
 
         logger.debug(
             "gate_adaptive_threshold",
@@ -551,8 +600,10 @@ class ConfidenceGatingPipeline:
         )
 
         return GateDecision(
-            gate_id=GateID.ADAPTIVE_THRESHOLD, passed=passed,
-            reason=reason, value=current_confidence,
+            gate_id=GateID.ADAPTIVE_THRESHOLD,
+            passed=passed,
+            reason=reason,
+            value=current_confidence,
         )
 
     def _gate_drawdown(self, current_drawdown_pct: float) -> GateDecision:
@@ -563,8 +614,10 @@ class ConfidenceGatingPipeline:
         """
         if not self._config.enable_drawdown:
             return GateDecision(
-                gate_id=GateID.DRAWDOWN, passed=True,
-                reason="disabled", value=1.0,
+                gate_id=GateID.DRAWDOWN,
+                passed=True,
+                reason="disabled",
+                value=1.0,
             )
 
         start = self._config.drawdown_start_pct
@@ -573,13 +626,16 @@ class ConfidenceGatingPipeline:
 
         if current_drawdown_pct <= start:
             return GateDecision(
-                gate_id=GateID.DRAWDOWN, passed=True,
-                reason="passed", value=1.0,
+                gate_id=GateID.DRAWDOWN,
+                passed=True,
+                reason="passed",
+                value=1.0,
             )
 
         if current_drawdown_pct >= halt:
             return GateDecision(
-                gate_id=GateID.DRAWDOWN, passed=False,
+                gate_id=GateID.DRAWDOWN,
+                passed=False,
                 reason=f"dd={current_drawdown_pct:.1f}%>={halt:.1f}%_halt",
                 value=0.0,
             )
@@ -595,8 +651,10 @@ class ConfidenceGatingPipeline:
         )
 
         return GateDecision(
-            gate_id=GateID.DRAWDOWN, passed=True,
-            reason="reduced", value=multiplier,
+            gate_id=GateID.DRAWDOWN,
+            passed=True,
+            reason="reduced",
+            value=multiplier,
         )
 
     # -- Helpers ------------------------------------------------------------

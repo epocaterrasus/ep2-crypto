@@ -199,9 +199,7 @@ class PositionSizer:
 
         # 8. Minimum size check
         if quantity < self._min_btc:
-            return self._rejected(
-                f"Computed size {quantity:.6f} BTC below minimum {self._min_btc}"
-            )
+            return self._rejected(f"Computed size {quantity:.6f} BTC below minimum {self._min_btc}")
 
         # 9. ATR-based stop loss
         atr = self._compute_atr(highs, lows, closes, current_idx)

@@ -60,8 +60,13 @@ class TestNQReturn:
         comp = NQReturnComputer()
         data = _make_cross_market_data()
         result = comp.compute(
-            2, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            2,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             nq_closes=data["nq_closes"],
         )
         assert np.isnan(result["nq_ret_lag1"])
@@ -70,8 +75,13 @@ class TestNQReturn:
         comp = NQReturnComputer()
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["nq_ret_lag1"])
 
@@ -80,8 +90,13 @@ class TestNQReturn:
         comp = NQReturnComputer()
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             nq_closes=data["nq_closes"],
         )
         # Should produce finite values
@@ -97,8 +112,13 @@ class TestNQReturn:
         n = len(data["timestamps"])
         data["timestamps"] = np.arange(n, dtype=np.int64) * 300_000 + 8 * 3_600_000
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             nq_closes=data["nq_closes"],
         )
         assert result["nq_ret_lag1"] == 0.0
@@ -114,7 +134,13 @@ class TestNQReturn:
         ts = np.arange(n, dtype=np.int64) * 300_000 + 16 * 3_600_000  # US session
 
         result = comp.compute(
-            5, ts, btc, btc, btc, btc, np.ones(n),
+            5,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             nq_closes=nq,
         )
         # lag1: return at idx=4 -> (105-103)/103
@@ -130,7 +156,13 @@ class TestNQReturn:
         ts = np.arange(n, dtype=np.int64) * 300_000 + 16 * 3_600_000
 
         result = comp.compute(
-            5, ts, btc, btc, btc, btc, np.ones(n),
+            5,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             nq_closes=nq,
         )
         # lag2: return at idx=3 -> (103-101)/101
@@ -155,8 +187,13 @@ class TestETHRatio:
         comp = ETHRatioComputer()
         data = _make_cross_market_data()
         result = comp.compute(
-            3, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            3,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             eth_closes=data["eth_closes"],
         )
         assert np.isnan(result["eth_btc_ratio"])
@@ -165,8 +202,13 @@ class TestETHRatio:
         comp = ETHRatioComputer()
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["eth_btc_ratio"])
 
@@ -179,7 +221,13 @@ class TestETHRatio:
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            8, ts, btc, btc, btc, btc, np.ones(n),
+            8,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             eth_closes=eth,
         )
         assert result["eth_btc_ratio"] == pytest.approx(3200.0 / 50000.0, rel=1e-10)
@@ -193,7 +241,13 @@ class TestETHRatio:
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            8, ts, btc, btc, btc, btc, np.ones(n),
+            8,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             eth_closes=eth,
         )
         assert result["eth_btc_ratio_roc1"] == pytest.approx(0.0, abs=1e-10)
@@ -208,7 +262,13 @@ class TestETHRatio:
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            8, ts, btc, btc, btc, btc, np.ones(n),
+            8,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             eth_closes=eth,
         )
         assert result["eth_btc_ratio_roc1"] > 0
@@ -219,8 +279,13 @@ class TestETHRatio:
         comp = ETHRatioComputer()
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             eth_closes=data["eth_closes"],
         )
         assert result["eth_btc_ratio"] > 0
@@ -243,8 +308,13 @@ class TestLeadLag:
         comp = LeadLagComputer(window=20)
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             nq_closes=data["nq_closes"],
         )
         assert np.isnan(result["lead_lag_corr_1"])
@@ -253,8 +323,13 @@ class TestLeadLag:
         comp = LeadLagComputer(window=20)
         data = _make_cross_market_data()
         result = comp.compute(
-            30, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            30,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert np.isnan(result["lead_lag_corr_1"])
 
@@ -263,8 +338,13 @@ class TestLeadLag:
         comp = LeadLagComputer(window=20)
         data = _make_cross_market_data()
         result = comp.compute(
-            30, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            30,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             nq_closes=data["nq_closes"],
         )
         for lag in [1, 2, 3]:
@@ -284,7 +364,13 @@ class TestLeadLag:
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            30, ts, btc, btc, btc, btc, np.ones(n),
+            30,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             nq_closes=nq,
         )
         # With identical trends, correlations should be very high
@@ -296,8 +382,13 @@ class TestLeadLag:
         assert comp.warmup_bars == 13
         data = _make_cross_market_data()
         result = comp.compute(
-            20, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            20,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
             nq_closes=data["nq_closes"],
         )
         assert np.isfinite(result["lead_lag_corr_1"])
@@ -320,9 +411,15 @@ class TestDivergence:
         comp = DivergenceComputer(lookback=6)
         data = _make_cross_market_data()
         result = comp.compute(
-            3, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+            3,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            nq_closes=data["nq_closes"],
+            eth_closes=data["eth_closes"],
         )
         assert np.isnan(result["div_btc_nq"])
 
@@ -331,8 +428,13 @@ class TestDivergence:
         comp = DivergenceComputer(lookback=6)
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
         )
         assert result["div_btc_nq"] == 0.0
         assert result["div_btc_eth"] == 0.0
@@ -345,11 +447,17 @@ class TestDivergence:
         btc = np.ones(n) * 50000.0
         btc[10:] = 50500.0  # +1%
         nq = np.ones(n) * 18000.0
-        nq[10:] = 18180.0   # +1%
+        nq[10:] = 18180.0  # +1%
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            12, ts, btc, btc, btc, btc, np.ones(n),
+            12,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             nq_closes=nq,
         )
         assert result["div_btc_nq"] == pytest.approx(0.0, abs=1e-10)
@@ -361,11 +469,17 @@ class TestDivergence:
         btc = np.ones(n) * 50000.0
         btc[10:] = 51000.0  # +2%
         nq = np.ones(n) * 18000.0
-        nq[10:] = 18090.0   # +0.5%
+        nq[10:] = 18090.0  # +0.5%
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            12, ts, btc, btc, btc, btc, np.ones(n),
+            12,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             nq_closes=nq,
         )
         assert result["div_btc_nq"] > 0
@@ -375,13 +489,19 @@ class TestDivergence:
         n = 15
         comp = DivergenceComputer(lookback=5)
         btc = np.ones(n) * 50000.0
-        btc[10:] = 50250.0   # +0.5%
+        btc[10:] = 50250.0  # +0.5%
         eth = np.ones(n) * 3200.0
-        eth[10:] = 3264.0    # +2%
+        eth[10:] = 3264.0  # +2%
         ts = np.arange(n, dtype=np.int64) * 300_000
 
         result = comp.compute(
-            12, ts, btc, btc, btc, btc, np.ones(n),
+            12,
+            ts,
+            btc,
+            btc,
+            btc,
+            btc,
+            np.ones(n),
             eth_closes=eth,
         )
         assert result["div_btc_eth"] < 0
@@ -391,9 +511,15 @@ class TestDivergence:
         comp = DivergenceComputer(lookback=6)
         data = _make_cross_market_data()
         result = comp.compute(
-            10, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            nq_closes=data["nq_closes"], eth_closes=data["eth_closes"],
+            10,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            nq_closes=data["nq_closes"],
+            eth_closes=data["eth_closes"],
         )
         assert np.isfinite(result["div_btc_nq"])
         assert np.isfinite(result["div_btc_eth"])

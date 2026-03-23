@@ -169,10 +169,14 @@ class EfficiencyRatioDetector:
 
         if er <= self._choppy_threshold:
             # Distance from threshold to 0.0, normalized
-            confidence = min(
-                (self._choppy_threshold - er) / self._choppy_threshold,
-                1.0,
-            ) if self._choppy_threshold > 0 else 1.0
+            confidence = (
+                min(
+                    (self._choppy_threshold - er) / self._choppy_threshold,
+                    1.0,
+                )
+                if self._choppy_threshold > 0
+                else 1.0
+            )
             return ERRegime.CHOPPY, confidence
 
         # Neutral zone — confidence based on distance from midpoint

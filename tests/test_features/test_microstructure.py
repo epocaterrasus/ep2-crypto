@@ -63,6 +63,7 @@ def _make_orderbook_data(n: int = 20, n_levels: int = 5) -> dict[str, np.ndarray
 
 # ---- OBI Tests ----
 
+
 class TestOBI:
     def test_output_names(self) -> None:
         obi = OBIComputer()
@@ -89,8 +90,17 @@ class TestOBI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = obi.compute(
-            2, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            2,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         assert result["obi_l3"] == pytest.approx(0.0)
         assert result["obi_l5"] == pytest.approx(0.0)
@@ -111,24 +121,37 @@ class TestOBI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = obi.compute(
-            1, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            1,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         assert result["obi_l3"] == pytest.approx(1.0)
 
     def test_golden_dataset_obi(self) -> None:
         """Hand-verified OBI computation."""
         n = 3
-        bid_sizes = np.array([
-            [10.0, 5.0, 3.0, 2.0, 1.0],
-            [10.0, 5.0, 3.0, 2.0, 1.0],
-            [10.0, 5.0, 3.0, 2.0, 1.0],
-        ])
-        ask_sizes = np.array([
-            [8.0, 4.0, 2.0, 1.0, 0.5],
-            [8.0, 4.0, 2.0, 1.0, 0.5],
-            [8.0, 4.0, 2.0, 1.0, 0.5],
-        ])
+        bid_sizes = np.array(
+            [
+                [10.0, 5.0, 3.0, 2.0, 1.0],
+                [10.0, 5.0, 3.0, 2.0, 1.0],
+                [10.0, 5.0, 3.0, 2.0, 1.0],
+            ]
+        )
+        ask_sizes = np.array(
+            [
+                [8.0, 4.0, 2.0, 1.0, 0.5],
+                [8.0, 4.0, 2.0, 1.0, 0.5],
+                [8.0, 4.0, 2.0, 1.0, 0.5],
+            ]
+        )
 
         # OBI_l3 = (10+5+3 - 8+4+2) / (10+5+3 + 8+4+2) = (18-14)/(18+14) = 4/32
         expected_l3 = 4.0 / 32.0
@@ -146,8 +169,17 @@ class TestOBI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = obi.compute(
-            1, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            1,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         assert result["obi_l3"] == pytest.approx(expected_l3, abs=1e-10)
         assert result["obi_l5"] == pytest.approx(expected_l5, abs=1e-10)
@@ -165,10 +197,17 @@ class TestOBI:
         obi = OBIComputer()
         for i in range(50):
             result = obi.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
-                bids=data["bids"], asks=data["asks"],
-                bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
+                bids=data["bids"],
+                asks=data["asks"],
+                bid_sizes=data["bid_sizes"],
+                ask_sizes=data["ask_sizes"],
             )
             for key in ["obi_l3", "obi_l5"]:
                 if not np.isnan(result[key]):
@@ -176,6 +215,7 @@ class TestOBI:
 
 
 # ---- OFI Tests ----
+
 
 class TestOFI:
     def test_output_names(self) -> None:
@@ -190,20 +230,31 @@ class TestOFI:
         ofi = OFIComputer()
         data = _make_orderbook_data()
         result = ofi.compute(
-            0, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
+            0,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            bids=data["bids"],
+            asks=data["asks"],
+            bid_sizes=data["bid_sizes"],
+            ask_sizes=data["ask_sizes"],
         )
         assert np.isnan(result["ofi_l1"])
 
     def test_ofi_level_bid_up(self) -> None:
         """Bid price increases: delta_b = +curr_bid_sz."""
         result = _compute_ofi_level(
-            prev_bid=100.0, prev_bid_sz=5.0,
-            curr_bid=101.0, curr_bid_sz=8.0,
-            prev_ask=102.0, prev_ask_sz=3.0,
-            curr_ask=102.0, curr_ask_sz=3.0,  # ask unchanged
+            prev_bid=100.0,
+            prev_bid_sz=5.0,
+            curr_bid=101.0,
+            curr_bid_sz=8.0,
+            prev_ask=102.0,
+            prev_ask_sz=3.0,
+            curr_ask=102.0,
+            curr_ask_sz=3.0,  # ask unchanged
         )
         # delta_b = 8.0 (bid up), delta_a = -(3-3)=0 (ask same)
         # OFI = 8 - 0 = 8
@@ -212,10 +263,14 @@ class TestOFI:
     def test_ofi_level_bid_same(self) -> None:
         """Bid price same: delta_b = curr_sz - prev_sz."""
         result = _compute_ofi_level(
-            prev_bid=100.0, prev_bid_sz=5.0,
-            curr_bid=100.0, curr_bid_sz=8.0,
-            prev_ask=102.0, prev_ask_sz=3.0,
-            curr_ask=102.0, curr_ask_sz=3.0,
+            prev_bid=100.0,
+            prev_bid_sz=5.0,
+            curr_bid=100.0,
+            curr_bid_sz=8.0,
+            prev_ask=102.0,
+            prev_ask_sz=3.0,
+            curr_ask=102.0,
+            curr_ask_sz=3.0,
         )
         # delta_b = 8-5=3, delta_a = -(3-3)=0
         # OFI = 3 - 0 = 3
@@ -224,10 +279,14 @@ class TestOFI:
     def test_ofi_level_bid_down(self) -> None:
         """Bid price decreases: delta_b = -prev_bid_sz."""
         result = _compute_ofi_level(
-            prev_bid=100.0, prev_bid_sz=5.0,
-            curr_bid=99.0, curr_bid_sz=8.0,
-            prev_ask=102.0, prev_ask_sz=3.0,
-            curr_ask=102.0, curr_ask_sz=3.0,
+            prev_bid=100.0,
+            prev_bid_sz=5.0,
+            curr_bid=99.0,
+            curr_bid_sz=8.0,
+            prev_ask=102.0,
+            prev_ask_sz=3.0,
+            curr_ask=102.0,
+            curr_ask_sz=3.0,
         )
         # delta_b = -5 (bid down), delta_a = 0
         # OFI = -5 - 0 = -5
@@ -236,10 +295,14 @@ class TestOFI:
     def test_ofi_level_ask_down(self) -> None:
         """Ask price decreases: delta_a = -curr_ask_sz (aggressive seller)."""
         result = _compute_ofi_level(
-            prev_bid=100.0, prev_bid_sz=5.0,
-            curr_bid=100.0, curr_bid_sz=5.0,
-            prev_ask=102.0, prev_ask_sz=3.0,
-            curr_ask=101.0, curr_ask_sz=7.0,
+            prev_bid=100.0,
+            prev_bid_sz=5.0,
+            curr_bid=100.0,
+            curr_bid_sz=5.0,
+            prev_ask=102.0,
+            prev_ask_sz=3.0,
+            curr_ask=101.0,
+            curr_ask_sz=7.0,
         )
         # delta_b = 0 (bid same), delta_a = -7 (ask down)
         # OFI = 0 - (-7) = 7
@@ -248,10 +311,14 @@ class TestOFI:
     def test_ofi_level_ask_up(self) -> None:
         """Ask price increases: delta_a = +prev_ask_sz."""
         result = _compute_ofi_level(
-            prev_bid=100.0, prev_bid_sz=5.0,
-            curr_bid=100.0, curr_bid_sz=5.0,
-            prev_ask=102.0, prev_ask_sz=3.0,
-            curr_ask=103.0, curr_ask_sz=7.0,
+            prev_bid=100.0,
+            prev_bid_sz=5.0,
+            curr_bid=100.0,
+            curr_bid_sz=5.0,
+            prev_ask=102.0,
+            prev_ask_sz=3.0,
+            curr_ask=103.0,
+            curr_ask_sz=7.0,
         )
         # delta_b = 0, delta_a = +3
         # OFI = 0 - 3 = -3
@@ -260,26 +327,34 @@ class TestOFI:
     def test_golden_dataset_ofi(self) -> None:
         """Multi-level OFI with hand-verified values."""
         n = 3
-        bids = np.array([
-            [100.0, 99.0, 98.0],
-            [100.0, 99.0, 98.0],  # same prices
-            [101.0, 100.0, 99.0],  # all levels up by 1
-        ])
-        asks = np.array([
-            [102.0, 103.0, 104.0],
-            [102.0, 103.0, 104.0],
-            [102.0, 103.0, 104.0],  # same
-        ])
-        bid_sizes = np.array([
-            [5.0, 3.0, 2.0],
-            [7.0, 4.0, 3.0],  # increased at same price
-            [6.0, 5.0, 4.0],  # new prices (bid up)
-        ])
-        ask_sizes = np.array([
-            [4.0, 2.0, 1.0],
-            [3.0, 2.0, 1.0],
-            [3.0, 2.0, 1.0],  # same
-        ])
+        bids = np.array(
+            [
+                [100.0, 99.0, 98.0],
+                [100.0, 99.0, 98.0],  # same prices
+                [101.0, 100.0, 99.0],  # all levels up by 1
+            ]
+        )
+        asks = np.array(
+            [
+                [102.0, 103.0, 104.0],
+                [102.0, 103.0, 104.0],
+                [102.0, 103.0, 104.0],  # same
+            ]
+        )
+        bid_sizes = np.array(
+            [
+                [5.0, 3.0, 2.0],
+                [7.0, 4.0, 3.0],  # increased at same price
+                [6.0, 5.0, 4.0],  # new prices (bid up)
+            ]
+        )
+        ask_sizes = np.array(
+            [
+                [4.0, 2.0, 1.0],
+                [3.0, 2.0, 1.0],
+                [3.0, 2.0, 1.0],  # same
+            ]
+        )
 
         # At idx=1 (comparing with idx=0):
         # Level 0: bid same, delta_b=7-5=2; ask same, delta_a=-(3-4)=1; OFI=2-1=1
@@ -289,8 +364,17 @@ class TestOFI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = ofi.compute(
-            1, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            1,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         assert result["ofi_l1"] == pytest.approx(1.0)
         assert result["ofi_l3"] == pytest.approx(3.0)
@@ -304,6 +388,7 @@ class TestOFI:
 
 
 # ---- Microprice Tests ----
+
 
 class TestMicroprice:
     def test_output_names(self) -> None:
@@ -322,8 +407,17 @@ class TestMicroprice:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = mp.compute(
-            1, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            1,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         expected_mid = (50000.0 + 50001.0) / 2.0
         assert result["microprice"] == pytest.approx(expected_mid)
@@ -342,8 +436,17 @@ class TestMicroprice:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = mp.compute(
-            1, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            1,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         assert result["microprice"] == pytest.approx(100.6)
 
@@ -362,8 +465,17 @@ class TestMicroprice:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n)
         result = mp.compute(
-            1, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks, bid_sizes=bid_sizes, ask_sizes=ask_sizes,
+            1,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
+            bid_sizes=bid_sizes,
+            ask_sizes=ask_sizes,
         )
         mid = 101.0
         # With bid_size=90, ask_size=10: micro = (10*100 + 90*102)/100 = 101.8
@@ -372,6 +484,7 @@ class TestMicroprice:
 
 
 # ---- TFI Tests ----
+
 
 class TestTFI:
     def test_output_names(self) -> None:
@@ -387,8 +500,15 @@ class TestTFI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = tfi.compute(
-            5, ts, dummy, dummy, dummy, dummy, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            5,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         assert result["tfi_1bar"] == pytest.approx(1.0)
         assert result["tfi_6bar"] == pytest.approx(1.0)
@@ -402,8 +522,15 @@ class TestTFI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = tfi.compute(
-            5, ts, dummy, dummy, dummy, dummy, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            5,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         assert result["tfi_1bar"] == pytest.approx(-1.0)
         assert result["tfi_6bar"] == pytest.approx(-1.0)
@@ -417,8 +544,15 @@ class TestTFI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = tfi.compute(
-            2, ts, dummy, dummy, dummy, dummy, dummy,
-            bids=bids, asks=asks,
+            2,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            bids=bids,
+            asks=asks,
         )
         # spread = 2.0, mid = 100.0, relative = 0.02
         assert result["relative_spread"] == pytest.approx(0.02)
@@ -434,8 +568,15 @@ class TestTFI:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = tfi.compute(
-            2, ts, dummy, dummy, dummy, closes, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            2,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            closes,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         # price_change = 0, so absorption = abs_vol / 1.0 = 100.0
         assert result["absorption"] == pytest.approx(100.0)
@@ -446,9 +587,15 @@ class TestTFI:
         tfi = TFIComputer()
         for i in range(2, 50):
             result = tfi.compute(
-                i, data["timestamps"], data["opens"], data["highs"],
-                data["lows"], data["closes"], data["volumes"],
-                trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+                i,
+                data["timestamps"],
+                data["opens"],
+                data["highs"],
+                data["lows"],
+                data["closes"],
+                data["volumes"],
+                trade_sizes=data["trade_sizes"],
+                trade_sides=data["trade_sides"],
             )
             for key in ["tfi_1bar", "tfi_6bar"]:
                 if not np.isnan(result[key]):
@@ -456,6 +603,7 @@ class TestTFI:
 
 
 # ---- Kyle's Lambda Tests ----
+
 
 class TestKyleLambda:
     def test_output_names(self) -> None:
@@ -470,9 +618,15 @@ class TestKyleLambda:
         kl = KyleLambdaComputer(window=10)
         data = _make_orderbook_data()
         result = kl.compute(
-            5, data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+            5,
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
         )
         assert np.isnan(result["kyle_lambda"])
 
@@ -487,8 +641,15 @@ class TestKyleLambda:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = kl.compute(
-            22, ts, dummy, dummy, dummy, closes, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            22,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            closes,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         # All trades are buys with same size, so var(signed_v) > 0 only from numerical noise
         # This tests the structure; real data will have variation
@@ -507,17 +668,26 @@ class TestKyleLambda:
         ts = np.arange(n, dtype=np.int64) * 60_000
         dummy = np.ones(n) * 100.0
         result = kl.compute(
-            22, ts, dummy, dummy, dummy, closes, dummy,
-            trade_sizes=trade_sizes, trade_sides=trade_sides,
+            22,
+            ts,
+            dummy,
+            dummy,
+            dummy,
+            closes,
+            dummy,
+            trade_sizes=trade_sizes,
+            trade_sides=trade_sides,
         )
         assert np.isfinite(result["kyle_lambda"])
 
 
 # ---- Registry Integration ----
 
+
 class TestMicrostructureRegistry:
     def test_all_computers_register(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         reg = FeatureRegistry()
         reg.register(OBIComputer())
         reg.register(OFIComputer())
@@ -528,6 +698,7 @@ class TestMicrostructureRegistry:
 
     def test_compute_all_produces_all_features(self) -> None:
         from ep2_crypto.features.base import FeatureRegistry
+
         data = _make_orderbook_data(30)
         reg = FeatureRegistry()
         reg.register(OBIComputer())
@@ -538,18 +709,34 @@ class TestMicrostructureRegistry:
 
         result = reg.compute_all(
             15,
-            data["timestamps"], data["opens"], data["highs"],
-            data["lows"], data["closes"], data["volumes"],
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+            data["timestamps"],
+            data["opens"],
+            data["highs"],
+            data["lows"],
+            data["closes"],
+            data["volumes"],
+            bids=data["bids"],
+            asks=data["asks"],
+            bid_sizes=data["bid_sizes"],
+            ask_sizes=data["ask_sizes"],
+            trade_sizes=data["trade_sizes"],
+            trade_sides=data["trade_sides"],
         )
 
         expected_keys = {
-            "obi_l3", "obi_l5", "obi_l3_weighted", "obi_l5_weighted",
-            "ofi_l1", "ofi_l3", "ofi_l5",
-            "microprice", "microprice_mid_dev",
-            "tfi_1bar", "tfi_6bar", "relative_spread", "absorption",
+            "obi_l3",
+            "obi_l5",
+            "obi_l3_weighted",
+            "obi_l5_weighted",
+            "ofi_l1",
+            "ofi_l3",
+            "ofi_l5",
+            "microprice",
+            "microprice_mid_dev",
+            "tfi_1bar",
+            "tfi_6bar",
+            "relative_spread",
+            "absorption",
             "kyle_lambda",
         }
         assert set(result.keys()) == expected_keys

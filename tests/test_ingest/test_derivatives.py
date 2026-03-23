@@ -121,11 +121,15 @@ class MockBybitExchangeClass:
 async def test_oi_collector_stores_data(db_repo: Repository) -> None:
     """OI collector stores fetched open interest to database."""
     factory = MockBybitExchangeClass()
-    factory.set_oi_responses([{
-        "timestamp": 1700000000000,
-        "openInterestAmount": 50000.0,
-        "openInterestValue": 2100000000.0,
-    }])
+    factory.set_oi_responses(
+        [
+            {
+                "timestamp": 1700000000000,
+                "openInterestAmount": 50000.0,
+                "openInterestValue": 2100000000.0,
+            }
+        ]
+    )
 
     collector = BybitOICollector(
         db_repo,
@@ -210,12 +214,16 @@ async def test_oi_collector_health(db_repo: Repository) -> None:
 async def test_funding_collector_stores_data(db_repo: Repository) -> None:
     """Funding collector stores fetched funding rate to database."""
     factory = MockBybitExchangeClass()
-    factory.set_funding_responses([{
-        "timestamp": 1700000000000,
-        "fundingRate": 0.0001,
-        "markPrice": 42000.0,
-        "indexPrice": 41999.0,
-    }])
+    factory.set_funding_responses(
+        [
+            {
+                "timestamp": 1700000000000,
+                "fundingRate": 0.0001,
+                "markPrice": 42000.0,
+                "indexPrice": 41999.0,
+            }
+        ]
+    )
 
     collector = BybitFundingCollector(
         db_repo,
@@ -240,10 +248,14 @@ async def test_funding_collector_stores_data(db_repo: Repository) -> None:
 async def test_funding_collector_handles_missing_prices(db_repo: Repository) -> None:
     """Funding collector handles missing mark/index prices."""
     factory = MockBybitExchangeClass()
-    factory.set_funding_responses([{
-        "timestamp": 1700000000000,
-        "fundingRate": 0.0002,
-    }])
+    factory.set_funding_responses(
+        [
+            {
+                "timestamp": 1700000000000,
+                "fundingRate": 0.0002,
+            }
+        ]
+    )
 
     collector = BybitFundingCollector(
         db_repo,
@@ -353,16 +365,18 @@ def make_liquidation_msg(
     updated_time: int = 1700000000000,
 ) -> str:
     """Create a mock liquidation WebSocket message."""
-    return json.dumps({
-        "topic": "allLiquidation.BTCUSDT",
-        "data": {
-            "updatedTime": updated_time,
-            "symbol": "BTCUSDT",
-            "side": side,
-            "price": str(price),
-            "size": str(size),
-        },
-    })
+    return json.dumps(
+        {
+            "topic": "allLiquidation.BTCUSDT",
+            "data": {
+                "updatedTime": updated_time,
+                "symbol": "BTCUSDT",
+                "side": side,
+                "price": str(price),
+                "size": str(size),
+            },
+        }
+    )
 
 
 # -- Liquidation collector tests --
@@ -372,14 +386,18 @@ def make_liquidation_msg(
 async def test_liquidation_collector_stores_events(db_repo: Repository) -> None:
     """Liquidation collector stores liquidation events."""
     ws = MockWebSocket()
-    ws.set_messages([
-        json.dumps({"op": "subscribe", "success": True}),
-        make_liquidation_msg(side="Buy", price=42000.0, size=1.5),
-        make_liquidation_msg(
-            side="Sell", price=41500.0, size=2.0,
-            updated_time=1700000001000,
-        ),
-    ])
+    ws.set_messages(
+        [
+            json.dumps({"op": "subscribe", "success": True}),
+            make_liquidation_msg(side="Buy", price=42000.0, size=1.5),
+            make_liquidation_msg(
+                side="Sell",
+                price=41500.0,
+                size=2.0,
+                updated_time=1700000001000,
+            ),
+        ]
+    )
 
     async def ws_connector(url: str) -> MockWebSocket:
         return ws
@@ -440,11 +458,13 @@ async def test_liquidation_collector_skips_non_data_messages(
 ) -> None:
     """Non-data messages (pong, subscribe) are ignored."""
     ws = MockWebSocket()
-    ws.set_messages([
-        json.dumps({"op": "pong"}),
-        json.dumps({"op": "subscribe", "success": True}),
-        json.dumps({"topic": "other.topic", "data": {}}),
-    ])
+    ws.set_messages(
+        [
+            json.dumps({"op": "pong"}),
+            json.dumps({"op": "subscribe", "success": True}),
+            json.dumps({"topic": "other.topic", "data": {}}),
+        ]
+    )
 
     async def ws_connector(url: str) -> MockWebSocket:
         return ws
@@ -467,6 +487,7 @@ async def test_liquidation_collector_reconnects_on_error(
     db_repo: Repository,
 ) -> None:
     """Liquidation collector reconnects on WebSocket errors."""
+
     async def ws_connector(url: str) -> MockWebSocket:
         new_ws = MockWebSocket()
         # Fail on first recv so the run_loop raises quickly
@@ -490,9 +511,11 @@ async def test_liquidation_collector_reconnects_on_error(
 async def test_liquidation_collector_health(db_repo: Repository) -> None:
     """Liquidation collector reports healthy state."""
     ws = MockWebSocket()
-    ws.set_messages([
-        make_liquidation_msg(),
-    ])
+    ws.set_messages(
+        [
+            make_liquidation_msg(),
+        ]
+    )
 
     async def ws_connector(url: str) -> MockWebSocket:
         return ws

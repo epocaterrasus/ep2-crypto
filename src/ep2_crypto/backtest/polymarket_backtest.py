@@ -211,9 +211,7 @@ class PolymarketBacktester:
                 continue
 
             direction = "yes" if bar.signal == 1 else "no"
-            market_price = (
-                bar.market_price_yes if direction == "yes" else bar.market_price_no
-            )
+            market_price = bar.market_price_yes if direction == "yes" else bar.market_price_no
 
             # Skip low-confidence or low-edge bets
             if bar.model_prob < self._min_model_prob:
@@ -233,9 +231,7 @@ class PolymarketBacktester:
 
             # Resolve: UP wins if close > open, DOWN wins if close < open
             price_went_up = bar.close_price > bar.open_price
-            won = (bar.signal == 1 and price_went_up) or (
-                bar.signal == -1 and not price_went_up
-            )
+            won = (bar.signal == 1 and price_went_up) or (bar.signal == -1 and not price_went_up)
 
             if won:
                 gross_payoff = shares * 1.0  # Shares pay out $1 each
@@ -297,18 +293,12 @@ class PolymarketBacktester:
         result.total_cost = sum(t.cost_usd for t in trades)
         result.total_fees = sum(t.fee_usd for t in trades)
 
-        result.avg_win_usd = (
-            float(np.mean([t.pnl_net for t in wins])) if wins else 0.0
-        )
-        result.avg_loss_usd = (
-            float(np.mean([t.pnl_net for t in losses])) if losses else 0.0
-        )
+        result.avg_win_usd = float(np.mean([t.pnl_net for t in wins])) if wins else 0.0
+        result.avg_loss_usd = float(np.mean([t.pnl_net for t in losses])) if losses else 0.0
 
         gross_wins = sum(t.pnl_net for t in wins)
         gross_losses = abs(sum(t.pnl_net for t in losses))
-        result.profit_factor = (
-            gross_wins / gross_losses if gross_losses > 0 else float("inf")
-        )
+        result.profit_factor = gross_wins / gross_losses if gross_losses > 0 else float("inf")
 
         result.win_rate = len(wins) / len(trades)
         result.edge_per_bet = (
@@ -377,13 +367,19 @@ def comparison_report(
     Returns:
         Dict with per-metric comparison rows.
     """
-    metrics = ["win_rate", "total_pnl_net", "roi", "sharpe", "sortino",
-               "profit_factor", "max_drawdown", "total_trades", "edge_per_bet"]
+    metrics = [
+        "win_rate",
+        "total_pnl_net",
+        "roi",
+        "sharpe",
+        "sortino",
+        "profit_factor",
+        "max_drawdown",
+        "total_trades",
+        "edge_per_bet",
+    ]
 
     report: dict[str, Any] = {}
     for metric in metrics:
-        report[metric] = {
-            name: round(getattr(res, metric), 4)
-            for name, res in results.items()
-        }
+        report[metric] = {name: round(getattr(res, metric), 4) for name, res in results.items()}
     return report

@@ -177,14 +177,10 @@ class ExecutionQualityTracker:
         )
 
     def get_market_stats(self) -> StrategyStats:
-        return _compute_strategy_stats(
-            ExecutionStrategy.MARKET, list(self._market_records)
-        )
+        return _compute_strategy_stats(ExecutionStrategy.MARKET, list(self._market_records))
 
     def get_limit_stats(self) -> StrategyStats:
-        return _compute_strategy_stats(
-            ExecutionStrategy.LIMIT_IOC, list(self._limit_records)
-        )
+        return _compute_strategy_stats(ExecutionStrategy.LIMIT_IOC, list(self._limit_records))
 
     def get_summary(self) -> dict[str, Any]:
         """Summary dict for API/monitoring."""

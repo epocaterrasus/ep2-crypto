@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import numpy as np
-import pytest
 
 from ep2_crypto.backtest.simulator import (
-    ExecutionResult,
     ExecutionSimulator,
     FeeCalculator,
     FundingAccumulator,
@@ -192,10 +192,10 @@ class TestFundingAccumulator:
     def test_settlement_at_0800(self) -> None:
         """Bar crossing 08:00 UTC should detect settlement."""
         fa = FundingAccumulator()
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        dt_before = datetime(2024, 4, 1, 7, 55, tzinfo=timezone.utc)
-        dt_after = datetime(2024, 4, 1, 8, 5, tzinfo=timezone.utc)
+        dt_before = datetime(2024, 4, 1, 7, 55, tzinfo=UTC)
+        dt_after = datetime(2024, 4, 1, 8, 5, tzinfo=UTC)
         prev_ts = int(dt_before.timestamp() * 1000)
         curr_ts = int(dt_after.timestamp() * 1000)
         assert fa.is_settlement_bar(curr_ts, prev_ts) is True
@@ -203,10 +203,10 @@ class TestFundingAccumulator:
     def test_no_settlement_mid_period(self) -> None:
         """Bar from 10:00-10:05 should NOT trigger settlement."""
         fa = FundingAccumulator()
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        dt_before = datetime(2024, 4, 1, 10, 0, tzinfo=timezone.utc)
-        dt_after = datetime(2024, 4, 1, 10, 5, tzinfo=timezone.utc)
+        dt_before = datetime(2024, 4, 1, 10, 0, tzinfo=UTC)
+        dt_after = datetime(2024, 4, 1, 10, 5, tzinfo=UTC)
         prev_ts = int(dt_before.timestamp() * 1000)
         curr_ts = int(dt_after.timestamp() * 1000)
         assert fa.is_settlement_bar(curr_ts, prev_ts) is False
@@ -343,11 +343,7 @@ class TestExecutionSimulator:
     def test_high_vol_increases_cost(self) -> None:
         """Higher volatility should increase total execution cost."""
         sim1 = ExecutionSimulator(seed=42)
-        low_vol = sim1.simulate_entry(
-            "long", 0.05, 100_000.0, realized_vol_5m=0.0005
-        )
+        low_vol = sim1.simulate_entry("long", 0.05, 100_000.0, realized_vol_5m=0.0005)
         sim2 = ExecutionSimulator(seed=42)
-        high_vol = sim2.simulate_entry(
-            "long", 0.05, 100_000.0, realized_vol_5m=0.005
-        )
+        high_vol = sim2.simulate_entry("long", 0.05, 100_000.0, realized_vol_5m=0.005)
         assert high_vol.total_cost_bps > low_vol.total_cost_bps

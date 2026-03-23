@@ -18,10 +18,13 @@ Walk-forward auditor for automated leak detection.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 import structlog
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 logger = structlog.get_logger(__name__)
 
@@ -157,13 +160,15 @@ class WalkForwardValidator:
             if test_end > self._n:
                 break
 
-            self._folds.append(Fold(
-                fold_idx=fold_idx,
-                train_start=train_start,
-                train_end=train_end,
-                test_start=test_start,
-                test_end=test_end,
-            ))
+            self._folds.append(
+                Fold(
+                    fold_idx=fold_idx,
+                    train_start=train_start,
+                    train_end=train_end,
+                    test_start=test_start,
+                    test_end=test_end,
+                )
+            )
 
             fold_idx += 1
 
@@ -222,13 +227,15 @@ class WalkForwardValidator:
             if inner_val_start >= inner_val_end:
                 continue
 
-            inner_folds.append(InnerFold(
-                inner_idx=i,
-                train_start=outer_fold.train_start,
-                train_end=inner_train_end,
-                val_start=inner_val_start,
-                val_end=inner_val_end,
-            ))
+            inner_folds.append(
+                InnerFold(
+                    inner_idx=i,
+                    train_start=outer_fold.train_start,
+                    train_end=inner_train_end,
+                    val_start=inner_val_start,
+                    val_end=inner_val_end,
+                )
+            )
 
         return inner_folds
 
@@ -309,7 +316,9 @@ class WalkForwardAuditor:
         )
 
     def _check_no_overlap(
-        self, folds: list[Fold], errors: list[str],
+        self,
+        folds: list[Fold],
+        errors: list[str],
     ) -> bool:
         """Check no training indices overlap with test indices."""
         ok = True
@@ -318,14 +327,14 @@ class WalkForwardAuditor:
             test_set = set(range(fold.test_start, fold.test_end))
             overlap = train_set & test_set
             if overlap:
-                errors.append(
-                    f"Fold {fold.fold_idx}: {len(overlap)} overlapping indices"
-                )
+                errors.append(f"Fold {fold.fold_idx}: {len(overlap)} overlapping indices")
                 ok = False
         return ok
 
     def _check_purge(
-        self, folds: list[Fold], errors: list[str],
+        self,
+        folds: list[Fold],
+        errors: list[str],
     ) -> bool:
         """Check purge gap between train end and test start."""
         ok = True
@@ -339,7 +348,9 @@ class WalkForwardAuditor:
         return ok
 
     def _check_temporal_order(
-        self, folds: list[Fold], errors: list[str],
+        self,
+        folds: list[Fold],
+        errors: list[str],
     ) -> bool:
         """Check train always comes before test."""
         ok = True
@@ -353,7 +364,9 @@ class WalkForwardAuditor:
         return ok
 
     def _check_consistent_sizes(
-        self, folds: list[Fold], warnings: list[str],
+        self,
+        folds: list[Fold],
+        warnings: list[str],
     ) -> bool:
         """Check fold sizes are consistent."""
         if not folds:
@@ -367,20 +380,18 @@ class WalkForwardAuditor:
 
         ok = True
         if train_cv > 0.1:
-            warnings.append(
-                f"Train size CV = {train_cv:.3f} (>0.1), sizes vary significantly"
-            )
+            warnings.append(f"Train size CV = {train_cv:.3f} (>0.1), sizes vary significantly")
             ok = False
         if test_cv > 0.1:
-            warnings.append(
-                f"Test size CV = {test_cv:.3f} (>0.1), sizes vary significantly"
-            )
+            warnings.append(f"Test size CV = {test_cv:.3f} (>0.1), sizes vary significantly")
             ok = False
 
         return ok
 
     def _check_no_duplicate_test(
-        self, folds: list[Fold], errors: list[str],
+        self,
+        folds: list[Fold],
+        errors: list[str],
     ) -> bool:
         """Check no test index appears in multiple folds."""
         seen: set[int] = set()
@@ -396,7 +407,9 @@ class WalkForwardAuditor:
         return True
 
     def _check_embargo(
-        self, folds: list[Fold], warnings: list[str],
+        self,
+        folds: list[Fold],
+        warnings: list[str],
     ) -> bool:
         """Check embargo between consecutive folds."""
         ok = True
@@ -406,7 +419,7 @@ class WalkForwardAuditor:
             gap = next_fold.train_start - current.test_end
             if gap < self._config.embargo_bars and gap >= 0:
                 warnings.append(
-                    f"Folds {i}->{i+1}: embargo gap {gap} < recommended {self._config.embargo_bars}"
+                    f"Folds {i}->{i + 1}: embargo gap {gap} < recommended {self._config.embargo_bars}"
                 )
                 ok = False
         return ok

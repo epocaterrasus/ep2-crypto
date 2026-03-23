@@ -12,10 +12,10 @@ from ep2_crypto.backtest.ablation import (
     AblationVariantResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_ohlcv(
     n: int = 500,
@@ -66,6 +66,7 @@ def _run_full_study(n: int = 600, seed: int = 42) -> AblationResult:
 # AblationVariantResult
 # ---------------------------------------------------------------------------
 
+
 class TestAblationVariantResult:
     def test_fields_accessible(self):
         r = AblationVariantResult(
@@ -96,6 +97,7 @@ class TestAblationVariantResult:
 # ---------------------------------------------------------------------------
 # AblationResult
 # ---------------------------------------------------------------------------
+
 
 class TestAblationResult:
     def _make_result(self) -> AblationResult:
@@ -165,6 +167,7 @@ class TestAblationResult:
 # AblationStudy — configuration building
 # ---------------------------------------------------------------------------
 
+
 class TestAblationStudyConfigBuilding:
     def setup_method(self):
         self.study = AblationStudy(initial_equity=10_000.0, seed=0)
@@ -173,21 +176,21 @@ class TestAblationStudyConfigBuilding:
         self.confidences = np.full(n, 0.7)
 
     def test_full_variant_keeps_signals_unchanged(self):
-        cfg, sigs, confs = self.study._build_config(
+        _cfg, sigs, confs = self.study._build_config(
             AblationVariant.FULL, self.signals, self.confidences
         )
         assert np.array_equal(sigs, self.signals)
         assert np.array_equal(confs, self.confidences)
 
     def test_no_confidence_gate_sets_threshold_zero(self):
-        cfg, sigs, confs = self.study._build_config(
+        cfg, _sigs, confs = self.study._build_config(
             AblationVariant.NO_CONFIDENCE_GATE, self.signals, self.confidences
         )
         assert cfg.confidence_threshold == 0.0
         assert np.all(confs == 1.0)
 
     def test_no_risk_engine_wide_limits(self):
-        cfg, sigs, confs = self.study._build_config(
+        cfg, _sigs, _confs = self.study._build_config(
             AblationVariant.NO_RISK_ENGINE, self.signals, self.confidences
         )
         assert cfg.risk_config is not None
@@ -195,14 +198,14 @@ class TestAblationStudyConfigBuilding:
         assert cfg.risk_config.max_drawdown_halt >= 0.9
 
     def test_no_drawdown_gate_high_dd_threshold(self):
-        cfg, sigs, confs = self.study._build_config(
+        cfg, _sigs, _confs = self.study._build_config(
             AblationVariant.NO_DRAWDOWN_GATE, self.signals, self.confidences
         )
         assert cfg.risk_config is not None
         assert cfg.risk_config.max_drawdown_halt >= 0.9
 
     def test_no_kill_switches_high_limits(self):
-        cfg, sigs, confs = self.study._build_config(
+        cfg, _sigs, _confs = self.study._build_config(
             AblationVariant.NO_KILL_SWITCHES, self.signals, self.confidences
         )
         assert cfg.risk_config is not None
@@ -217,6 +220,7 @@ class TestAblationStudyConfigBuilding:
 # ---------------------------------------------------------------------------
 # AblationStudy — end-to-end runs
 # ---------------------------------------------------------------------------
+
 
 class TestAblationStudyEndToEnd:
     def test_all_variants_produce_results(self):
@@ -239,7 +243,9 @@ class TestAblationStudyEndToEnd:
     def test_no_confidence_gate_has_more_trades(self):
         result = _run_full_study(n=600, seed=7)
         full = next(v for v in result.variants if v.variant == AblationVariant.FULL)
-        no_conf = next(v for v in result.variants if v.variant == AblationVariant.NO_CONFIDENCE_GATE)
+        no_conf = next(
+            v for v in result.variants if v.variant == AblationVariant.NO_CONFIDENCE_GATE
+        )
         # No confidence gate passes ALL signals (threshold=0), expect >= trades
         assert no_conf.total_trades >= full.total_trades
 
@@ -248,9 +254,14 @@ class TestAblationStudyEndToEnd:
         signals, confidences = _make_signals(300)
         study = AblationStudy(initial_equity=10_000.0)
         result = study.run(
-            opens=opens, highs=highs, lows=lows, closes=closes,
-            volumes=volumes, timestamps_ms=timestamps_ms,
-            signals=signals, confidences=confidences,
+            opens=opens,
+            highs=highs,
+            lows=lows,
+            closes=closes,
+            volumes=volumes,
+            timestamps_ms=timestamps_ms,
+            signals=signals,
+            confidences=confidences,
             variants=[AblationVariant.FULL, AblationVariant.NO_RISK_ENGINE],
         )
         assert len(result.variants) == 2
@@ -285,9 +296,14 @@ class TestAblationStudyEndToEnd:
         signals, confidences = _make_signals(300)
         study = AblationStudy(initial_equity=10_000.0)
         result = study.run(
-            opens=opens, highs=highs, lows=lows, closes=closes,
-            volumes=volumes, timestamps_ms=timestamps_ms,
-            signals=signals, confidences=confidences,
+            opens=opens,
+            highs=highs,
+            lows=lows,
+            closes=closes,
+            volumes=volumes,
+            timestamps_ms=timestamps_ms,
+            signals=signals,
+            confidences=confidences,
             regime_labels=np.zeros(300, dtype=np.int32),
             variants=[AblationVariant.FULL, AblationVariant.NO_REGIME_FILTER],
         )

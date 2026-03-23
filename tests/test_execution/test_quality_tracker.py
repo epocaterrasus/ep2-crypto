@@ -8,7 +8,6 @@ from ep2_crypto.execution.quality_tracker import (
     ExecutionQualityTracker,
     ExecutionRecord,
     ExecutionStrategy,
-    StrategyStats,
     _compute_strategy_stats,
 )
 
@@ -86,78 +85,76 @@ class TestExecutionQualityTracker:
     def test_auto_select_market_wins(self, tracker: ExecutionQualityTracker) -> None:
         # Market: lower cost
         for i in range(5):
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.MARKET,
-                cost_bps=4.0,
-                slippage_bps=2.0,
-            ))
+            tracker.record_execution(
+                make_record(
+                    strategy=ExecutionStrategy.MARKET,
+                    cost_bps=4.0,
+                    slippage_bps=2.0,
+                )
+            )
         # Limit IOC: higher cost + some unfilled
         for i in range(5):
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.LIMIT_IOC,
-                cost_bps=6.0,
-                slippage_bps=1.0,
-                filled=i < 3,  # 60% fill rate
-            ))
+            tracker.record_execution(
+                make_record(
+                    strategy=ExecutionStrategy.LIMIT_IOC,
+                    cost_bps=6.0,
+                    slippage_bps=1.0,
+                    filled=i < 3,  # 60% fill rate
+                )
+            )
         assert tracker.auto_selected
         assert tracker.active_strategy == ExecutionStrategy.MARKET
 
     def test_auto_select_limit_wins(self, tracker: ExecutionQualityTracker) -> None:
         # Market: high cost
-        for i in range(5):
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.MARKET,
-                cost_bps=8.0,
-                slippage_bps=5.0,
-            ))
+        for _i in range(5):
+            tracker.record_execution(
+                make_record(
+                    strategy=ExecutionStrategy.MARKET,
+                    cost_bps=8.0,
+                    slippage_bps=5.0,
+                )
+            )
         # Limit IOC: low cost, high fill rate
-        for i in range(5):
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.LIMIT_IOC,
-                cost_bps=3.0,
-                slippage_bps=0.5,
-                filled=True,
-            ))
+        for _i in range(5):
+            tracker.record_execution(
+                make_record(
+                    strategy=ExecutionStrategy.LIMIT_IOC,
+                    cost_bps=3.0,
+                    slippage_bps=0.5,
+                    filled=True,
+                )
+            )
         assert tracker.auto_selected
         assert tracker.active_strategy == ExecutionStrategy.LIMIT_IOC
 
-    def test_no_auto_select_before_min_trades(
-        self, tracker: ExecutionQualityTracker
-    ) -> None:
-        for i in range(4):
+    def test_no_auto_select_before_min_trades(self, tracker: ExecutionQualityTracker) -> None:
+        for _i in range(4):
             tracker.record_execution(make_record(strategy=ExecutionStrategy.MARKET))
             tracker.record_execution(make_record(strategy=ExecutionStrategy.LIMIT_IOC))
         assert not tracker.auto_selected
 
-    def test_strategy_fixed_after_auto_select(
-        self, tracker: ExecutionQualityTracker
-    ) -> None:
-        for i in range(5):
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.MARKET, cost_bps=4.0
-            ))
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.LIMIT_IOC, cost_bps=10.0
-            ))
+    def test_strategy_fixed_after_auto_select(self, tracker: ExecutionQualityTracker) -> None:
+        for _i in range(5):
+            tracker.record_execution(make_record(strategy=ExecutionStrategy.MARKET, cost_bps=4.0))
+            tracker.record_execution(
+                make_record(strategy=ExecutionStrategy.LIMIT_IOC, cost_bps=10.0)
+            )
         assert tracker.auto_selected
         # Strategy should be fixed now
         selected = tracker.active_strategy
         for _ in range(10):
             assert tracker.get_strategy() == selected
 
-    def test_selection_reason_populated(
-        self, tracker: ExecutionQualityTracker
-    ) -> None:
-        for i in range(5):
+    def test_selection_reason_populated(self, tracker: ExecutionQualityTracker) -> None:
+        for _i in range(5):
             tracker.record_execution(make_record(strategy=ExecutionStrategy.MARKET))
             tracker.record_execution(make_record(strategy=ExecutionStrategy.LIMIT_IOC))
         assert tracker.selection_reason != ""
 
     def test_get_summary(self, tracker: ExecutionQualityTracker) -> None:
-        for i in range(3):
-            tracker.record_execution(make_record(
-                strategy=ExecutionStrategy.MARKET, cost_bps=5.0
-            ))
+        for _i in range(3):
+            tracker.record_execution(make_record(strategy=ExecutionStrategy.MARKET, cost_bps=5.0))
         summary = tracker.get_summary()
         assert summary["active_strategy"] == "market"
         assert summary["market"]["trades"] == 3
@@ -165,7 +162,7 @@ class TestExecutionQualityTracker:
         assert "auto_selected" in summary
 
     def test_reset(self, tracker: ExecutionQualityTracker) -> None:
-        for i in range(5):
+        for _i in range(5):
             tracker.record_execution(make_record(strategy=ExecutionStrategy.MARKET))
             tracker.record_execution(make_record(strategy=ExecutionStrategy.LIMIT_IOC))
         tracker.reset()
@@ -175,7 +172,7 @@ class TestExecutionQualityTracker:
 
     def test_max_records_bounded(self) -> None:
         tracker = ExecutionQualityTracker(min_trades_per_arm=5, max_records=10)
-        for i in range(20):
+        for _i in range(20):
             tracker.record_execution(make_record(strategy=ExecutionStrategy.MARKET))
         assert tracker.get_market_stats().trade_count == 10
 

@@ -77,7 +77,13 @@ class FeatureComputer(ABC):
         dummy = np.zeros(1, dtype=np.float64)
         dummy_ts = np.zeros(1, dtype=np.int64)
         result = self.compute(
-            0, dummy_ts, dummy, dummy, dummy, dummy, dummy,
+            0,
+            dummy_ts,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
         )
         return list(result.keys())
 
@@ -136,7 +142,14 @@ class FeatureRegistry:
         result: dict[str, float] = {}
         for computer in self._computers.values():
             features = computer.compute(
-                idx, timestamps, opens, highs, lows, closes, volumes, **kwargs,
+                idx,
+                timestamps,
+                opens,
+                highs,
+                lows,
+                closes,
+                volumes,
+                **kwargs,
             )
             result.update(features)
         return result
