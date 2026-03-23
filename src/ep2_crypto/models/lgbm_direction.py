@@ -165,7 +165,14 @@ class LGBMDirectionModel:
         }
 
         if init_model is not None:
-            fit_kwargs["init_model"] = init_model.booster_
+            # Only warm-start if init_model was trained on the same set of classes.
+            # When flat-labeled bars are absent from a fold window, LightGBM trains
+            # with fewer classes, and its internal LabelEncoder conflicts with a
+            # subsequent fold that has a different class count.
+            current_classes = set(int(c) for c in np.unique(y_encoded))
+            init_classes = set(int(c) for c in getattr(init_model, "classes_", []))
+            if current_classes == init_classes:
+                fit_kwargs["init_model"] = init_model.booster_
 
         callbacks: list[Any] = []
         eval_set = []
@@ -202,9 +209,14 @@ class LGBMDirectionModel:
         # Track feature importance
         self._update_feature_importance()
 
-        # Compute training metrics
-        train_pred = model.predict(x_train)
-        train_acc = float(np.mean(train_pred == y_encoded))
+        # Compute training metrics via predict_proba + argmax to avoid LabelEncoder
+        # conflicts when some classes are absent from the training window.
+        train_proba = model.predict_proba(x_train)
+        train_pred = np.argmax(train_proba, axis=1).astype(np.int32)
+        # Remap internal indices back through the fitted LabelEncoder
+        trained_classes = list(model.classes_)
+        train_pred_mapped = np.array([trained_classes[i] for i in train_pred], dtype=np.int32)
+        train_acc = float(np.mean(train_pred_mapped == y_encoded))
 
         metrics: dict[str, float] = {
             "train_accuracy": train_acc,
@@ -212,8 +224,10 @@ class LGBMDirectionModel:
         }
 
         if x_val is not None and y_val is not None:
-            val_pred = model.predict(x_val)
-            val_acc = float(np.mean(val_pred == self._encode_labels(y_val)))
+            val_proba = model.predict_proba(x_val)
+            val_pred = np.argmax(val_proba, axis=1).astype(np.int32)
+            val_pred_mapped = np.array([trained_classes[i] for i in val_pred], dtype=np.int32)
+            val_acc = float(np.mean(val_pred_mapped == y_val_encoded))
             metrics["val_accuracy"] = val_acc
 
         return metrics

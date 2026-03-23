@@ -292,16 +292,16 @@ def train_walk_forward(
     # --- Stacking Ensemble ---
     logger.info("training_stacking_ensemble")
     mask = oof_mask
-    base_probas = np.hstack([oof_lgbm[mask], oof_catboost[mask]])
+    base_probas_list = [oof_lgbm[mask], oof_catboost[mask]]  # list[NDArray] as stacking expects
     y_oof = y[mask]
 
     stacking = StackingEnsemble()
-    stacking_metrics = stacking.train(base_probas, y_oof, base_model_names=["lgbm", "catboost"])
+    stacking_metrics = stacking.train(base_probas_list, y_oof, base_model_names=["lgbm", "catboost"])
     logger.info("stacking_trained", metrics=stacking_metrics)
 
     # --- Calibration ---
     logger.info("training_calibrator")
-    stacking_probas = stacking.predict_proba(base_probas)
+    stacking_probas = stacking.predict_proba(base_probas_list)
     calibrator = IsotonicCalibrator()
     cal_metrics = calibrator.fit(stacking_probas, y_oof)
     logger.info("calibrator_trained", metrics=cal_metrics)
