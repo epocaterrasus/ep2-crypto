@@ -3,9 +3,9 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 5 — Feature Engineering (Cross-market, Regime, Temporal)
+## Current Sprint: Sprint 6 — Regime Detection
 **Started**: Not yet
-**Target**: Cross-market signals, temporal encoding, regime features, normalization pipeline, unified feature pipeline
+**Target**: Hierarchical regime detection ensemble (ER, GARCH, HMM, BOCPD)
 
 ---
 
@@ -184,6 +184,17 @@
 - **Sprint 4 acceptance criteria**: All passed. Committed.
 - **Next session**: Start Sprint 5 (Cross-market, Regime, Temporal features)
 
+### Session 6 (2026-03-23)
+- **What happened**: Completed ALL 6 Sprint 5 tickets. 131 new tests (245 feature tests total).
+- **S5-T1**: NQReturnComputer (lagged 1-3 bars, US session gated), ETHRatioComputer (ratio + ROC), LeadLagComputer (rolling correlation at 1-3 lags), DivergenceComputer (BTC vs NQ/ETH). 31 tests.
+- **S5-T2**: CyclicalTimeComputer (sin/cos for minute/hour/dow), SessionComputer (Asia/Europe/US one-hot), FundingTimeComputer (time-to-funding normalized). 24 tests.
+- **S5-T3**: ERFeatureComputer (Kaufman ER at 10/20 bars), GARCHFeatureComputer (recursive GARCH(1,1) vol + ratio), HMMFeatureComputer (2-state vol regime proxy + regime change). 21 tests.
+- **S5-T4**: RawPassthrough, RobustScaler (median/IQR), RankGaussianTransformer (probit), DualNormalizationPipeline. 24 tests.
+- **S5-T5**: FeaturePipeline with build_default_registry (26 computers, 64 features), kwarg filtering via inspect, compute_batch with forward-fill. 11 tests.
+- **S5-T6**: Updated look-ahead (truncation + shuffle + future correlation) and integration tests to cover all 64 features across Sprints 3-5. 8 tests.
+- **Sprint 5 acceptance criteria**: All passed. Committed.
+- **Next session**: Start Sprint 6 (Regime Detection)
+
 ---
 
 ## Sprint Completion Protocol
@@ -216,7 +227,7 @@ The user pastes this prompt to start the next session.
 | Sprint 2: Data Ingestion | Complete | 2026-03-23 |
 | Sprint 3: Feature Engineering (Microstructure) | Complete | 2026-03-23 |
 | Sprint 4: Features - Vol/Momentum | Complete | 2026-03-23 |
-| Sprint 5: Features - Cross-market | Not started | — |
+| Sprint 5: Features - Cross-market | Complete | 2026-03-23 |
 | Sprint 6: Regime Detection | Not started | — |
 | Sprint 7: Models + Stacking | Not started | — |
 | Sprint 8: Confidence Gating | Not started | — |
@@ -274,7 +285,7 @@ The user pastes this prompt to start the next session.
 
 ## Sprint 5 Tickets
 
-### S5-T1: Cross-market features (NQ, ETH, lead-lag) [ ]
+### S5-T1: Cross-market features (NQ, ETH, lead-lag) [x]
 **Create**: Cross-market signal features
 **Files**:
 - `src/ep2_crypto/features/cross_market.py` — NQReturnComputer, ETHRatioComputer, LeadLagComputer, DivergenceComputer
@@ -282,7 +293,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_cross_market.py -v`
 **Notes**: NQ 5-min returns lagged 1-3 bars (US hours only). ETH/BTC ratio momentum. Rolling lead-lag correlation. Divergence signals.
 
-### S5-T2: Temporal features (cyclical encoding, session, funding) [ ]
+### S5-T2: Temporal features (cyclical encoding, session, funding) [x]
 **Create**: Time-based features
 **Files**:
 - `src/ep2_crypto/features/temporal.py` — CyclicalTimeComputer, SessionComputer, FundingTimeComputer
@@ -290,7 +301,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_temporal.py -v`
 **Notes**: Sin/cos for minute, hour, day-of-week. Session indicator (Asia/Europe/US). Time-to-funding in minutes.
 
-### S5-T3: Regime features (ER, GARCH vol, HMM probs as inputs) [ ]
+### S5-T3: Regime features (ER, GARCH vol, HMM probs as inputs) [x]
 **Create**: Regime context features for model input
 **Files**:
 - `src/ep2_crypto/features/regime_features.py` — ERFeatureComputer, GARCHFeatureComputer, HMMFeatureComputer
@@ -298,7 +309,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_regime_features.py -v`
 **Notes**: Efficiency Ratio (Kaufman) as feature. GARCH conditional vol. HMM probabilities.
 
-### S5-T4: Normalization pipeline (dual: raw for trees, robust for neural) [ ]
+### S5-T4: Normalization pipeline (dual: raw for trees, robust for neural) [x]
 **Create**: Feature normalization with per-fold fitting
 **Files**:
 - `src/ep2_crypto/features/normalization.py` — RawPassthrough, RobustScaler, RankGaussianTransformer
@@ -306,7 +317,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_normalization.py -v`
 **Notes**: Raw pass-through for tree models. Robust scaling + rank-to-gaussian for neural. Per-fold fitting only.
 
-### S5-T5: Feature pipeline (combine all modules) [ ]
+### S5-T5: Feature pipeline (combine all modules) [x]
 **Create**: Unified feature pipeline
 **Files**:
 - `src/ep2_crypto/features/pipeline.py` — FeaturePipeline combining all modules
@@ -314,7 +325,7 @@ The user pastes this prompt to start the next session.
 **Verify**: `uv run pytest tests/test_features/test_pipeline.py -v`
 **Notes**: Handle NaN filling. Configurable feature selection. Consistent output shape.
 
-### S5-T6: Look-ahead + integration tests for Sprint 5 [ ]
+### S5-T6: Look-ahead + integration tests for Sprint 5 [x]
 **Create**: Bias detection and integration for all Sprint 5 features
 **Files**:
 - Update `tests/test_features/test_lookahead.py` — Add Sprint 5 features

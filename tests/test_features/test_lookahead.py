@@ -10,31 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ep2_crypto.features.base import FeatureRegistry
-from ep2_crypto.features.microstructure import (
-    KyleLambdaComputer,
-    MicropriceComputer,
-    OBIComputer,
-    OFIComputer,
-    TFIComputer,
-)
-from ep2_crypto.features.momentum import (
-    LinRegSlopeComputer,
-    QuantileRankComputer,
-    ROCComputer,
-    RSIComputer,
-)
-from ep2_crypto.features.volatility import (
-    EWMAVolComputer,
-    ParkinsonVolComputer,
-    RealizedVolComputer,
-    VolOfVolComputer,
-)
-from ep2_crypto.features.volume import (
-    VolumeDeltaComputer,
-    VolumeROCComputer,
-    VWAPComputer,
-)
+from ep2_crypto.features.pipeline import FeaturePipeline
 
 
 def _make_large_data(n: int = 200, n_levels: int = 5) -> dict[str, np.ndarray]:
@@ -56,7 +32,9 @@ def _make_large_data(n: int = 200, n_levels: int = 5) -> dict[str, np.ndarray]:
             bid_sizes[i, lev] = rng.uniform(0.1, 5.0)
             ask_sizes[i, lev] = rng.uniform(0.1, 5.0)
 
-    timestamps = np.arange(n, dtype=np.int64) * 60_000
+    # Use 16:00 UTC base for US session (needed by NQ features)
+    base_ts = 16 * 3_600_000
+    timestamps = np.arange(n, dtype=np.int64) * 300_000 + base_ts
     opens = mid - rng.uniform(0, 5, n)
     closes = mid + rng.uniform(0, 5, n)
     highs = np.maximum(opens, closes) + rng.uniform(0, 3, n)
@@ -64,6 +42,10 @@ def _make_large_data(n: int = 200, n_levels: int = 5) -> dict[str, np.ndarray]:
     volumes = rng.uniform(100, 1000, n)
     trade_sizes = rng.uniform(0.1, 10.0, n)
     trade_sides = rng.choice([-1.0, 1.0], n)
+
+    # Cross-market data
+    nq_closes = 18000.0 + np.cumsum(rng.standard_normal(n) * 5)
+    eth_closes = 3200.0 + np.cumsum(rng.standard_normal(n) * 2)
 
     return {
         "timestamps": timestamps,
@@ -78,44 +60,20 @@ def _make_large_data(n: int = 200, n_levels: int = 5) -> dict[str, np.ndarray]:
         "ask_sizes": ask_sizes,
         "trade_sizes": trade_sizes,
         "trade_sides": trade_sides,
+        "nq_closes": nq_closes,
+        "eth_closes": eth_closes,
     }
 
 
 def _truncate(data: dict[str, np.ndarray], n: int) -> dict[str, np.ndarray]:
     """Truncate all arrays to first n elements."""
-    result = {}
-    for key, arr in data.items():
-        if arr.ndim == 1:
-            result[key] = arr[:n].copy()
-        else:
-            result[key] = arr[:n].copy()
-    return result
+    return {key: arr[:n].copy() for key, arr in data.items()}
 
 
-def _build_registry() -> FeatureRegistry:
-    """Build registry with all Sprint 3 + Sprint 4 features."""
-    reg = FeatureRegistry()
-    # Sprint 3: Microstructure
-    reg.register(OBIComputer())
-    reg.register(OFIComputer())
-    reg.register(MicropriceComputer())
-    reg.register(TFIComputer())
-    reg.register(KyleLambdaComputer(window=20))
-    # Sprint 4: Volume
-    reg.register(VolumeDeltaComputer())
-    reg.register(VWAPComputer(window=12))
-    reg.register(VolumeROCComputer())
-    # Sprint 4: Volatility
-    reg.register(RealizedVolComputer(short_window=6, long_window=12))
-    reg.register(ParkinsonVolComputer(short_window=6, long_window=12))
-    reg.register(EWMAVolComputer(decay=0.94))
-    reg.register(VolOfVolComputer(inner_window=6, outer_window=12))
-    # Sprint 4: Momentum
-    reg.register(ROCComputer())
-    reg.register(RSIComputer(window=14))
-    reg.register(LinRegSlopeComputer(window=20))
-    reg.register(QuantileRankComputer(window=60))
-    return reg
+def _get_kwargs(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Extract kwargs from data dict (everything except positional args)."""
+    positional = {"timestamps", "opens", "highs", "lows", "closes", "volumes"}
+    return {k: v for k, v in data.items() if k not in positional}
 
 
 class TestTruncationBias:
@@ -127,31 +85,28 @@ class TestTruncationBias:
 
     def test_all_features_truncation(self) -> None:
         data_full = _make_large_data(200)
-        reg = _build_registry()
+        pipeline = FeaturePipeline()
+        warmup = pipeline.warmup_bars
 
-        # Test at several indices after max warmup (QuantileRank=60)
-        test_indices = [65, 80, 100, 149]
+        # Test at several indices after max warmup
+        test_indices = [warmup + 5, warmup + 20, warmup + 40, 149]
 
         for test_idx in test_indices:
             # Compute on full data
-            full_result = reg.compute_all(
+            full_result = pipeline.compute(
                 test_idx,
                 data_full["timestamps"], data_full["opens"], data_full["highs"],
                 data_full["lows"], data_full["closes"], data_full["volumes"],
-                bids=data_full["bids"], asks=data_full["asks"],
-                bid_sizes=data_full["bid_sizes"], ask_sizes=data_full["ask_sizes"],
-                trade_sizes=data_full["trade_sizes"], trade_sides=data_full["trade_sides"],
+                **_get_kwargs(data_full),
             )
 
             # Compute on truncated data (only data up to test_idx + 1)
             data_trunc = _truncate(data_full, test_idx + 1)
-            trunc_result = reg.compute_all(
+            trunc_result = pipeline.compute(
                 test_idx,
                 data_trunc["timestamps"], data_trunc["opens"], data_trunc["highs"],
                 data_trunc["lows"], data_trunc["closes"], data_trunc["volumes"],
-                bids=data_trunc["bids"], asks=data_trunc["asks"],
-                bid_sizes=data_trunc["bid_sizes"], ask_sizes=data_trunc["ask_sizes"],
-                trade_sizes=data_trunc["trade_sizes"], trade_sides=data_trunc["trade_sides"],
+                **_get_kwargs(data_trunc),
             )
 
             for key in full_result:
@@ -169,32 +124,26 @@ class TestShuffleBias:
     """Shuffle test: if we permute the time ordering of input data (except
     at the test index), features should change if they properly depend
     on temporal structure.
-
-    If a feature gives the same result on shuffled data, it may only use
-    the current bar (which is fine for OBI/microprice). But features that
-    use windows (OFI, TFI, Kyle's lambda) should differ.
     """
 
     def test_windowed_features_change_on_shuffle(self) -> None:
-        data = _make_large_data(100)
+        data = _make_large_data(150)
         rng = np.random.default_rng(99)
 
-        test_idx = 70
-        reg = _build_registry()
+        pipeline = FeaturePipeline()
+        test_idx = 100
 
         # Compute on original data
-        original = reg.compute_all(
+        original = pipeline.compute(
             test_idx,
             data["timestamps"], data["opens"], data["highs"],
             data["lows"], data["closes"], data["volumes"],
-            bids=data["bids"], asks=data["asks"],
-            bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-            trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+            **_get_kwargs(data),
         )
 
         # Shuffle data (permute indices 0..test_idx-1, keep test_idx fixed)
         perm = rng.permutation(test_idx)
-        shuffled = {}
+        shuffled: dict[str, np.ndarray] = {}
         for key, arr in data.items():
             new_arr = arr.copy()
             if arr.ndim == 1:
@@ -203,20 +152,18 @@ class TestShuffleBias:
                 new_arr[:test_idx] = arr[perm]
             shuffled[key] = new_arr
 
-        shuffled_result = reg.compute_all(
+        shuffled_result = pipeline.compute(
             test_idx,
             shuffled["timestamps"], shuffled["opens"], shuffled["highs"],
             shuffled["lows"], shuffled["closes"], shuffled["volumes"],
-            bids=shuffled["bids"], asks=shuffled["asks"],
-            bid_sizes=shuffled["bid_sizes"], ask_sizes=shuffled["ask_sizes"],
-            trade_sizes=shuffled["trade_sizes"], trade_sides=shuffled["trade_sides"],
+            **_get_kwargs(shuffled),
         )
 
-        # Point-in-time features (OBI, microprice) should NOT change
-        # because they only use data at idx
-        point_features = ["obi_l3", "obi_l5", "microprice", "microprice_mid_dev"]
+        # Point-in-time features (OBI, microprice, session) should NOT change
+        point_features = ["obi_l3", "obi_l5", "microprice", "microprice_mid_dev",
+                          "session_asia", "session_europe", "session_us"]
         for key in point_features:
-            if not np.isnan(original[key]):
+            if key in original and not np.isnan(original[key]):
                 assert original[key] == pytest.approx(shuffled_result[key], abs=1e-10), (
                     f"Point-in-time feature '{key}' changed on shuffle (unexpected)"
                 )
@@ -228,11 +175,15 @@ class TestShuffleBias:
             "vol_delta_5bar", "vwap_deviation", "vol_roc_3",
             "realized_vol_short", "ewma_vol", "rsi", "linreg_slope",
             "quantile_rank",
+            # Sprint 5 windowed features
+            "eth_btc_ratio_roc6", "lead_lag_corr_1",
+            "er_10", "garch_vol",
         ]
         changed_count = 0
         for key in windowed_features:
             if (
-                not np.isnan(original[key])
+                key in original
+                and not np.isnan(original[key])
                 and not np.isnan(shuffled_result[key])
                 and original[key] != pytest.approx(shuffled_result[key], abs=1e-10)
             ):
@@ -246,22 +197,18 @@ class TestShuffleBias:
     def test_no_future_correlation(self) -> None:
         """Features should not correlate with future returns when computed on shuffled data."""
         data = _make_large_data(200)
-
-        # Compute features and future returns
-        reg = _build_registry()
-        warmup = reg.max_warmup()
+        pipeline = FeaturePipeline()
+        warmup = pipeline.warmup_bars
 
         # Collect OBI values and corresponding next-bar returns
         obi_vals = []
         future_rets = []
         for i in range(warmup, 198):
-            result = reg.compute_all(
+            result = pipeline.compute(
                 i,
                 data["timestamps"], data["opens"], data["highs"],
                 data["lows"], data["closes"], data["volumes"],
-                bids=data["bids"], asks=data["asks"],
-                bid_sizes=data["bid_sizes"], ask_sizes=data["ask_sizes"],
-                trade_sizes=data["trade_sizes"], trade_sides=data["trade_sides"],
+                **_get_kwargs(data),
             )
             if np.isfinite(result["obi_l3"]):
                 obi_vals.append(result["obi_l3"])
@@ -270,7 +217,6 @@ class TestShuffleBias:
         # On random data, correlation should be weak (< 0.3 in absolute value)
         if len(obi_vals) > 10:
             corr = np.corrcoef(obi_vals, future_rets)[0, 1]
-            # On synthetic random data, should not be strongly correlated
             assert abs(corr) < 0.5, (
                 f"Suspiciously high correlation ({corr:.3f}) between OBI and "
                 f"future returns on random data"
