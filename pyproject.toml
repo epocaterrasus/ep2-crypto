@@ -116,6 +116,7 @@ module = [
     "yfinance.*",
     "onnx.*",
     "onnxruntime.*",
+    "scipy.*",
 ]
 ignore_missing_imports = true
 

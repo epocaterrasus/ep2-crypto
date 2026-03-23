@@ -3,9 +3,9 @@
 > This file is the single source of truth for what's done and what's next.
 > Updated at the end of every session. Read this FIRST in every new session.
 
-## Current Sprint: Sprint 6 — Regime Detection
+## Current Sprint: Sprint 7 — Models + Stacking
 **Started**: Not yet
-**Target**: Hierarchical regime detection ensemble (ER, GARCH, HMM, BOCPD)
+**Target**: LightGBM + CatBoost + GRU + Stacking ensemble
 
 ---
 
@@ -195,6 +195,18 @@
 - **Sprint 5 acceptance criteria**: All passed. Committed.
 - **Next session**: Start Sprint 6 (Regime Detection)
 
+### Session 7 (2026-03-23)
+- **What happened**: Completed ALL 6 Sprint 6 tickets. 91 new tests (591 total).
+- **S6-T1**: EfficiencyRatioDetector — Kaufman ER at 2 timescales (short/long), threshold-based regime classification (trending/choppy/neutral), confidence scoring, batch compute. 21 tests.
+- **S6-T2**: GARCHDetector — GJR-GARCH(1,1)-t with asymmetric leverage (gamma term), recursive O(1) update, vol regime classification (low/medium/high) via rolling percentiles. 14 tests.
+- **S6-T3**: HMMDetector — 2-state GaussianHMM via hmmlearn, forward-algorithm filtered probabilities, BIC model selection (n=2-5), state sorting by variance for semantic stability. 16 tests.
+- **S6-T4**: BOCPDDetector — Adams & MacKay (2007) with constant hazard, Normal-inverse-gamma conjugate prior, run-length pruning at r_max. Early warning for regime transitions. 19 tests.
+- **S6-T5**: HierarchicalRegimeDetector — Weighted ensemble combining ER (fast) + GARCH (fast) + HMM (core) + BOCPD (early warning). Outputs unified regime label + probabilities + changepoint alert + confidence. 13 tests.
+- **S6-T6**: Integration tests verifying all acceptance criteria: distinct regimes visible, labels stable across refits, BOCPD leads HMM, probs sum to 1.0, ER O(1) per bar, no exceptions on edge cases. 8 tests.
+- **Lint/type fixes**: Added scipy to mypy ignore list, fixed all ruff lint issues across 11 files.
+- **Sprint 6 acceptance criteria**: All passed. Ready to commit.
+- **Next session**: Start Sprint 7 (Models — LightGBM + CatBoost + GRU + Stacking)
+
 ---
 
 ## Sprint Completion Protocol
@@ -228,7 +240,7 @@ The user pastes this prompt to start the next session.
 | Sprint 3: Feature Engineering (Microstructure) | Complete | 2026-03-23 |
 | Sprint 4: Features - Vol/Momentum | Complete | 2026-03-23 |
 | Sprint 5: Features - Cross-market | Complete | 2026-03-23 |
-| Sprint 6: Regime Detection | Not started | — |
+| Sprint 6: Regime Detection | Complete | 2026-03-23 |
 | Sprint 7: Models + Stacking | Not started | — |
 | Sprint 8: Confidence Gating | Not started | — |
 | **Sprint 9: Risk Management** | **Not started** | — |
@@ -335,7 +347,63 @@ The user pastes this prompt to start the next session.
 
 ---
 
+## Sprint 6 Tickets
+
+### S6-T1: Efficiency Ratio detector with threshold-based regime [x]
+**Create**: Kaufman ER regime detector — fast layer, O(1) per bar
+**Files**:
+- `src/ep2_crypto/regime/efficiency_ratio.py` — EfficiencyRatioDetector with multi-window ER, threshold-based regime (trending/choppy/neutral)
+- `tests/test_regime/test_efficiency_ratio.py` — Golden dataset tests, O(1) verification, threshold behavior
+**Verify**: `uv run pytest tests/test_regime/test_efficiency_ratio.py -v`
+**Research**: `RR-regime-detection-methods.md`
+**Notes**: ER = |net_move| / sum(|individual_moves|). Thresholds: ER > 0.5 trending, ER < 0.3 choppy. Multi-window (20, 100 bars). Returns regime label + confidence.
+
+### S6-T2: GJR-GARCH(1,1)-t conditional volatility detector [x]
+**Create**: GJR-GARCH vol regime detector — fast layer, recursive per bar
+**Files**:
+- `src/ep2_crypto/regime/garch.py` — GARCHDetector with GJR-GARCH(1,1)-t, vol regime classification (low/medium/high)
+- `tests/test_regime/test_garch.py` — Golden dataset tests, asymmetric leverage, vol classification
+**Verify**: `uv run pytest tests/test_regime/test_garch.py -v`
+**Research**: `RR-regime-detection-methods.md`
+**Notes**: sigma2_t = omega + (alpha + gamma*I_{e<0})*e_{t-1}^2 + beta*sigma2_{t-1}. Student-t innovations. Vol thresholds from rolling percentiles. Returns conditional vol + vol regime label.
+
+### S6-T3: 2-state GaussianHMM with forward algorithm [x]
+**Create**: HMM regime detector — core layer, forward algorithm for online inference
+**Files**:
+- `src/ep2_crypto/regime/hmm.py` — HMMDetector with hmmlearn GaussianHMM, forward-algorithm filtered probs, weekly refit, BIC model selection (n=2-5), semantic stability (sort by vol)
+- `tests/test_regime/test_hmm.py` — Tests for fitting, filtered probs, refit, label stability
+**Verify**: `uv run pytest tests/test_regime/test_hmm.py -v`
+**Research**: `RR-regime-detection-methods.md`
+**Notes**: Features: (log_return, realized_vol). Forward algorithm for online P(state|data). Refit on 7-day sliding window. Sort states by volatility for semantic stability. Pseudo-incremental via init_params="".
+
+### S6-T4: BOCPD change point detection [x]
+**Create**: Bayesian Online Change Point Detection — early warning for regime transitions
+**Files**:
+- `src/ep2_crypto/regime/bocpd.py` — BOCPDDetector with Adams & MacKay algorithm, constant hazard, Gaussian conjugate prior, run-length pruning
+- `tests/test_regime/test_bocpd.py` — Tests for change point detection, lead time vs HMM, run-length distribution
+**Verify**: `uv run pytest tests/test_regime/test_bocpd.py -v`
+**Research**: `RR-regime-detection-methods.md`
+**Notes**: Hazard h(r) = 1/lambda. Lambda ~288-1440 for crypto. Normal-inverse-gamma conjugate prior. Prune run lengths at r_max=200. Returns changepoint probability + run length.
+
+### S6-T5: Hierarchical ensemble detector [x]
+**Create**: Orchestrator combining all regime layers into unified output
+**Files**:
+- `src/ep2_crypto/regime/detector.py` — HierarchicalRegimeDetector combining ER (fast) + GARCH (fast) + HMM (core) + BOCPD (early warning). Outputs: regime label, regime probabilities, change point alert, confidence
+- `tests/test_regime/test_detector.py` — Ensemble tests, probability sum=1.0, BOCPD leads HMM, regime stability
+**Verify**: `uv run pytest tests/test_regime/test_detector.py -v`
+**Research**: `RESEARCH_SYNTHESIS.md` section "Regime Detection: Hierarchical Ensemble"
+**Notes**: Voting ensemble with confidence reduction during transitions. Regime labels sorted by volatility. BOCPD fires before HMM transition.
+
+### S6-T6: Sprint 6 integration tests + acceptance criteria [x]
+**Create**: Full regime detection integration test
+**Files**:
+- `tests/test_regime/test_regime_integration.py` — End-to-end regime detection on synthetic data
+**Verify**: `uv run pytest tests/test_regime/ -v`
+**Notes**: Acceptance criteria: 2-3 distinct regimes visible, labels stable across refits, BOCPD fires before HMM, probabilities sum to 1.0, ER+GARCH O(1) per bar.
+
+---
+
 ## Future Sprint Ticket Decomposition
 
-Sprints 6-14 will be decomposed into tickets when they become the current sprint.
+Sprints 7-14 will be decomposed into tickets when they become the current sprint.
 See SPRINTS.md for high-level sprint definitions.

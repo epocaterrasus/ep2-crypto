@@ -194,7 +194,7 @@ Sprint 2 (cross-market data), Sprint 3-4 (feature interfaces)
 
 ---
 
-## Sprint 6: Regime Detection (3-4 days) [ ]
+## Sprint 6: Regime Detection (3-4 days) [x]
 
 ### Objectives
 Build the hierarchical regime detection ensemble: fast indicators per bar, core HMM, slow Hurst, and meta-learner.
@@ -334,82 +334,199 @@ Sprint 7 (models produce predictions to gate)
 
 ---
 
-## Sprint 9: Risk Management Engine (3-4 days) [ ]
+## Sprint 9: Risk Management Engine (5-7 days) [ ]
 
 ### Objectives
-Build the capital preservation system. This MUST exist before backtesting so backtests reflect real trading constraints. Without this, backtest results are fantasy.
+Build the MOST CRITICAL module in the entire system: capital preservation. This MUST exist before backtesting so backtests reflect real trading constraints. Without this, backtest results are fantasy. **Backed by 23 dedicated research reports totaling 3MB.**
 
-### Why Before Backtesting
-- Backtest must simulate kill switches (daily loss halt = no more trades that day)
-- Backtest must simulate progressive drawdown reduction (not constant position size)
-- Backtest must simulate volatility guards (no trading when vol < 15% or > 150%)
-- If risk engine is bolted on after backtesting, backtest Sharpe is overstated
+### Why This Sprint Is The Most Important
+- A bad model loses slowly; bad risk management loses everything instantly
+- Exchange insolvency (FTX) is the #1 existential risk — mitigated by capital allocation
+- Human override of automated halts is the #2 risk — mitigated by interference protection
+- Position sizing bugs (decimal errors) are the #3 risk — mitigated by 3-layer hard limits
+- Every position entry MUST atomically place an exchange-side stop-market order
+
+### Design Principles (from research)
+- **Risk engine wraps exchange API** — trading engine NEVER has direct exchange access
+- **Fail-safe, not fail-open** — if anything goes wrong, STOP TRADING
+- **Separate process authority** — risk engine can kill trading engine, not vice versa
+- **Exchange state is truth** — local state is a cache; reconcile every 5 minutes
+- **Position sizing chain**: `min(quarter_kelly, max_cap, heat_constrained, budget_constrained) × weekend_mult × eod_mult × drawdown_mult`
 
 ### Deliverables
+
+#### Core Risk Components
 - [ ] `src/ep2_crypto/risk/__init__.py`
 - [ ] `src/ep2_crypto/risk/position_tracker.py`:
-  - Real-time position state (entry price, size, unrealized PnL, duration)
+  - Real-time position state (entry price, size, unrealized PnL, duration, MAE)
   - Mark-to-market on every bar
-  - Margin and liquidation price tracking
-  - Maximum position cap enforcement (5% of capital per trade)
+  - Margin utilization tracking (never >30% of capital)
+  - Liquidation price calculation (Binance isolated margin formula)
+  - Auto-close at 85% margin ratio (BEFORE exchange liquidates you)
+  - Maximum position cap enforcement (5% of capital, adjustable by leverage)
   - Maximum 1 open position at a time
+  - Position reconciliation with exchange every 5 minutes
 - [ ] `src/ep2_crypto/risk/kill_switches.py`:
-  - DailyLossLimit: halt trading when daily loss > 2-3% of capital
+  - DailyLossLimit: halt when daily loss > 2% of capital (configurable)
   - WeeklyLossLimit: halt when weekly loss > 5%
   - MaxDrawdownHalt: halt when peak-to-trough > 15%
-  - ConsecutiveLossHalt: halt after 15 consecutive losses
+  - ConsecutiveLossHalt: halt after 10 consecutive losses (expected once per 2 months at 55% WR)
   - EmergencyKillSwitch: close all positions immediately (manual trigger)
-  - ALL kill switches persist to disk (survive restart)
-  - ALL require manual reset (no auto-resume)
+  - ALL kill switches persist to SQLite (survive restart)
+  - ALL require manual reset with reason string (no auto-resume)
+  - State machine: ARMED → TRIGGERED → RESET (with audit trail)
+  - Cascading hierarchy: per-trade → daily → weekly → max DD
   - State exposed via health endpoint data
 - [ ] `src/ep2_crypto/risk/drawdown_gate.py`:
-  - Progressive position reduction:
-    - 0-3% drawdown: full size (1.0x)
-    - 3-5% drawdown: 0.75x
-    - 5-10% drawdown: 0.50x
-    - 10-15% drawdown: 0.25x
-    - >15% drawdown: 0.0x (halt)
-  - Graduated re-entry: restore over 5 profitable trades
-  - Cooldown period after halt before re-entry allowed
+  - **Convex reduction** (k=1.5), NOT step function:
+    - Formula: `multiplier = max(0, (1 - dd/max_dd)^1.5)`
+    - At 3% DD: ~71% size
+    - At 5% DD: ~54% size
+    - At 8% DD: ~32% size
+    - At 12% DD: ~9% size
+    - At 15% DD: 0% (halt)
+  - **Duration-based reduction** (independent of depth):
+    - 3 days underwater: 80% size
+    - 7 days: 40% size
+    - 14 days: halt
+  - Final multiplier = min(depth_mult, duration_mult)
+  - Graduated re-entry protocol: 10% → 25% → 50% → 75% → 100% over 5 phases
+  - Each phase requires profitability to advance; failure drops back to evaluation
+  - Cooldown period: minimum 5 bars at reduced size before any increase
+  - Bayesian edge assessment at each recovery phase gate
 - [ ] `src/ep2_crypto/risk/volatility_guard.py`:
   - Minimum volatility: 15% annualized (below = no trade, costs eat signal)
   - Maximum volatility: 150% annualized (above = reduce size or abstain)
-  - Trading hours: 08:00-21:00 UTC only (optional, configurable)
-  - Weekend sizing: -30% reduction (configurable)
+  - Graduated vol response: 2x baseline → reduce 50%; 3x → halt entries; 5x → close all
+  - Trading hours: 08:00-21:00 UTC (configurable)
+  - Weekend sizing: -30% reduction (Friday 20:00 to Monday 04:00 UTC)
+  - Funding settlement proximity: reduce/skip entry within 30 min of settlement if adverse funding > 5 bps
+  - End-of-day entry blocking: no new positions in last 15 minutes of trading window
 - [ ] `src/ep2_crypto/risk/position_sizer.py`:
-  - Quarter-Kelly: `size = 0.25 * kelly_fraction * confidence`
-  - ATR-based stop loss (3 ATR catastrophic stop)
-  - Maximum holding period: 6 bars (30 min) then force exit
-  - Minimum trade size: enforce exchange minimums
-  - Integration with drawdown gate (size × drawdown_multiplier)
+  - **Full sizing chain**: `min(quarter_kelly, max_cap, heat_constrained, budget_constrained) × weekend × eod × drawdown × regime`
+  - Quarter-Kelly with Bayesian uncertainty: integrate over posterior distribution of win rate
+  - ATR-based stop loss: 2.0 ATR default, confidence-weighted (1.5-3.5 ATR range)
+  - Multi-level stop system:
+    - Level 1: Model signal reversal (primary exit)
+    - Level 2: Time stop — 6 bars max holding period
+    - Level 3: ATR stop — confidence-adjusted
+    - Level 4: Catastrophic stop — 3% max per trade, non-negotiable
+  - Portfolio heat tracking: total open risk never > 2% of capital
+  - Daily risk budget: 3% total, tracked and depleted through the day
+  - Minimum trade size: enforce exchange minimums ($5 notional on Binance)
+  - Exchange-side stop placement: ATOMIC with position entry (non-negotiable)
 - [ ] `src/ep2_crypto/risk/risk_manager.py`:
-  - RiskManager class that orchestrates all components
-  - `approve_trade(signal) -> (approved: bool, adjusted_size: float, reason: str)`
-  - `on_fill(fill)` — update position tracker
-  - `on_bar(bar)` — update mark-to-market, check kill switches
-  - `get_risk_state() -> RiskState` — full state for health/monitoring
-  - Integrates: position_tracker + kill_switches + drawdown_gate + volatility_guard + position_sizer
-- [ ] `tests/test_risk/test_kill_switches.py` — Each switch triggers at exact threshold
-- [ ] `tests/test_risk/test_drawdown_gate.py` — Progressive reduction matches spec
-- [ ] `tests/test_risk/test_position_sizer.py` — Kelly, ATR stop, max hold
-- [ ] `tests/test_risk/test_risk_manager.py` — Full orchestration test
+  - RiskManager orchestrates ALL components
+  - **Pre-trade checks** (`approve_trade`):
+    1. Check all kill switches → reject if any triggered
+    2. Check volatility guard → reject if out of range
+    3. Check drawdown gate → get multiplier
+    4. Check daily risk budget → reject if exhausted
+    5. Check position limit → reject if position open
+    6. Compute position size → full chain
+    7. Return: `TradeDecision(approved, quantity, stop_price, reason)`
+  - **Post-trade monitoring** (`on_bar`):
+    1. Mark position to market
+    2. Update equity, drawdown, daily PnL
+    3. Check all kill switches (may trigger)
+    4. Check max holding period → force close at 6 bars
+    5. Check stop loss → bar.low vs stop for longs, bar.high for shorts
+    6. Return: list of `RiskAction` (close, reduce, alert)
+  - `get_risk_state() -> RiskState` — complete state for health/monitoring/dashboard
+  - `trigger_emergency(reason)` — immediate halt
+  - `reset_kill_switch(name, reason)` — requires reason string, logged
+  - All decisions logged via structlog with full context
+  - State persistence to SQLite on every state change
+
+#### Risk Configuration
+- [ ] `src/ep2_crypto/risk/config.py`:
+  - `RiskConfig` Pydantic model with ALL risk parameters
+  - Validation: reject invalid configs (e.g., max_position > 100%)
+  - No hot-reload — require explicit restart to change risk params
+  - Default values from research: 2% daily, 5% weekly, 15% max DD, 0.25% risk/trade
+
+#### Monitoring Integration
+- [ ] `src/ep2_crypto/monitoring/risk_exporter.py`:
+  - Prometheus metrics for all risk state (49 metric names from research)
+  - `PrometheusRiskExporter` reads `RiskState` and pushes to Prometheus
+  - Traffic light system: GREEN/YELLOW/RED/EMERGENCY
+  - Daily loss budget gauge, drawdown gauge, kill switch status panel
+
+#### Testing (95%+ coverage required)
+- [ ] `tests/test_risk/test_kill_switches.py`:
+  - Each switch triggers at exact threshold (boundary tests: ±epsilon)
+  - Persistence: trigger → kill process → restart → verify still triggered
+  - Manual reset requires reason string
+  - Cascading: multiple switches can trigger simultaneously
+- [ ] `tests/test_risk/test_drawdown_gate.py`:
+  - Convex reduction matches formula at every DD level
+  - Duration-based reduction independent of depth
+  - V-shaped recovery with cooldown (no premature recovery)
+  - Graduated re-entry: must be profitable to advance
+- [ ] `tests/test_risk/test_position_sizer.py`:
+  - Kelly golden dataset (known WR/payoff → expected fraction)
+  - Full sizing chain: verify every multiplier applied
+  - Stop distance: 2.0 ATR default, confidence-adjusted
+  - Never exceeds max cap (property-based test with random inputs)
+- [ ] `tests/test_risk/test_risk_manager.py`:
+  - Full orchestration: normal day, bad day, crash, slow bleed, recovery
+  - approve_trade returns reason for every rejection
+  - on_bar detects stop loss on bar high/low (not just close)
+  - Emergency trigger closes everything immediately
+- [ ] `tests/test_risk/test_risk_properties.py`:
+  - Hypothesis property-based tests:
+    - Position size NEVER exceeds max cap (500+ random inputs)
+    - After kill switch, ZERO trades approved until reset
+    - Total exposure NEVER exceeds portfolio heat limit
+- [ ] `tests/test_risk/test_risk_persistence.py`:
+  - Kill switch state survives file-backed SQLite close/reopen
+  - Position tracker state survives crash simulation
+  - Daily counters reset at midnight (intentional, documented)
+- [ ] `tests/test_risk/test_risk_golden.py`:
+  - 20+ parameterized golden dataset cases
+  - Known (equity, price, confidence, WR, DD) → expected (approved, size, reason)
+  - These NEVER change — regression protection
+- [ ] `tests/test_risk/test_risk_stress.py`:
+  - March 2020 COVID replay: system survives with <15% DD
+  - Flash crash 20% in 30 min: stop fires within first bar
+  - 10 consecutive losses in 1 hour: kill switch triggers
+  - Slow bleed 14 days: duration gate activates
 
 ### Acceptance Criteria
-- Daily loss limit triggers at exactly 2% (configurable)
-- Drawdown gate reduces position size progressively (test with simulated equity curve)
-- Kill switch state persists to disk and survives process restart
-- Kill switch requires explicit `reset()` call (no auto-resume)
-- Volatility guard correctly blocks trades when vol < 15%
-- Position sizer never exceeds 5% of capital
-- Maximum holding period force-exits at 6 bars
-- RiskManager.approve_trade() returns reason string for every rejection
-- All decisions logged via structlog with full context
+- Daily loss limit triggers at exactly 2% (not 1.99%, not 2.01%)
+- Drawdown gate uses convex formula (k=1.5), verified at 5 DD levels
+- Kill switch state persists to disk and survives process restart (file-backed test)
+- Kill switch requires explicit `reset(reason)` call (no auto-resume)
+- Volatility guard blocks trades when vol < 15% AND > 150%
+- Position sizer never exceeds 5% of capital (property-based test, 500+ random inputs)
+- Maximum holding period force-exits at exactly 6 bars
+- Exchange-side stop order is part of position entry (not a separate step)
+- All risk decisions logged with full context (structlog JSON)
+- Risk module has 95%+ line coverage
+- All 4 stress scenarios pass
+- All 20+ golden dataset cases pass
 
-### Key Research Reference
-- `RR-backtest-pitfalls-best-practices.md` (Section 9: Position Sizing, Section 10: Risk Management)
-- `RR-confidence-calibration-signal-gating.md` (Section 9: Drawdown-Based Gating)
-- `RR-papertrade-system-architecture.md` (Section 8: Margin, Liquidation, Funding)
-- REQUIREMENTS.md Section 5: Risk Requirements (RR-1 through RR-5)
+### Key Research Reference (23 reports)
+**Core architecture**: `RR-risk-engine-architecture.md`, `RR-risk-implementation-guide.md`
+**Position sizing**: `RR-risk-position-sizing-methods.md` (Kelly, optimal f, ATR, Bayesian)
+**Kill switches**: `RR-risk-kill-switch-design.md` (thresholds, recovery, testing, fire drills)
+**Drawdown**: `RR-risk-drawdown-management.md` (convex reduction, duration, recovery protocol, Bayesian edge test)
+**Stop losses**: `RR-risk-stop-loss-strategies.md` (multi-level system, confidence-weighted, cost interaction)
+**Margin/liquidation**: `RR-risk-margin-liquidation.md` (Binance formulas, auto-close at 85%)
+**Tail risk**: `RR-risk-tail-risk-black-swan.md` (survive everything analysis, compound scenarios)
+**Worst case**: `RR-risk-worst-case-scenarios.md` (risk catalog, reverse stress testing)
+**Testing**: `RR-risk-testing-framework.md` (property-based, chaos engineering, golden dataset)
+**Money management**: `RR-risk-money-management.md` (account stages, variance drain, compounding)
+**Capital math**: `RR-risk-capital-preservation-math.md` (ruin probability, recovery math, Bayesian Kelly)
+**Monitoring**: `RR-risk-monitoring-dashboard.md` (49 Prometheus metrics, Grafana panels, alert rules)
+**Hedge fund practices**: `RR-risk-hedge-fund-practices.md`, `RR-risk-institutional-deep-research.md`
+**Funding rate**: `RR-risk-funding-rate.md` (settlement timing, cost modeling)
+**Exchange ops**: `RR-risk-exchange-operational.md` (API errors, reconciliation, key security)
+**Regime risk**: `RR-risk-regime-conditional.md` (vol targeting, regime-dependent sizing/stops)
+**Risk-adjusted optimization**: `RR-risk-adjusted-return-optimization.md` (CVaR, multi-objective)
+**Portfolio heat**: `RR-risk-portfolio-heat-exposure.md` (daily budget, exposure limits)
+**Multi-signal allocation**: `RR-risk-parity-multi-signal.md` (60/25/15 allocation)
+**Backtesting integration**: `RR-risk-backtesting-integration.md` (why backtests without risk lie)
 
 ### Dependencies
 Sprint 1 (database for state persistence), Sprint 4 (volatility features for vol guard)
@@ -683,6 +800,117 @@ Sprint 9-13 (everything)
 
 ---
 
+## Sprint 16: Alpha Enhancement — Mega-Research Integration (5-7 days) [ ]
+
+### Objectives
+Integrate the highest-ROI findings from the 20-agent deep research investigation (2026-03-23). This sprint focuses on features and upgrades that were validated by academic literature and have concrete expected Sharpe improvements. Only implement what has published evidence; skip speculative additions.
+
+### Key Research Reference
+- `research/RR-mega-research-20-agents-consolidated.md` — Complete findings from 20 parallel research agents
+
+### Deliverables
+
+#### T1: Advanced Order Flow Features (Sharpe +0.2-0.5)
+Extend `src/ep2_crypto/features/microstructure.py`:
+- [ ] **Multi-level OBI**: Compute OBI at levels 1, 5, and 10 separately (uses existing depth@100ms data). Divergence between shallow and deep OBI signals institutional vs retail pressure.
+- [ ] **VPIN** (Volume-Synchronized Probability of Informed Trading): Implement via Bulk Volume Classification on aggTrades. Volume bucket = 1/50th daily avg volume. Output: VPIN score 0-1. Use as regime filter (tradeable zone: 0.3-0.6).
+- [ ] **Book pressure gradient**: `gradient_asymmetry = bid_gradient / ask_gradient` where gradient = cumulative depth change rate across levels. Predicts 1-bar direction at 54-56%.
+- [ ] **Depth withdrawal ratio**: `(depth_N_bars_ago - current_depth) / depth_N_bars_ago` without corresponding trades. Market maker pull-away signal, ~58% accuracy at 1-min.
+- [ ] Tests with golden datasets for each new feature
+- References: Cont, Kukanov & Stoikov (2014); Easley, Lopez de Prado & O'Hara (2012); Kolm et al. (2023)
+
+#### T2: Cross-Exchange Signals (Sharpe +0.1-0.3)
+Add new data source and extend `src/ep2_crypto/features/cross_market.py`:
+- [ ] **Coinbase WebSocket integration** via ccxt: Add BTC/USD ticker stream from Coinbase
+- [ ] **Coinbase premium features**: `premium_raw`, `premium_zscore_60`, `premium_delta_6` (change over 30 min). IC 0.03-0.07 at 30-min horizon. Only meaningful during US hours (14:00-21:00 UTC).
+- [ ] **Cross-exchange OFI divergence**: When Binance OFI and Coinbase OFI disagree, the exchange with highest volume "wins" 58-63% of the time. Feature: `ofi_consensus` (binary: agree/disagree).
+- [ ] **ETH order flow features**: Add ETH/USDT perpetual aggTrades from Binance WS. Compute ETH net taker volume and ETH OFI. ETH order flow leads BTC by 1-5 min with 54-57% accuracy.
+- [ ] **ETH/BTC ratio rate-of-change** at 5-min and 15-min lookback. Asymmetric: stronger for downside moves (55-58% accuracy on drops).
+- [ ] **Binance Long/Short Ratio**: Poll `/futures/data/topLongShortPositionRatio` every 5 min. Contrarian at extremes (>2.5 or <0.5).
+- [ ] Tests for each new cross-exchange feature
+- References: Makarov & Schoar (2020); Alexander & Heck (2020); Augustin et al. (2022)
+
+#### T3: Twelve Data Upgrade for NQ/DXY (Sharpe +0.1-0.2)
+- [ ] **Replace yfinance with Twelve Data** ($29/mo) for NQ, DXY, Gold intraday data
+- [ ] 1-min delay vs current 15-min delay — critical because NQ leads BTC by only 5-15 min
+- [ ] Update `src/ep2_crypto/ingest/cross_market.py` with Twelve Data WebSocket/REST
+- [ ] Fallback to yfinance if Twelve Data unavailable
+
+#### T4: HAR-RV Multi-Scale Volatility (Sharpe +0.1-0.2)
+Extend `src/ep2_crypto/features/volatility.py`:
+- [ ] **HAR-RV components**: Realized volatility at 1h (12 bars), 4h (48 bars), 1d (288 bars), 1w (2016 bars)
+- [ ] **Ratio features**: `RV_12/RV_288`, `RV_48/RV_288` — capture volatility term structure shifts that precede regime changes
+- [ ] Outperforms single-scale GARCH by 5-10% RMSE for volatility forecasting
+- [ ] Tests with known volatility scenarios
+- Reference: Corsi (2009) HAR-RV model
+
+#### T5: Confidence Gating Upgrades (Sharpe improvement on existing pipeline)
+Upgrade `src/ep2_crypto/confidence/conformal.py`:
+- [ ] **Adaptive Conformal Inference (ACI)**: Adjust alpha_t online based on recent coverage. Reduces interval width by 20-30% while maintaining coverage guarantee. Handles crypto non-stationarity.
+- [ ] **Conformalized Quantile Regression (CQR)**: Produces intervals that are narrower in low-vol and wider in high-vol regimes. Replace standard conformal with CQR.
+- [ ] **Weighted conformal scores**: Recent observations get higher weight — critical for non-stationary crypto.
+- [ ] Calibration tests: verify 90% coverage maintained across regimes
+- References: Gibbs & Candes (2024); Romano et al. CQR; Barber et al. (2023-2024)
+
+#### T6: Multi-Task GRU Training (Sharpe +0.1-0.2)
+Upgrade `src/ep2_crypto/models/gru_features.py`:
+- [ ] Add **auxiliary prediction heads** during training: next-bar volatility, next-bar volume
+- [ ] Use **Uncertain Weighting** (Kendall et al.) to auto-balance task losses
+- [ ] Discard auxiliary heads at inference — only keep enriched hidden states
+- [ ] Hidden states fed to LightGBM encode richer market state information
+- [ ] Compare hidden state quality: single-task vs multi-task via downstream LightGBM accuracy
+- Reference: Zhang & Zhong (2024), Sawhney et al. (2024)
+
+#### T7: Enhanced Liquidation Cascade Detection (Sharpe +0.3-0.5 as risk filter)
+Upgrade `src/ep2_crypto/events/cascade.py`:
+- [ ] **Bybit allLiquidation.BTCUSDT** (upgraded Feb 2025): Reports ALL liquidations at 500ms, not just 1/sec. Add to ingest layer.
+- [ ] **Hawkes process with online branching ratio estimation**: Normal: 0.3-0.5, pre-cascade: 0.7-0.85, cascade: >0.9. Use recursive intensity: `R(t_n) = exp(-beta*(t_n - t_{n-1})) * (1 + R(t_{n-1}))`.
+- [ ] **State-dependent amplifier**: Inverse of order book depth — thinner book = more excitation per liquidation.
+- [ ] **Cascade probability score**: logistic combination of branching ratio, OI percentile, funding z-score, book thinning rate, price velocity.
+- [ ] Action: cascade_probability > 0.7 → reduce position to 25% or halt.
+- [ ] Optional: **Coinglass API** ($79/mo) for pre-computed liquidation heatmaps and aggregated multi-exchange data.
+- [ ] Tests: replay known cascade events (FTX Nov 2022, Oct 2025)
+- References: Atak (2020); Ali (2025 SSRN)
+
+#### T8: Deribit Options Data (Sharpe +0.05-0.15)
+Add new data source:
+- [ ] **Deribit WebSocket integration** via ccxt: IV surface, options OI, block trades
+- [ ] **25-delta risk reversal rate of change** (1h rolling): Directional signal, ~52-53% at 5-min but better as regime context
+- [ ] **ATM IV rate of change** (1h rolling): Volatility regime signal
+- [ ] **Put/call OI ratio**: Low cost aggregation from Deribit OI
+- [ ] **Max pain distance**: Calendar feature for large quarterly/monthly expirations (62% convergence for quarterly)
+- [ ] **Deribit quarterly basis** as CME proxy: Basis momentum IC 0.02-0.05
+- References: Alexander, Choi, Park, Sohn (2020); Cao, Chen, Griffin (2023); Foley, Karlsen, Putnins (2023)
+
+### Acceptance Criteria
+- All new features pass look-ahead bias tests (truncation + shuffle)
+- Each feature has golden dataset tests with hand-verified values
+- Feature count stays within 30-40 total (prune weakest existing features if needed)
+- Ablation study: each T1-T8 ticket shows positive marginal Sharpe contribution
+- Walk-forward backtest with all enhancements shows Sharpe improvement > 0.3 over Sprint 15 baseline
+- No new external API dependency causes system failure (graceful degradation if Twelve Data, Deribit, or Coinglass are unavailable)
+- Total monthly data cost increase: <$120 (Twelve Data $29 + optional Coinglass $79)
+- All new features compute in < 5ms per bar total (maintain <100ms feature budget)
+
+### What Was Investigated But NOT Included (Confirmed Skip)
+These were researched by the 20 agents and determined to be not useful at 5-min horizon:
+- Stablecoin mint/burn (30min-24h latency)
+- Whale wallet tracking (10+ min blockchain latency, 40-70% false positives)
+- ETF flows (T+1 daily data)
+- Google Trends / Wikipedia (daily granularity)
+- Social sentiment NLP (0 predictive power at 5-min)
+- Graph Neural Networks (blockchain latency blocker)
+- Reinforcement Learning (supervised wins; 60-85% sim-to-real gap)
+- Prediction markets (lag spot at 5-min)
+- News NLP (+1-2% doesn't justify complexity)
+- Transformer/foundation models (LightGBM wins on tabular)
+- Dark web, job postings, app downloads, energy prices, Lightning Network
+
+### Dependencies
+Sprint 15 (Validation — need baseline metrics to measure improvement against)
+
+---
+
 ## Sprint Dependencies Graph
 
 ```
@@ -702,13 +930,17 @@ Sprint 1 (Foundation)
                                                |
                               +----------------+----------------+
                               |                                 |
-                    Sprint 9 (Backtesting)           Sprint 11 (Macro + Cascade)
+                    Sprint 9 (Risk Mgmt)            Sprint 12 (Macro + Cascade)
                               |
-                    Sprint 10 (Tuning)
+                    Sprint 10 (Backtesting)
                               |
-                    Sprint 12 (API + Live)
+                    Sprint 11 (Tuning)
                               |
-                    Sprint 13 (Paper Trading)
+                    Sprint 13 (API + Live)
                               |
-                    Sprint 14 (Validation)
+                    Sprint 14 (Paper Trading)
+                              |
+                    Sprint 15 (Validation)
+                              |
+                    Sprint 16 (Alpha Enhancement — Mega-Research)
 ```
