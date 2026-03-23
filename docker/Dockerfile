@@ -25,24 +25,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends apt-transport-h
     && apt-get update && apt-get install -y doppler \
     && rm -rf /var/lib/apt/lists/*
 
+# Non-root user — created BEFORE deps so venv is owned by ep2
+RUN useradd --create-home --shell /bin/bash ep2
+
 WORKDIR /app
+RUN chown ep2:ep2 /app
+
+USER ep2
 
 # Copy dependency files first for Docker layer caching
-COPY pyproject.toml uv.lock ./
+COPY --chown=ep2:ep2 pyproject.toml uv.lock ./
 
 # Install dependencies (frozen = exact lockfile versions)
 RUN uv sync --frozen --extra all --extra polymarket --no-dev --no-install-project
 
 # Copy application code
-COPY src/ src/
-COPY scripts/ scripts/
+COPY --chown=ep2:ep2 src/ src/
+COPY --chown=ep2:ep2 scripts/ scripts/
 
 # Install the project itself
 RUN uv sync --frozen --extra all --extra polymarket --no-dev
-
-# Non-root user for security
-RUN useradd --create-home --shell /bin/bash ep2
-USER ep2
 
 EXPOSE 8000
 
