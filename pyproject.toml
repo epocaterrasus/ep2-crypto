@@ -94,14 +94,22 @@ ignore = [
     "ANN102",  # missing type annotation for cls
     "ANN401",  # Any type needed for ccxt exchange class injection
     "S101",    # assert used (ok in tests)
+    "RUF001",  # Unicode ambiguous chars (×) are intentional
+    "RUF002",  # Unicode ambiguous chars in docstrings
+    "RUF003",  # Unicode ambiguous chars in comments
+    "RUF012",  # Mutable class defaults (used intentionally in dataclasses)
+    "E501",    # Line too long (handled by formatter, some f-strings exceed)
+    "E741",    # Ambiguous variable names (k, l used in math formulas)
+    "SIM117",  # Multiple with statements (readability preference)
+    "SIM105",  # Use contextlib.suppress (explicit try/except clearer)
+    "N806",    # Uppercase variable in function (math convention)
+    "B017",    # assertRaises(Exception) too broad (ok in tests)
+    "B007",    # Unused loop variable (ruff format handles)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "S110", "ANN", "RUF006"]
+"tests/**" = ["S101", "S105", "S106", "S110", "S311", "F841", "RUF006", "RUF059", "ANN"]
 "scripts/**" = ["T20", "S105", "S106"]
-
-[tool.ruff.lint.extend-ignore]
-ignore = ["RUF001", "RUF002", "RUF003"]  # Unicode ambiguous chars (×, etc) are intentional
 
 [tool.mypy]
 python_version = "3.12"

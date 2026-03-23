@@ -258,6 +258,62 @@ class AlertManager:
             Alert(tier=AlertTier.EMERGENCY, title=title, message=message, metadata=metadata)
         )
 
+    # -- Trade notifications ---------------------------------------------------
+
+    def notify_trade_opened(
+        self,
+        direction: str,
+        shares: float,
+        cost_usd: float,
+        market_price: float,
+        model_prob: float,
+        window_slug: str = "",
+    ) -> bool:
+        """Notify when a Polymarket trade is placed."""
+        arrow = "🟢 UP" if direction.lower() == "up" else "🔴 DOWN"
+        return self.send_info(
+            title=f"Trade Opened: {arrow}",
+            message=(
+                f"Direction: {arrow}\n"
+                f"Shares: {shares:.1f} @ ${market_price:.2f}\n"
+                f"Cost: ${cost_usd:.2f}\n"
+                f"Model confidence: {model_prob:.1%}\n"
+                f"Edge: {model_prob - market_price:+.1%}\n"
+                f"Window: {window_slug}"
+            ),
+        )
+
+    def notify_trade_resolved(
+        self,
+        direction: str,
+        won: bool,
+        pnl: float,
+        cost_usd: float,
+        equity: float,
+        daily_pnl: float,
+        consecutive_losses: int = 0,
+    ) -> bool:
+        """Notify when a Polymarket trade resolves."""
+        result = "✅ WIN" if won else "❌ LOSS"
+        arrow = "UP" if direction.lower() == "up" else "DOWN"
+        return self.send_info(
+            title=f"Trade Resolved: {result}",
+            message=(
+                f"Direction: {arrow} → {result}\n"
+                f"PnL: ${pnl:+.2f} (cost: ${cost_usd:.2f})\n"
+                f"Equity: ${equity:,.2f}\n"
+                f"Daily PnL: ${daily_pnl:+.2f}\n"
+                f"{'⚠️ Consecutive losses: ' + str(consecutive_losses) if consecutive_losses >= 3 else ''}"
+            ),
+        )
+
+    def notify_trade_skipped(self, reason: str) -> bool:
+        """Notify when a trade signal is rejected by risk engine."""
+        return self.send_info(
+            title="Trade Skipped",
+            message=f"Reason: {reason}",
+        )
+
     @property
     def sent_count(self) -> int:
         return self._sent_count

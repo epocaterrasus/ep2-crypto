@@ -16,7 +16,6 @@ import pytest
 
 from ep2_crypto.events.cascade import OnlineHawkesEstimator, StateDependentAmplifier
 
-
 # ---------------------------------------------------------------------------
 # OnlineHawkesEstimator
 # ---------------------------------------------------------------------------

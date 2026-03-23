@@ -117,7 +117,7 @@ class TwelveDataCollector(BaseCollector):
         try:
             loop = asyncio.get_event_loop()
             raw = await loop.run_in_executor(
-                None, lambda: urllib.request.urlopen(url, timeout=10).read()
+                None, lambda: urllib.request.urlopen(url, timeout=10).read()  # noqa: S310
             )
             data = json.loads(raw)
         except Exception as exc:

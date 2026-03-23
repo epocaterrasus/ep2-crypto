@@ -229,8 +229,8 @@ class PolymarketAdapter(VenueAdapter):
         if self._client is not None:
             try:
                 self._client.get_ok()
-            except Exception:
-                pass  # Heartbeat failures are logged in the loop
+            except Exception:  # noqa: S110
+                pass  # Heartbeat failures are logged in the main loop
 
     # ------------------------------------------------------------------
     # Market discovery
