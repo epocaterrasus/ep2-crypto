@@ -297,11 +297,10 @@ def load_model_signals(
         catboost.load(catboost_path)
         catboost_proba = catboost.predict_proba(X)  # (n, 3)
 
-        # Stack base probas and run through meta-learner (matches train.py logic)
-        base_probas = np.hstack([lgbm_proba, catboost_proba])  # (n, 6)
+        # predict_proba() calls np.hstack(base_probas) internally — pass as list, not pre-stacked
         ensemble = StackingEnsemble()
         ensemble.load(model_dir / "stacking_ensemble.pkl")
-        proba = ensemble.predict_proba(base_probas)  # (n, 3): [DOWN, FLAT, UP]
+        proba = ensemble.predict_proba([lgbm_proba, catboost_proba])  # (n, 3): [DOWN, FLAT, UP]
 
         # ternary: -1=down (class 0), 0=flat (class 1), +1=up (class 2)
         predicted_class = np.argmax(proba, axis=1) - 1  # map 0,1,2 → -1,0,+1
