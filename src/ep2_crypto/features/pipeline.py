@@ -48,6 +48,7 @@ from ep2_crypto.features.volatility import (
     RealizedVolComputer,
     VolOfVolComputer,
 )
+from ep2_crypto.features.polymarket import PolymarketProbComputer
 from ep2_crypto.features.volume import (
     VolumeDeltaComputer,
     VolumeROCComputer,
@@ -105,6 +106,9 @@ def build_default_registry() -> FeatureRegistry:
     reg.register(ERFeatureComputer(window=10))
     reg.register(GARCHFeatureComputer())
     reg.register(HMMFeatureComputer(vol_window=20, smooth_window=10))
+
+    # Polymarket crowd consensus (optional — gracefully degrades without data)
+    reg.register(PolymarketProbComputer(accuracy_window=20))
 
     return reg
 

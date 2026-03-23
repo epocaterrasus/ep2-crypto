@@ -214,8 +214,87 @@ def aggregate_to_5min(data: dict[str, NDArray[Any]]) -> dict[str, NDArray[Any]]:
 # Feature & label computation
 # ---------------------------------------------------------------------------
 
+def load_polymarket(
+    conn: Any,
+    timestamps_ms: "NDArray[np.int64]",
+) -> dict[str, "NDArray[np.float64]"]:
+    """Load Polymarket 5-min market data aligned to OHLCV bar timestamps.
+
+    Queries ``polymarket_5m_history`` and aligns yes_close_price and volume to
+    the OHLCV timestamp array. Missing windows are filled with NaN.
+
+    Returns dict with keys: poly_yes_prices, poly_volumes, poly_resolved.
+    Returns empty dict (all NaN arrays) if the table doesn't exist or has no data.
+    """
+    n = len(timestamps_ms)
+    nan_arrays: dict[str, NDArray[np.float64]] = {
+        "poly_yes_prices": np.full(n, np.nan, dtype=np.float64),
+        "poly_volumes": np.full(n, np.nan, dtype=np.float64),
+        "poly_resolved": np.full(n, np.nan, dtype=np.float64),
+    }
+
+    is_pg = _is_postgres(conn)
+    try:
+        cur = conn.cursor()
+        if is_pg:
+            cur.execute(
+                "SELECT extract(epoch FROM window_ts)::bigint * 1000 AS ts_ms, "
+                "yes_close_price, volume, resolved "
+                "FROM polymarket_5m_history ORDER BY window_ts"
+            )
+        else:
+            cur.execute(
+                "SELECT window_ts * 1000 AS ts_ms, yes_close_price, volume, resolved "
+                "FROM polymarket_5m_history ORDER BY window_ts"
+            )
+        rows = cur.fetchall()
+    except Exception as exc:
+        logger.info("polymarket_table_not_found", reason=str(exc))
+        return nan_arrays
+
+    if not rows:
+        logger.info("polymarket_no_data")
+        return nan_arrays
+
+    # Build lookup: ts_ms (aligned to 5-min boundary) -> (yes_price, volume, resolved)
+    poly_map: dict[int, tuple[float, float, float]] = {}
+    for row in rows:
+        ts_ms = int(row[0])
+        # Align to nearest 5-min bar (same alignment as OHLCV aggregation)
+        bar_ms = (ts_ms // 300_000) * 300_000
+        yes_p = float(row[1]) if row[1] is not None else float("nan")
+        vol = float(row[2]) if row[2] is not None else float("nan")
+        resolved = 1.0 if row[3] else 0.0
+        poly_map[bar_ms] = (yes_p, vol, resolved)
+
+    # Align to OHLCV timestamps
+    yes_prices = np.full(n, np.nan, dtype=np.float64)
+    volumes = np.full(n, np.nan, dtype=np.float64)
+    resolved_arr = np.full(n, np.nan, dtype=np.float64)
+
+    matched = 0
+    for i, ts_ms in enumerate(timestamps_ms):
+        bar_ms = int((ts_ms // 300_000) * 300_000)
+        if bar_ms in poly_map:
+            yes_prices[i], volumes[i], resolved_arr[i] = poly_map[bar_ms]
+            matched += 1
+
+    logger.info(
+        "polymarket_loaded",
+        total_poly_rows=len(rows),
+        matched_bars=matched,
+        coverage_pct=round(matched / max(n, 1) * 100, 1),
+    )
+    return {
+        "poly_yes_prices": yes_prices,
+        "poly_volumes": volumes,
+        "poly_resolved": resolved_arr,
+    }
+
+
 def compute_features(
     data: dict[str, NDArray[Any]],
+    conn: Any | None = None,
 ) -> tuple[NDArray[np.float64], list[str]]:
     """Compute feature matrix from OHLCV data.
 
@@ -229,6 +308,11 @@ def compute_features(
     n = len(data["closes"])
     logger.info("computing_features", n_bars=n, warmup=warmup, n_features=pipeline.n_features)
 
+    # Load optional Polymarket data (gracefully absent before Feb 2025)
+    poly_kwargs: dict[str, NDArray[np.float64]] = {}
+    if conn is not None:
+        poly_kwargs = load_polymarket(conn, data["timestamps_ms"])
+
     X = pipeline.compute_batch(
         timestamps=data["timestamps_ms"],
         opens=data["opens"],
@@ -236,6 +320,7 @@ def compute_features(
         lows=data["lows"],
         closes=data["closes"],
         volumes=data["volumes"],
+        **poly_kwargs,
     )
 
     feature_names = pipeline.output_names
@@ -482,14 +567,14 @@ def main() -> None:
     conn = get_db_connection()
     try:
         raw_data = load_ohlcv(conn, days=args.days)
+
+        # 2. Aggregate to 5-min bars
+        data = aggregate_to_5min(raw_data)
+
+        # 3. Compute features (conn kept open for Polymarket data load)
+        X, feature_names = compute_features(data, conn=conn)
     finally:
         conn.close()
-
-    # 2. Aggregate to 5-min bars
-    data = aggregate_to_5min(raw_data)
-
-    # 3. Compute features
-    X, feature_names = compute_features(data)
 
     # 4. Compute labels
     y, _returns = compute_labels(data)
