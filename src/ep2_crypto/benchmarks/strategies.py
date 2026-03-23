@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -485,6 +484,53 @@ class OracleStrategy(BenchmarkStrategy):
 
 
 # ---------------------------------------------------------------------------
+# 12. Funding Rate Carry
+# ---------------------------------------------------------------------------
+class FundingRateCarry(BenchmarkStrategy):
+    """Hold the side that COLLECTS funding payments.
+
+    When funding rate is positive, shorts receive from longs → go short.
+    When funding rate is negative, longs receive from shorts → go long.
+
+    This is a surprisingly strong baseline (Sharpe 1.0-2.0 historically)
+    because it harvests the persistent bias of crypto futures markets
+    where longs consistently overpay. Beating this proves the ML system
+    adds alpha beyond simple carry.
+
+    Uses smoothed funding to avoid excessive whipsawing.
+    """
+
+    name = "funding_rate_carry"
+
+    def __init__(
+        self,
+        smoothing_periods: int = 3,
+        entry_threshold: float = 0.00005,
+    ) -> None:
+        self.smoothing_periods = smoothing_periods
+        self.entry_threshold = entry_threshold
+
+    def generate_positions(self, df: pd.DataFrame) -> pd.Series:
+        self.validate_columns(df, ["funding_rate"])
+        fr = df["funding_rate"]
+
+        # Smooth funding rate to reduce noise
+        if self.smoothing_periods > 1:
+            smoothed = fr.rolling(self.smoothing_periods, min_periods=1).mean()
+        else:
+            smoothed = fr
+
+        positions = pd.Series(0.0, index=df.index, name="position")
+        # Short when funding positive (collect from longs)
+        positions[smoothed > self.entry_threshold] = -1.0
+        # Long when funding negative (collect from shorts)
+        positions[smoothed < -self.entry_threshold] = 1.0
+        # Forward-fill: hold until signal changes
+        positions = positions.replace(0.0, np.nan).ffill().fillna(0.0)
+        return positions
+
+
+# ---------------------------------------------------------------------------
 # Strategy registry for convenience
 # ---------------------------------------------------------------------------
 STRATEGY_REGISTRY: dict[str, type[BenchmarkStrategy]] = {
@@ -499,6 +545,7 @@ STRATEGY_REGISTRY: dict[str, type[BenchmarkStrategy]] = {
     "cross_market_lead_lag": CrossMarketLeadLag,
     "naive_ensemble": NaiveEnsemble,
     "oracle": OracleStrategy,
+    "funding_rate_carry": FundingRateCarry,
 }
 
 
@@ -541,6 +588,10 @@ def get_default_benchmark_suite(
     # Volatility breakout
     suite["vol_breakout_2atr_3bar"] = VolatilityBreakout(atr_multiplier=2.0, hold_bars=3)
     suite["vol_breakout_1.5atr_5bar"] = VolatilityBreakout(atr_multiplier=1.5, hold_bars=5)
+
+    # Funding rate carry
+    suite["funding_carry"] = FundingRateCarry()
+    suite["funding_carry_no_smooth"] = FundingRateCarry(smoothing_periods=1)
 
     # Oracle
     suite["oracle"] = OracleStrategy()
