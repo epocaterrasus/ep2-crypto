@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime
+import os
 import signal
 import sqlite3
 import time
@@ -37,6 +38,7 @@ from ep2_crypto.execution.paper_exchange import PaperExchange
 from ep2_crypto.execution.paper_runner import PaperRunner, TradeSignal
 from ep2_crypto.execution.venue import VenueAdapter, VenueType
 from ep2_crypto.logging import configure_logging
+from ep2_crypto.monitoring.alerts import Alert, AlertManager, AlertTier, RateLimiter, TelegramSender
 from ep2_crypto.risk.config import RiskConfig
 from ep2_crypto.risk.risk_manager import RiskManager, SignalInput
 
@@ -126,6 +128,15 @@ class LivePredictionLoop:
         self._last_day: int | None = None
         self._last_week: int | None = None  # ISO week number
 
+        # Alerting (Telegram)
+        bot_token = os.environ.get("EP2_TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.environ.get("EP2_TELEGRAM_CHAT_ID", "")
+        unlimited = RateLimiter({t: 0 for t in AlertTier})  # unlimited — live loop is critical
+        self._alert_manager = AlertManager(
+            senders=[TelegramSender(bot_token, chat_id)],
+            rate_limiter=unlimited,
+        )
+
     # -----------------------------------------------------------------------
     # Lifecycle
     # -----------------------------------------------------------------------
@@ -181,6 +192,12 @@ class LivePredictionLoop:
             venue=self._venue_type.value,
         )
 
+        self._alert_manager.send(Alert(
+            tier=AlertTier.INFO,
+            title="Live loop started",
+            message=f"mode={self._mode} venue={self._venue_type.value} collect_only={self._collect_only}",
+        ))
+
         try:
             await self._run_loop()
         except asyncio.CancelledError:
@@ -201,7 +218,16 @@ class LivePredictionLoop:
             if not self._running:
                 break
 
-            await self._on_bar_close()
+            try:
+                await self._on_bar_close()
+            except Exception as exc:
+                logger.error("bar_close_unhandled_error", error=str(exc), exc_info=True)
+                self._alert_manager.send(Alert(
+                    tier=AlertTier.CRITICAL,
+                    title="Bar close error",
+                    message=f"Unhandled exception in _on_bar_close: {exc}",
+                ))
+                # Continue looping — a single bar exception must not kill the loop.
 
     async def _on_bar_close(self) -> None:
         """Process a single bar close event."""
@@ -494,6 +520,11 @@ class LivePredictionLoop:
                 logger.error("shutdown_db_close_failed", error=str(exc))
 
         logger.info("live_loop_shutting_down", bars_processed=self._bar_count)
+        self._alert_manager.send(Alert(
+            tier=AlertTier.WARNING,
+            title="Live loop stopped",
+            message=f"Processed {self._bar_count} bars before shutdown.",
+        ))
         self._running = False
 
     def stop(self) -> None:

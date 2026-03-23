@@ -46,6 +46,9 @@ class BarrierConfig:
         min_barrier_bps: Minimum barrier width in basis points
             (prevents too-tight barriers in low-vol).
         use_atr: If True, use ATR for barrier width. If False, use rolling std of log returns.
+        flat_threshold_bps: Vertical barrier returns within this range (in basis points) are
+            labeled FLAT. Prevents the ternary model from degrading to binary when exact
+            zero returns are machine-precision impossible. Default 10 bps.
     """
 
     max_holding_bars: int = 12
@@ -54,6 +57,7 @@ class BarrierConfig:
     vol_window: int = 20
     min_barrier_bps: float = 5.0
     use_atr: bool = True
+    flat_threshold_bps: float = 10.0
 
 
 def compute_atr(
@@ -237,13 +241,16 @@ def label_triple_barrier(
                 exit_return = (closes[max_bar] - entry_price) / entry_price
                 returns_at_exit[t] = exit_return
                 hold_periods[t] = max_bar - t
-                # Classify based on sign of return
-                if exit_return > 0:
-                    labels[t] = Direction.UP
-                elif exit_return < 0:
-                    labels[t] = Direction.DOWN
-                else:
+                # Classify based on magnitude of return.
+                # Returns within flat_threshold_bps are labeled FLAT — using exact zero
+                # comparison would produce near-zero FLAT labels due to floating-point.
+                flat_threshold = config.flat_threshold_bps / 10_000.0
+                if abs(exit_return) <= flat_threshold:
                     labels[t] = Direction.FLAT
+                elif exit_return > 0:
+                    labels[t] = Direction.UP
+                else:
+                    labels[t] = Direction.DOWN
             else:
                 # At the very end of the array — cannot look forward
                 labels[t] = Direction.FLAT

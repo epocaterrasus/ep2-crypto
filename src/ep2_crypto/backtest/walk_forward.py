@@ -178,7 +178,12 @@ class WalkForwardValidator:
                 if test_end + cfg.embargo_bars + cfg.step_bars > self._n:
                     break
             else:
-                train_start += cfg.step_bars
+                # Enforce embargo: next train_end must be >= current test_end + embargo_bars.
+                # This prevents the training window from including bars in the post-test
+                # embargo zone of the previous fold.
+                min_next_train_end = test_end + cfg.embargo_bars
+                step_needed = min_next_train_end - (train_start + cfg.train_bars)
+                train_start += max(cfg.step_bars, step_needed)
 
             # Check if next fold would exceed data
             next_test_end = (
@@ -411,15 +416,21 @@ class WalkForwardAuditor:
         folds: list[Fold],
         warnings: list[str],
     ) -> bool:
-        """Check embargo between consecutive folds."""
+        """Check embargo between consecutive folds.
+
+        The embargo requires that next_fold.train_end >= current.test_end + embargo_bars.
+        This ensures the post-test embargo zone is excluded from the next fold's training.
+        """
         ok = True
         for i in range(len(folds) - 1):
             current = folds[i]
             next_fold = folds[i + 1]
-            gap = next_fold.train_start - current.test_end
-            if gap < self._config.embargo_bars and gap >= 0:
+            required_train_end = current.test_end + self._config.embargo_bars
+            if next_fold.train_end < required_train_end:
                 warnings.append(
-                    f"Folds {i}->{i + 1}: embargo gap {gap} < recommended {self._config.embargo_bars}"
+                    f"Folds {i}->{i + 1}: embargo violated — "
+                    f"train_end {next_fold.train_end} < required {required_train_end} "
+                    f"(test_end {current.test_end} + embargo {self._config.embargo_bars})"
                 )
                 ok = False
         return ok
