@@ -38,6 +38,7 @@ from ep2_crypto.backtest.polymarket_backtest import (
 )
 from ep2_crypto.backtest.validation import run_validation_suite
 from ep2_crypto.backtest.walk_forward import WalkForwardConfig, WalkForwardValidator
+from ep2_crypto.db.connection import DatabaseConnection
 from ep2_crypto.db.repository import Repository
 from ep2_crypto.db.schema import create_tables
 
@@ -58,39 +59,30 @@ _DB_URL_ENV = "EP2_DB_URL"
 # Database connection helpers
 # ---------------------------------------------------------------------------
 
-def _get_db_connection() -> sqlite3.Connection:
-    """Open database connection from EP2_DB_URL env var or default SQLite path."""
-    db_url = os.environ.get(_DB_URL_ENV, "data/ep2_crypto.db")
+def _get_db_connection() -> DatabaseConnection:
+    """Open database connection using DatabaseConfig env-var settings.
 
-    if "postgresql" in db_url or "timescale" in db_url:
-        try:
-            import psycopg2
+    Reads EP2_DB_BACKEND / EP2_DB_TIMESCALEDB_URL / EP2_DB_SQLITE_PATH
+    via DatabaseConfig (consistent with train.py and collect_history.py).
+    Also accepts legacy EP2_DB_URL for backwards-compat: if it starts with
+    'postgresql' it is set as EP2_DB_TIMESCALEDB_URL and the backend is
+    forced to 'timescaledb'.
+    """
+    # Legacy EP2_DB_URL → translate to new env vars on-the-fly
+    legacy_url = os.environ.get("EP2_DB_URL", "")
+    if legacy_url.startswith("postgresql") and not os.environ.get("EP2_DB_BACKEND"):
+        os.environ["EP2_DB_BACKEND"] = "timescaledb"
+        os.environ.setdefault("EP2_DB_TIMESCALEDB_URL", legacy_url)
 
-            conn = psycopg2.connect(db_url)
-            conn.autocommit = False
-            logger.info("db_connected", backend="timescaledb", url_prefix=db_url[:30])
-            return conn  # type: ignore[return-value]
-        except ImportError as exc:
-            logger.error(
-                "psycopg2_not_installed",
-                hint="pip install psycopg2-binary",
-            )
-            raise RuntimeError("psycopg2 required for TimescaleDB backend") from exc
-    else:
-        db_path = Path(db_url)
-        if not db_path.exists():
-            logger.warning(
-                "db_file_not_found",
-                path=str(db_path),
-                hint="Run scripts/collect_history.py first to populate the database",
-            )
-        conn = create_tables(db_path)
-        logger.info("db_connected", backend="sqlite", path=str(db_path))
-        return conn
+    from ep2_crypto.config import DatabaseConfig
+    config = DatabaseConfig()
+    db = DatabaseConnection(config)
+    logger.info("db_connected", backend=str(config.backend))
+    return db
 
 
-def _is_sqlite_conn(conn: sqlite3.Connection) -> bool:
-    return isinstance(conn, sqlite3.Connection)
+def _is_sqlite_conn(conn: DatabaseConnection) -> bool:
+    return conn._backend == "sqlite"  # type: ignore[comparison-overlap]
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +90,7 @@ def _is_sqlite_conn(conn: sqlite3.Connection) -> bool:
 # ---------------------------------------------------------------------------
 
 def load_real_data(
-    conn: sqlite3.Connection,
+    conn: DatabaseConnection,
     symbol: str,
     interval: str,
     start_ms: int,
